@@ -1,0 +1,34 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/quickcare
+    username: quickcare
+    password: quickcare123
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+management:
+  server:
+    port: 8080
+  endpoints:
+    web:
+      base-path: /actuator
+      exposure:
+        include: health
+  endpoint:
+    health:
+      access: unrestricted
+      show-details: always
+
+minio:
+  endpoint: http://localhost:9000
+  access-key: minioadmin
+  secret-key: minioadmin123
+  bucket: quickcare-docs
