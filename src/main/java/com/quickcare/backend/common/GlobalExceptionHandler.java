@@ -1,10 +1,12 @@
 package com.quickcare.backend.common;
 
+import com.quickcare.backend.auth.exception.LoginInvalidoException;
 import com.quickcare.backend.cadastro.exception.CpfJaCadastradoException;
 import com.quickcare.backend.cadastro.exception.CredenciaisInvalidasException;
 import com.quickcare.backend.cadastro.exception.DadosCadastraisConflitantesException;
 import com.quickcare.backend.cadastro.exception.EmailJaCadastradoException;
 import com.quickcare.backend.cadastro.exception.PerfilJaExistenteException;
+import com.quickcare.backend.jwt.TokenInvalidoException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -39,6 +41,16 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(CredenciaisInvalidasException.class)
     public ResponseEntity<ApiError> handleCredenciaisInvalidas(CredenciaisInvalidasException ex) {
+        return build(HttpStatus.UNAUTHORIZED, ex.getMessage());
+    }
+
+    @ExceptionHandler(LoginInvalidoException.class)
+    public ResponseEntity<ApiError> handleLoginInvalido(LoginInvalidoException ex) {
+        return build(HttpStatus.UNAUTHORIZED, ex.getMessage());
+    }
+
+    @ExceptionHandler(TokenInvalidoException.class)
+    public ResponseEntity<ApiError> handleTokenInvalido(TokenInvalidoException ex) {
         return build(HttpStatus.UNAUTHORIZED, ex.getMessage());
     }
 
