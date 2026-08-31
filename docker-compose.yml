@@ -1,0 +1,41 @@
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: quickcare-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-quickcare}
+      POSTGRES_USER: ${POSTGRES_USER:-quickcare}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-quickcare}
+    ports:
+      - "5432:5432"
+    volumes:
+      - quickcare-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-quickcare} -d ${POSTGRES_DB:-quickcare}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: quickcare-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-quickcare}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-quickcare123}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - quickcare-minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  quickcare-postgres-data:
+  quickcare-minio-data:
