@@ -1,0 +1,5 @@
+spring:
+  application:
+    name: quickcare-backend
+  profiles:
+    active: local
