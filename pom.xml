@@ -22,6 +22,7 @@
         <hibernate-spatial.version>6.6.4.Final</hibernate-spatial.version>
         <minio.version>8.5.14</minio.version>
         <jjwt.version>0.12.6</jjwt.version>
+        <springdoc.version>2.7.0</springdoc.version>
     </properties>
 
     <dependencies>
@@ -93,6 +94,12 @@
             <artifactId>jjwt-jackson</artifactId>
             <version>${jjwt.version}</version>
             <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>${springdoc.version}</version>
         </dependency>
 
         <dependency>
