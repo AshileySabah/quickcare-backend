@@ -1,15 +1,20 @@
+server:
+  port: ${PORT:8080}
+
 spring:
   datasource:
-    url: ${DB_URL}
-    username: ${DB_USERNAME}
+    url: jdbc:postgresql://aws-0-sa-east-1.pooler.supabase.com:5432/postgres?sslmode=require
+    username: postgres.qbmpzhnbrfzzgwkztzeo
     password: ${DB_PASSWORD}
   jpa:
     show-sql: false
 
 minio:
-  url: ${MINIO_URL}
-  access-key: ${MINIO_ACCESS_KEY}
-  secret-key: ${MINIO_SECRET_KEY}
+  endpoint: https://qbmpzhnbrfzzgwkztzeo.storage.supabase.co/storage/v1/s3
+  region: sa-east-1
+  access-key: ${STORAGE_ACCESS_KEY}
+  secret-key: ${STORAGE_SECRET_KEY}
+  bucket: quickcare-docs
 
 logging:
   level:
