@@ -5,7 +5,17 @@ spring:
     password: ${POSTGRES_PASSWORD:quickcare}
   jpa:
     show-sql: true
-
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${EMAIL_USERNAME:}
+    password: ${EMAIL_APP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
 minio:
   url: ${MINIO_URL:http://localhost:9000}
   access-key: ${MINIO_ROOT_USER:quickcare}

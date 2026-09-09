@@ -14,6 +14,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "usuario")
@@ -44,6 +45,12 @@ public class Usuario {
 
     @Column(name = "criado_em", nullable = false, updatable = false)
     private Instant criadoEm;
+
+    @Column(name = "token_recuperacao")
+    private String tokenRecuperacao;
+
+    @Column(name = "token_recuperacao_expiracao")
+    private LocalDateTime tokenRecuperacaoExpiracao;
 
     @PrePersist
     private void aoPersistir() {

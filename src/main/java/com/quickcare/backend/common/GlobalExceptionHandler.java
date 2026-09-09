@@ -1,6 +1,7 @@
 package com.quickcare.backend.common;
 
 import com.quickcare.backend.auth.exception.LoginInvalidoException;
+import com.quickcare.backend.auth.exception.TokenRecuperacaoInvalidoException;
 import com.quickcare.backend.cadastro.exception.CpfJaCadastradoException;
 import com.quickcare.backend.cadastro.exception.CredenciaisInvalidasException;
 import com.quickcare.backend.cadastro.exception.DadosCadastraisConflitantesException;
@@ -15,6 +16,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.time.Instant;
 import java.util.stream.Collectors;
+import java.util.Map;
+import org.springframework.http.HttpStatus;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -60,6 +63,10 @@ public class GlobalExceptionHandler {
                 .map(erro -> erro.getField() + ": " + erro.getDefaultMessage())
                 .collect(Collectors.joining("; "));
         return build(HttpStatus.BAD_REQUEST, mensagem);
+    }
+    @ExceptionHandler(TokenRecuperacaoInvalidoException.class)
+    public ResponseEntity<Map<String, String>> handleTokenInvalido(TokenRecuperacaoInvalidoException ex) {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("erro", ex.getMessage()));
     }
 
     private ResponseEntity<ApiError> build(HttpStatus status, String mensagem) {
