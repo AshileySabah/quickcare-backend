@@ -64,7 +64,7 @@ public class AuthController {
         return ResponseCookie.from(ACCESS_TOKEN_COOKIE, token)
                 .httpOnly(true)
                 .secure(true)
-                .sameSite("Strict")
+                .sameSite("None")
                 .path("/")
                 .maxAge(Duration.ofMinutes(jwtProperties.accessTokenExpirationMinutes()))
                 .build();
@@ -74,7 +74,7 @@ public class AuthController {
         return ResponseCookie.from(REFRESH_TOKEN_COOKIE, token)
                 .httpOnly(true)
                 .secure(true)
-                .sameSite("Strict")
+                .sameSite("None")
                 .path(REFRESH_TOKEN_PATH)
                 .maxAge(Duration.ofDays(jwtProperties.refreshTokenExpirationDays()))
                 .build();
@@ -84,7 +84,7 @@ public class AuthController {
         return ResponseCookie.from(name, "")
                 .httpOnly(true)
                 .secure(true)
-                .sameSite("Strict")
+                .sameSite("None")
                 .path(path)
                 .maxAge(0)
                 .build();
