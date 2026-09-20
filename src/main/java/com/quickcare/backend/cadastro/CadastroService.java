@@ -3,14 +3,21 @@ package com.quickcare.backend.cadastro;
 import com.quickcare.backend.cadastro.dto.CadastroPacienteRequest;
 import com.quickcare.backend.cadastro.dto.CadastroProfissionalRequest;
 import com.quickcare.backend.cadastro.dto.CadastroResponse;
+import com.quickcare.backend.cadastro.dto.EspecialidadeRegistroRequest;
 import com.quickcare.backend.cadastro.exception.CpfJaCadastradoException;
 import com.quickcare.backend.cadastro.exception.CredenciaisInvalidasException;
 import com.quickcare.backend.cadastro.exception.DadosCadastraisConflitantesException;
 import com.quickcare.backend.cadastro.exception.EmailJaCadastradoException;
+import com.quickcare.backend.cadastro.exception.EspecialidadeInvalidaException;
 import com.quickcare.backend.cadastro.exception.PerfilJaExistenteException;
+import com.quickcare.backend.cadastro.exception.RaioAtendimentoObrigatorioException;
+import com.quickcare.backend.especialidade.Especialidade;
+import com.quickcare.backend.especialidade.EspecialidadeRepository;
 import com.quickcare.backend.paciente.Paciente;
 import com.quickcare.backend.paciente.PacienteRepository;
+import com.quickcare.backend.profissional.ModalidadeAtendimento;
 import com.quickcare.backend.profissional.Profissional;
+import com.quickcare.backend.profissional.ProfissionalEspecialidade;
 import com.quickcare.backend.profissional.ProfissionalRepository;
 import com.quickcare.backend.usuario.Usuario;
 import com.quickcare.backend.usuario.UsuarioRepository;
@@ -19,7 +26,13 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -28,6 +41,7 @@ public class CadastroService {
     private final UsuarioRepository usuarioRepository;
     private final PacienteRepository pacienteRepository;
     private final ProfissionalRepository profissionalRepository;
+    private final EspecialidadeRepository especialidadeRepository;
     private final PasswordEncoder passwordEncoder;
 
     @Transactional
@@ -42,6 +56,13 @@ public class CadastroService {
                 Paciente.builder()
                         .usuario(usuario)
                         .banido(false)
+                        .cep(request.cep())
+                        .logradouro(request.logradouro())
+                        .numero(request.numero())
+                        .complemento(request.complemento())
+                        .bairro(request.bairro())
+                        .cidade(request.cidade())
+                        .uf(request.uf().toUpperCase())
                         .build()
         );
 
@@ -56,16 +77,52 @@ public class CadastroService {
             throw new PerfilJaExistenteException("profissional");
         }
 
+        List<Long> especialidadeIds = request.especialidades().stream()
+                .map(EspecialidadeRegistroRequest::especialidadeId)
+                .toList();
+
+        Map<Long, Especialidade> especialidadesPorId = especialidadeRepository.findAllByIdIn(especialidadeIds).stream()
+                .collect(Collectors.toMap(Especialidade::getId, Function.identity()));
+
+        if (especialidadesPorId.size() != new HashSet<>(especialidadeIds).size()) {
+            throw new EspecialidadeInvalidaException();
+        }
+
+        if (request.modalidadeAtendimento() != ModalidadeAtendimento.REMOTO && request.raioAtendimentoKm() == null) {
+            throw new RaioAtendimentoObrigatorioException();
+        }
+
         Profissional profissional = profissionalRepository.save(
                 Profissional.builder()
                         .usuario(usuario)
                         .banido(false)
                         .modalidadeAtendimento(request.modalidadeAtendimento())
-                        .raioAtendimentoKm(request.raioAtendimentoKm())
-                        .latitude(request.latitude())
-                        .longitude(request.longitude())
+                        .raioAtendimentoKm(
+                                request.modalidadeAtendimento() == ModalidadeAtendimento.REMOTO
+                                        ? null
+                                        : request.raioAtendimentoKm()
+                        )
+                        .cnpj(request.cnpj())
+                        .cep(request.cep())
+                        .logradouro(request.logradouro())
+                        .numero(request.numero())
+                        .complemento(request.complemento())
+                        .bairro(request.bairro())
+                        .cidade(request.cidade())
+                        .uf(request.uf().toUpperCase())
                         .build()
         );
+
+        Set<ProfissionalEspecialidade> vinculos = request.especialidades().stream()
+                .map(item -> ProfissionalEspecialidade.builder()
+                        .profissional(profissional)
+                        .especialidade(especialidadesPorId.get(item.especialidadeId()))
+                        .registroProfissional(item.registroProfissional())
+                        .build())
+                .collect(Collectors.toSet());
+
+        profissional.getEspecialidades().addAll(vinculos);
+        profissionalRepository.save(profissional);
 
         return new CadastroResponse(usuario.getId(), profissional.getId(), usuario.getNome(), usuario.getEmail(), "PROFISSIONAL");
     }

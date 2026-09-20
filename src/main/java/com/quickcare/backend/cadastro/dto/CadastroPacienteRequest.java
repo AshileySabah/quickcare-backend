@@ -10,6 +10,13 @@ public record CadastroPacienteRequest(
         @NotBlank @Email String email,
         @NotBlank @Size(min = 8) String senha,
         @NotBlank @Pattern(regexp = "\\d{11}") String cpf,
-        String telefone
+        String telefone,
+        @NotBlank @Pattern(regexp = "\\d{8}") String cep,
+        @NotBlank String logradouro,
+        @NotBlank String numero,
+        String complemento,
+        @NotBlank String bairro,
+        @NotBlank String cidade,
+        @NotBlank @Pattern(regexp = "(?i)^[a-z]{2}$") String uf
 ) {
 }
