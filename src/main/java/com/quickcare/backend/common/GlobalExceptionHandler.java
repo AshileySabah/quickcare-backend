@@ -5,7 +5,9 @@ import com.quickcare.backend.cadastro.exception.CpfJaCadastradoException;
 import com.quickcare.backend.cadastro.exception.CredenciaisInvalidasException;
 import com.quickcare.backend.cadastro.exception.DadosCadastraisConflitantesException;
 import com.quickcare.backend.cadastro.exception.EmailJaCadastradoException;
+import com.quickcare.backend.cadastro.exception.EspecialidadeInvalidaException;
 import com.quickcare.backend.cadastro.exception.PerfilJaExistenteException;
+import com.quickcare.backend.cadastro.exception.RaioAtendimentoObrigatorioException;
 import com.quickcare.backend.jwt.TokenInvalidoException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -37,6 +39,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(PerfilJaExistenteException.class)
     public ResponseEntity<ApiError> handlePerfilJaExistente(PerfilJaExistenteException ex) {
         return build(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
+    @ExceptionHandler(EspecialidadeInvalidaException.class)
+    public ResponseEntity<ApiError> handleEspecialidadeInvalida(EspecialidadeInvalidaException ex) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(RaioAtendimentoObrigatorioException.class)
+    public ResponseEntity<ApiError> handleRaioAtendimentoObrigatorio(RaioAtendimentoObrigatorioException ex) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 
     @ExceptionHandler(CredenciaisInvalidasException.class)

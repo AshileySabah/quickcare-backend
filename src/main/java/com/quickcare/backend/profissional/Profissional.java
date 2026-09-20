@@ -1,6 +1,7 @@
 package com.quickcare.backend.profissional;
 
 import com.quickcare.backend.usuario.Usuario;
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -10,6 +11,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
@@ -21,6 +23,8 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "profissional")
@@ -46,14 +50,40 @@ public class Profissional {
     @Column(name = "modalidade_atendimento", nullable = false)
     private ModalidadeAtendimento modalidadeAtendimento;
 
-    @Column(name = "raio_atendimento_km", nullable = false)
+    @Column(name = "raio_atendimento_km")
     private BigDecimal raioAtendimentoKm;
 
-    @Column(nullable = false)
     private BigDecimal latitude;
 
-    @Column(nullable = false)
     private BigDecimal longitude;
+
+    @Column(length = 14)
+    private String cnpj;
+
+    @Column(nullable = false, length = 8)
+    private String cep;
+
+    @Column(nullable = false, length = 150)
+    private String logradouro;
+
+    @Column(nullable = false, length = 20)
+    private String numero;
+
+    @Column(length = 100)
+    private String complemento;
+
+    @Column(nullable = false, length = 100)
+    private String bairro;
+
+    @Column(nullable = false, length = 100)
+    private String cidade;
+
+    @Column(nullable = false, length = 2)
+    private String uf;
+
+    @OneToMany(mappedBy = "profissional", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<ProfissionalEspecialidade> especialidades = new ArrayList<>();
 
     @Column(name = "criado_em", nullable = false, updatable = false)
     private Instant criadoEm;
