@@ -39,6 +39,27 @@ public class Paciente {
     @Column(nullable = false)
     private boolean banido;
 
+    @Column(nullable = false, length = 8)
+    private String cep;
+
+    @Column(nullable = false, length = 150)
+    private String logradouro;
+
+    @Column(nullable = false, length = 20)
+    private String numero;
+
+    @Column(length = 100)
+    private String complemento;
+
+    @Column(nullable = false, length = 100)
+    private String bairro;
+
+    @Column(nullable = false, length = 100)
+    private String cidade;
+
+    @Column(nullable = false, length = 2)
+    private String uf;
+
     @Column(name = "criado_em", nullable = false, updatable = false)
     private Instant criadoEm;
 
