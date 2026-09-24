@@ -1,11 +1,13 @@
 package com.quickcare.backend.especialidade;
 
+import com.quickcare.backend.especialidade.dto.CategoriaProfissionalResponse;
 import com.quickcare.backend.especialidade.dto.EspecialidadeResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Arrays;
 import java.util.List;
 
 @RestController
@@ -23,6 +25,13 @@ public class EspecialidadeController {
                         especialidade.getNome(),
                         especialidade.getCategoria()
                 ))
+                .toList();
+    }
+
+    @GetMapping("/categorias")
+    public List<CategoriaProfissionalResponse> categorias() {
+        return Arrays.stream(CategoriaProfissional.values())
+                .map(categoria -> new CategoriaProfissionalResponse(categoria, categoria.getRotulo(), categoria.getSiglaRegistro()))
                 .toList();
     }
 
