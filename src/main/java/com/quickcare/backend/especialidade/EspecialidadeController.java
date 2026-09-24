@@ -18,7 +18,11 @@ public class EspecialidadeController {
     @GetMapping
     public List<EspecialidadeResponse> listar() {
         return especialidadeRepository.findAll().stream()
-                .map(especialidade -> new EspecialidadeResponse(especialidade.getId(), especialidade.getNome()))
+                .map(especialidade -> new EspecialidadeResponse(
+                        especialidade.getId(),
+                        especialidade.getNome(),
+                        especialidade.getCategoria()
+                ))
                 .toList();
     }
 

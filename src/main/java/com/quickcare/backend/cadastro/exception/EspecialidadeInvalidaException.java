@@ -6,4 +6,8 @@ public class EspecialidadeInvalidaException extends RuntimeException {
         super("Uma ou mais especialidades informadas não existem");
     }
 
+    public EspecialidadeInvalidaException(String mensagem) {
+        super(mensagem);
+    }
+
 }

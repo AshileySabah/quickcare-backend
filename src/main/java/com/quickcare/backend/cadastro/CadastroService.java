@@ -3,7 +3,6 @@ package com.quickcare.backend.cadastro;
 import com.quickcare.backend.cadastro.dto.CadastroPacienteRequest;
 import com.quickcare.backend.cadastro.dto.CadastroProfissionalRequest;
 import com.quickcare.backend.cadastro.dto.CadastroResponse;
-import com.quickcare.backend.cadastro.dto.EspecialidadeRegistroRequest;
 import com.quickcare.backend.cadastro.exception.CpfJaCadastradoException;
 import com.quickcare.backend.cadastro.exception.CredenciaisInvalidasException;
 import com.quickcare.backend.cadastro.exception.DadosCadastraisConflitantesException;
@@ -11,13 +10,14 @@ import com.quickcare.backend.cadastro.exception.EmailJaCadastradoException;
 import com.quickcare.backend.cadastro.exception.EspecialidadeInvalidaException;
 import com.quickcare.backend.cadastro.exception.PerfilJaExistenteException;
 import com.quickcare.backend.cadastro.exception.RaioAtendimentoObrigatorioException;
+import com.quickcare.backend.cadastro.exception.RegistroProfissionalObrigatorioException;
+import com.quickcare.backend.especialidade.CategoriaProfissional;
 import com.quickcare.backend.especialidade.Especialidade;
 import com.quickcare.backend.especialidade.EspecialidadeRepository;
 import com.quickcare.backend.paciente.Paciente;
 import com.quickcare.backend.paciente.PacienteRepository;
 import com.quickcare.backend.profissional.ModalidadeAtendimento;
 import com.quickcare.backend.profissional.Profissional;
-import com.quickcare.backend.profissional.ProfissionalEspecialidade;
 import com.quickcare.backend.profissional.ProfissionalRepository;
 import com.quickcare.backend.usuario.Usuario;
 import com.quickcare.backend.usuario.UsuarioRepository;
@@ -77,15 +77,28 @@ public class CadastroService {
             throw new PerfilJaExistenteException("profissional");
         }
 
-        List<Long> especialidadeIds = request.especialidades().stream()
-                .map(EspecialidadeRegistroRequest::especialidadeId)
-                .toList();
+        List<Long> especialidadeIds = request.especialidadeIds();
 
         Map<Long, Especialidade> especialidadesPorId = especialidadeRepository.findAllByIdIn(especialidadeIds).stream()
                 .collect(Collectors.toMap(Especialidade::getId, Function.identity()));
 
         if (especialidadesPorId.size() != new HashSet<>(especialidadeIds).size()) {
             throw new EspecialidadeInvalidaException();
+        }
+
+        boolean categoriasDivergentes = especialidadesPorId.values().stream()
+                .anyMatch(especialidade -> especialidade.getCategoria() != request.categoria());
+        if (categoriasDivergentes) {
+            throw new EspecialidadeInvalidaException("As especialidades informadas não pertencem à categoria profissional selecionada");
+        }
+
+        if (request.categoria() == CategoriaProfissional.OUTRO && especialidadeIds.size() > 1) {
+            throw new EspecialidadeInvalidaException("Profissionais da categoria \"Outros profissionais\" devem selecionar apenas uma especialidade");
+        }
+
+        boolean registroObrigatorio = request.categoria() != CategoriaProfissional.CUIDADOR;
+        if (registroObrigatorio && (request.registroProfissional() == null || request.registroProfissional().isBlank())) {
+            throw new RegistroProfissionalObrigatorioException();
         }
 
         if (request.modalidadeAtendimento() != ModalidadeAtendimento.REMOTO && request.raioAtendimentoKm() == null) {
@@ -96,6 +109,8 @@ public class CadastroService {
                 Profissional.builder()
                         .usuario(usuario)
                         .banido(false)
+                        .categoria(request.categoria())
+                        .registroProfissional(registroObrigatorio ? request.registroProfissional() : null)
                         .modalidadeAtendimento(request.modalidadeAtendimento())
                         .raioAtendimentoKm(
                                 request.modalidadeAtendimento() == ModalidadeAtendimento.REMOTO
@@ -110,19 +125,9 @@ public class CadastroService {
                         .bairro(request.bairro())
                         .cidade(request.cidade())
                         .uf(request.uf().toUpperCase())
+                        .especialidades(new HashSet<>(especialidadesPorId.values()))
                         .build()
         );
-
-        Set<ProfissionalEspecialidade> vinculos = request.especialidades().stream()
-                .map(item -> ProfissionalEspecialidade.builder()
-                        .profissional(profissional)
-                        .especialidade(especialidadesPorId.get(item.especialidadeId()))
-                        .registroProfissional(item.registroProfissional())
-                        .build())
-                .collect(Collectors.toSet());
-
-        profissional.getEspecialidades().addAll(vinculos);
-        profissionalRepository.save(profissional);
 
         return new CadastroResponse(usuario.getId(), profissional.getId(), usuario.getNome(), usuario.getEmail(), "PROFISSIONAL");
     }
