@@ -1,8 +1,14 @@
 package com.quickcare.backend.paciente;
 
+import com.quickcare.backend.usuario.ContatoEmergencia;
+import com.quickcare.backend.usuario.Genero;
 import com.quickcare.backend.usuario.Usuario;
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -18,6 +24,9 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "paciente")
@@ -38,6 +47,37 @@ public class Paciente {
 
     @Column(nullable = false)
     private boolean banido;
+
+    @Column(name = "data_nascimento", nullable = false)
+    private LocalDate dataNascimento;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private Genero genero;
+
+    @ElementCollection
+    @CollectionTable(name = "paciente_contato_emergencia", joinColumns = @JoinColumn(name = "paciente_id"))
+    @Builder.Default
+    private List<ContatoEmergencia> contatosEmergencia = new ArrayList<>();
+
+    /**
+     * Declaração de que os dados informados no cadastro são verdadeiros —
+     * exigida junto do consentimento LGPD, ambas obrigatórias no cadastro.
+     */
+    @Column(name = "confirmacao_informacoes_verdadeiras", nullable = false)
+    private boolean confirmacaoInformacoesVerdadeiras;
+
+    @Column(name = "consentimento_lgpd", nullable = false)
+    private boolean consentimentoLgpd;
+
+    @Column(length = 500)
+    private String alergias;
+
+    @Column(name = "condicoes_saude", length = 500)
+    private String condicoesSaude;
+
+    @Column(name = "medicamentos_em_uso", length = 500)
+    private String medicamentosEmUso;
 
     @Column(nullable = false, length = 8)
     private String cep;

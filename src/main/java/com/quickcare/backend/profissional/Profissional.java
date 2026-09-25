@@ -2,8 +2,12 @@ package com.quickcare.backend.profissional;
 
 import com.quickcare.backend.especialidade.CategoriaProfissional;
 import com.quickcare.backend.especialidade.Especialidade;
+import com.quickcare.backend.usuario.ContatoEmergencia;
+import com.quickcare.backend.usuario.Genero;
 import com.quickcare.backend.usuario.Usuario;
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -25,7 +29,10 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 @Entity
@@ -54,6 +61,27 @@ public class Profissional {
 
     @Column(name = "registro_profissional", length = 50)
     private String registroProfissional;
+
+    @Column(name = "data_nascimento", nullable = false)
+    private LocalDate dataNascimento;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private Genero genero;
+
+    @ElementCollection
+    @CollectionTable(name = "profissional_contato_emergencia", joinColumns = @JoinColumn(name = "profissional_id"))
+    @Builder.Default
+    private List<ContatoEmergencia> contatosEmergencia = new ArrayList<>();
+
+    @Column(name = "confirmacao_informacoes_verdadeiras", nullable = false)
+    private boolean confirmacaoInformacoesVerdadeiras;
+
+    @Column(name = "consentimento_lgpd", nullable = false)
+    private boolean consentimentoLgpd;
+
+    @Column(name = "possui_seguro_responsabilidade_civil", nullable = false)
+    private boolean possuiSeguroResponsabilidadeCivil;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "modalidade_atendimento", nullable = false)

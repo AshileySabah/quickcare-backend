@@ -9,6 +9,8 @@ import com.quickcare.backend.cadastro.exception.EspecialidadeInvalidaException;
 import com.quickcare.backend.cadastro.exception.PerfilJaExistenteException;
 import com.quickcare.backend.cadastro.exception.RaioAtendimentoObrigatorioException;
 import com.quickcare.backend.cadastro.exception.RegistroProfissionalObrigatorioException;
+import com.quickcare.backend.documento.ArquivoInvalidoException;
+import com.quickcare.backend.documento.DocumentoObrigatorioException;
 import com.quickcare.backend.jwt.TokenInvalidoException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -54,6 +56,16 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(RegistroProfissionalObrigatorioException.class)
     public ResponseEntity<ApiError> handleRegistroProfissionalObrigatorio(RegistroProfissionalObrigatorioException ex) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(DocumentoObrigatorioException.class)
+    public ResponseEntity<ApiError> handleDocumentoObrigatorio(DocumentoObrigatorioException ex) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(ArquivoInvalidoException.class)
+    public ResponseEntity<ApiError> handleArquivoInvalido(ArquivoInvalidoException ex) {
         return build(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 
