@@ -1,9 +1,17 @@
 package com.quickcare.backend.cadastro.dto;
 
+import com.quickcare.backend.usuario.Genero;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Past;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+
+import java.time.LocalDate;
+import java.util.List;
 
 public record CadastroPacienteRequest(
         @NotBlank String nome,
@@ -11,6 +19,14 @@ public record CadastroPacienteRequest(
         @NotBlank @Size(min = 8) String senha,
         @NotBlank @Pattern(regexp = "\\d{11}") String cpf,
         String telefone,
+        @NotNull @Past LocalDate dataNascimento,
+        @NotNull Genero genero,
+        @Valid List<ContatoEmergenciaRequest> contatosEmergencia,
+        @AssertTrue boolean confirmacaoInformacoesVerdadeiras,
+        @AssertTrue boolean consentimentoLgpd,
+        String alergias,
+        String condicoesSaude,
+        String medicamentosEmUso,
         @NotBlank @Pattern(regexp = "\\d{8}") String cep,
         @NotBlank String logradouro,
         @NotBlank String numero,
