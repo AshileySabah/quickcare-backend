@@ -1,15 +1,13 @@
 package com.quickcare.backend.documento;
 
-import com.quickcare.backend.storage.MinioProperties;
-import io.minio.BucketExistsArgs;
-import io.minio.MakeBucketArgs;
-import io.minio.MinioClient;
-import io.minio.PutObjectArgs;
-import jakarta.annotation.PostConstruct;
+import com.quickcare.backend.storage.SupabaseStorageProperties;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.Set;
 import java.util.UUID;
 
@@ -20,16 +18,8 @@ public class ArmazenamentoDocumentoService {
     private static final Set<String> TIPOS_ACEITOS = Set.of("application/pdf", "image/jpeg", "image/png");
     private static final long TAMANHO_MAXIMO_BYTES = 5L * 1024 * 1024;
 
-    private final MinioClient minioClient;
-    private final MinioProperties minioProperties;
-
-    @PostConstruct
-    void garantirBucket() throws Exception {
-        boolean existe = minioClient.bucketExists(BucketExistsArgs.builder().bucket(minioProperties.bucket()).build());
-        if (!existe) {
-            minioClient.makeBucket(MakeBucketArgs.builder().bucket(minioProperties.bucket()).build());
-        }
-    }
+    private final SupabaseStorageProperties properties;
+    private final RestClient.Builder restClientBuilder;
 
     /**
      * Envia o arquivo para o bucket e devolve sua storage key. A chave usa um
@@ -39,23 +29,26 @@ public class ArmazenamentoDocumentoService {
     public String enviar(TipoDocumento tipo, MultipartFile arquivo) {
         validar(arquivo);
 
-        String extensao = extrairExtensao(arquivo.getOriginalFilename());
-        String key = "%s/%s%s".formatted(tipo.name().toLowerCase(), UUID.randomUUID(), extensao);
+        String pasta = tipo.name().toLowerCase();
+        String nomeArquivo = UUID.randomUUID() + extrairExtensao(arquivo.getOriginalFilename());
 
-        try (var input = arquivo.getInputStream()) {
-            minioClient.putObject(
-                    PutObjectArgs.builder()
-                            .bucket(minioProperties.bucket())
-                            .object(key)
-                            .stream(input, arquivo.getSize(), -1)
-                            .contentType(arquivo.getContentType())
-                            .build()
-            );
+        try {
+            restClientBuilder.build()
+                    .post()
+                    .uri(properties.url() + "/storage/v1/object/{bucket}/{pasta}/{arquivo}", properties.bucket(), pasta, nomeArquivo)
+                    .header("Authorization", "Bearer " + properties.apiKey())
+                    .header("apikey", properties.apiKey())
+                    .contentType(MediaType.parseMediaType(arquivo.getContentType()))
+                    .body(arquivo.getBytes())
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (IOException ex) {
+            throw new ArquivoInvalidoException("Não foi possível ler o arquivo \"%s\".".formatted(arquivo.getOriginalFilename()));
         } catch (Exception ex) {
             throw new ArquivoInvalidoException("Não foi possível enviar o arquivo \"%s\". Tente novamente.".formatted(arquivo.getOriginalFilename()));
         }
 
-        return key;
+        return pasta + "/" + nomeArquivo;
     }
 
     private void validar(MultipartFile arquivo) {

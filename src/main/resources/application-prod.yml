@@ -6,12 +6,11 @@ spring:
   jpa:
     show-sql: false
 
-minio:
-  url: ${MINIO_URL}
-  access-key: ${MINIO_ACCESS_KEY}
-  secret-key: ${MINIO_SECRET_KEY}
-  bucket: ${MINIO_BUCKET:quickcare-documentos}
-  region: ${MINIO_REGION:}
+supabase:
+  storage:
+    url: ${SUPABASE_URL}
+    api-key: ${SUPABASE_SECRET_KEY}
+    bucket: ${SUPABASE_BUCKET:quickcare-bucket-prod}
 
 logging:
   level:
