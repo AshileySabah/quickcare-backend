@@ -8,6 +8,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.Set;
 import java.util.UUID;
 
@@ -16,7 +17,9 @@ import java.util.UUID;
 public class ArmazenamentoDocumentoService {
 
     private static final Set<String> TIPOS_ACEITOS = Set.of("application/pdf", "image/jpeg", "image/png");
+    private static final Set<String> TIPOS_IMAGEM_ACEITOS = Set.of("image/jpeg", "image/png");
     private static final long TAMANHO_MAXIMO_BYTES = 5L * 1024 * 1024;
+    private static final Duration EXPIRACAO_URL_ASSINADA = Duration.ofHours(1);
 
     private final SupabaseStorageProperties properties;
     private final RestClient.Builder restClientBuilder;
@@ -27,9 +30,20 @@ public class ArmazenamentoDocumentoService {
      * cadastro, antes do paciente/profissional existir no banco.
      */
     public String enviar(TipoDocumento tipo, MultipartFile arquivo) {
-        validar(arquivo);
+        validar(arquivo, TIPOS_ACEITOS, "Envie um arquivo PDF, JPG ou PNG.");
+        return enviarParaPasta(tipo.name().toLowerCase(), arquivo);
+    }
 
-        String pasta = tipo.name().toLowerCase();
+    /**
+     * Fotos de perfil não têm um TipoDocumento associado (não são documentos de
+     * validação cadastral), então vivem em sua própria pasta dentro do mesmo bucket.
+     */
+    public String enviarAvatar(MultipartFile arquivo) {
+        validar(arquivo, TIPOS_IMAGEM_ACEITOS, "Envie uma imagem JPG ou PNG.");
+        return enviarParaPasta("avatares", arquivo);
+    }
+
+    private String enviarParaPasta(String pasta, MultipartFile arquivo) {
         String nomeArquivo = UUID.randomUUID() + extrairExtensao(arquivo.getOriginalFilename());
 
         try {
@@ -51,13 +65,41 @@ public class ArmazenamentoDocumentoService {
         return pasta + "/" + nomeArquivo;
     }
 
-    private void validar(MultipartFile arquivo) {
+    /**
+     * Gera uma URL assinada e temporária para leitura de um objeto privado, já que
+     * o bucket de documentos/avatares não é público.
+     */
+    public String gerarUrlAssinada(String storageKey) {
+        try {
+            SignedUrlResponse resposta = restClientBuilder.build()
+                    .post()
+                    .uri(properties.url() + "/storage/v1/object/sign/{bucket}/{chave}", properties.bucket(), storageKey)
+                    .header("Authorization", "Bearer " + properties.apiKey())
+                    .header("apikey", properties.apiKey())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(new SignedUrlRequest(EXPIRACAO_URL_ASSINADA.toSeconds()))
+                    .retrieve()
+                    .body(SignedUrlResponse.class);
+
+            return resposta == null ? null : properties.url() + "/storage/v1" + resposta.signedURL();
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private record SignedUrlRequest(long expiresIn) {
+    }
+
+    private record SignedUrlResponse(String signedURL) {
+    }
+
+    private void validar(MultipartFile arquivo, Set<String> tiposAceitos, String mensagemFormatoInvalido) {
         if (arquivo == null || arquivo.isEmpty()) {
             throw new ArquivoInvalidoException("Arquivo não informado.");
         }
 
-        if (!TIPOS_ACEITOS.contains(arquivo.getContentType())) {
-            throw new ArquivoInvalidoException("Formato inválido para \"%s\". Envie um arquivo PDF, JPG ou PNG.".formatted(arquivo.getOriginalFilename()));
+        if (!tiposAceitos.contains(arquivo.getContentType())) {
+            throw new ArquivoInvalidoException("Formato inválido para \"%s\". %s".formatted(arquivo.getOriginalFilename(), mensagemFormatoInvalido));
         }
 
         if (arquivo.getSize() > TAMANHO_MAXIMO_BYTES) {

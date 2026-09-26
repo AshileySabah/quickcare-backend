@@ -42,6 +42,9 @@ public class Usuario {
 
     private String telefone;
 
+    @Column(name = "avatar_storage_key")
+    private String avatarStorageKey;
+
     @Column(name = "criado_em", nullable = false, updatable = false)
     private Instant criadoEm;
 

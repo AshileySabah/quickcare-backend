@@ -62,6 +62,9 @@ public class Profissional {
     @Column(name = "registro_profissional", length = 50)
     private String registroProfissional;
 
+    @Column(name = "registro_profissional_uf", length = 2)
+    private String registroProfissionalUf;
+
     @Column(name = "data_nascimento", nullable = false)
     private LocalDate dataNascimento;
 

@@ -60,7 +60,8 @@ public class CadastroService {
     public CadastroResponse cadastrarPaciente(
             CadastroPacienteRequest request,
             List<MultipartFile> documentos,
-            List<TipoDocumento> tiposDocumento
+            List<TipoDocumento> tiposDocumento,
+            MultipartFile avatar
     ) {
         List<DocumentoParaSalvar> documentosValidados = validarDocumentos(documentos, tiposDocumento);
 
@@ -68,7 +69,7 @@ public class CadastroService {
             throw new DocumentoObrigatorioException("Envie um documento que valide seu CPF.");
         }
 
-        Usuario usuario = resolverUsuario(request.nome(), request.email(), request.senha(), request.cpf(), request.telefone());
+        Usuario usuario = resolverUsuario(request.nome(), request.email(), request.senha(), request.cpf(), request.telefone(), avatar);
 
         if (pacienteRepository.existsByUsuarioId(usuario.getId())) {
             throw new PerfilJaExistenteException("paciente");
@@ -107,7 +108,8 @@ public class CadastroService {
     public CadastroResponse cadastrarProfissional(
             CadastroProfissionalRequest request,
             List<MultipartFile> documentos,
-            List<TipoDocumento> tiposDocumento
+            List<TipoDocumento> tiposDocumento,
+            MultipartFile avatar
     ) {
         List<DocumentoParaSalvar> documentosValidados = validarDocumentos(documentos, tiposDocumento);
 
@@ -122,7 +124,7 @@ public class CadastroService {
             throw new DocumentoObrigatorioException("Envie um documento que valide o CNPJ informado.");
         }
 
-        Usuario usuario = resolverUsuario(request.nome(), request.email(), request.senha(), request.cpf(), request.telefone());
+        Usuario usuario = resolverUsuario(request.nome(), request.email(), request.senha(), request.cpf(), request.telefone(), avatar);
 
         if (profissionalRepository.existsByUsuarioId(usuario.getId())) {
             throw new PerfilJaExistenteException("profissional");
@@ -151,6 +153,10 @@ public class CadastroService {
             throw new RegistroProfissionalObrigatorioException();
         }
 
+        if (registroObrigatorio && (request.registroProfissionalUf() == null || request.registroProfissionalUf().isBlank())) {
+            throw new RegistroProfissionalObrigatorioException();
+        }
+
         if (registroObrigatorio && documentosValidados.stream().noneMatch(doc -> doc.tipo() == TipoDocumento.REGISTRO_PROFISSIONAL)) {
             throw new DocumentoObrigatorioException("Envie um documento que valide seu registro profissional.");
         }
@@ -165,6 +171,7 @@ public class CadastroService {
                         .banido(false)
                         .categoria(request.categoria())
                         .registroProfissional(registroObrigatorio ? request.registroProfissional() : null)
+                        .registroProfissionalUf(registroObrigatorio ? request.registroProfissionalUf().toUpperCase() : null)
                         .dataNascimento(request.dataNascimento())
                         .genero(request.genero())
                         .contatosEmergencia(mapContatos(request.contatosEmergencia()))
@@ -250,7 +257,7 @@ public class CadastroService {
         );
     }
 
-    private Usuario resolverUsuario(String nome, String email, String senha, String cpf, String telefone) {
+    private Usuario resolverUsuario(String nome, String email, String senha, String cpf, String telefone, MultipartFile avatar) {
         Optional<Usuario> porEmail = usuarioRepository.findByEmail(email);
         Optional<Usuario> porCpf = usuarioRepository.findByCpf(cpf);
 
@@ -275,6 +282,10 @@ public class CadastroService {
             throw new CpfJaCadastradoException();
         }
 
+        String avatarStorageKey = avatar != null && !avatar.isEmpty()
+                ? armazenamentoDocumentoService.enviarAvatar(avatar)
+                : null;
+
         return usuarioRepository.save(
                 Usuario.builder()
                         .nome(nome)
@@ -282,6 +293,7 @@ public class CadastroService {
                         .senhaHash(passwordEncoder.encode(senha))
                         .cpf(cpf)
                         .telefone(telefone)
+                        .avatarStorageKey(avatarStorageKey)
                         .build()
         );
     }

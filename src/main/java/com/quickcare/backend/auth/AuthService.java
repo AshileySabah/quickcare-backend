@@ -4,6 +4,7 @@ import com.quickcare.backend.auth.dto.LoginRequest;
 import com.quickcare.backend.auth.dto.LoginResponse;
 import com.quickcare.backend.auth.dto.PerfilStatusResponse;
 import com.quickcare.backend.auth.exception.LoginInvalidoException;
+import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
 import com.quickcare.backend.jwt.JwtService;
 import com.quickcare.backend.jwt.TokenInvalidoException;
 import com.quickcare.backend.paciente.PacienteRepository;
@@ -28,6 +29,7 @@ public class AuthService {
     private final ProfissionalRepository profissionalRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final ArmazenamentoDocumentoService armazenamentoDocumentoService;
 
     @Transactional(readOnly = true)
     public LoginResult login(LoginRequest request) {
@@ -44,7 +46,11 @@ public class AuthService {
         profissionalRepository.findByUsuarioId(usuario.getId())
                 .ifPresent(profissional -> perfis.add(new PerfilStatusResponse("PROFISSIONAL", profissional.isBanido() ? "BANIDO" : "ATIVO")));
 
-        LoginResponse response = new LoginResponse(usuario.getId(), usuario.getNome(), usuario.getEmail(), perfis);
+        String avatarUrl = usuario.getAvatarStorageKey() != null
+                ? armazenamentoDocumentoService.gerarUrlAssinada(usuario.getAvatarStorageKey())
+                : null;
+
+        LoginResponse response = new LoginResponse(usuario.getId(), usuario.getNome(), usuario.getEmail(), avatarUrl, perfis);
         return new LoginResult(response, jwtService.gerarAccessToken(usuario), jwtService.gerarRefreshToken(usuario));
     }
 

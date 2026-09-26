@@ -29,20 +29,22 @@ public class CadastroController {
     public ResponseEntity<CadastroResponse> cadastrarPaciente(
             @Valid @RequestPart("dados") CadastroPacienteRequest request,
             @RequestPart(value = "documentos", required = false) List<MultipartFile> documentos,
-            @RequestParam(value = "tiposDocumento", required = false) List<TipoDocumento> tiposDocumento
+            @RequestParam(value = "tiposDocumento", required = false) List<TipoDocumento> tiposDocumento,
+            @RequestPart(value = "avatar", required = false) MultipartFile avatar
     ) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(cadastroService.cadastrarPaciente(request, documentos, tiposDocumento));
+                .body(cadastroService.cadastrarPaciente(request, documentos, tiposDocumento, avatar));
     }
 
     @PostMapping(value = "/profissional", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<CadastroResponse> cadastrarProfissional(
             @Valid @RequestPart("dados") CadastroProfissionalRequest request,
             @RequestPart(value = "documentos", required = false) List<MultipartFile> documentos,
-            @RequestParam(value = "tiposDocumento", required = false) List<TipoDocumento> tiposDocumento
+            @RequestParam(value = "tiposDocumento", required = false) List<TipoDocumento> tiposDocumento,
+            @RequestPart(value = "avatar", required = false) MultipartFile avatar
     ) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(cadastroService.cadastrarProfissional(request, documentos, tiposDocumento));
+                .body(cadastroService.cadastrarProfissional(request, documentos, tiposDocumento, avatar));
     }
 
 }
