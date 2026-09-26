@@ -28,6 +28,7 @@ public record CadastroProfissionalRequest(
         @NotNull CategoriaProfissional categoria,
         @NotEmpty List<Long> especialidadeIds,
         String registroProfissional,
+        @Pattern(regexp = "(?i)^[a-z]{2}$") String registroProfissionalUf,
         @NotNull @Past LocalDate dataNascimento,
         @NotNull Genero genero,
         @Valid List<ContatoEmergenciaRequest> contatosEmergencia,

@@ -6,6 +6,7 @@ public record LoginResponse(
         Long usuarioId,
         String nome,
         String email,
+        String avatarUrl,
         List<PerfilStatusResponse> perfis
 ) {
 }
