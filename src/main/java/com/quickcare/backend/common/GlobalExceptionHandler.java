@@ -12,6 +12,7 @@ import com.quickcare.backend.cadastro.exception.RegistroProfissionalObrigatorioE
 import com.quickcare.backend.documento.ArquivoInvalidoException;
 import com.quickcare.backend.documento.DocumentoObrigatorioException;
 import com.quickcare.backend.jwt.TokenInvalidoException;
+import com.quickcare.backend.auth.exception.TokenRecuperacaoInvalidoException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -82,6 +83,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(TokenInvalidoException.class)
     public ResponseEntity<ApiError> handleTokenInvalido(TokenInvalidoException ex) {
         return build(HttpStatus.UNAUTHORIZED, ex.getMessage());
+    }
+    
+    @ExceptionHandler(TokenRecuperacaoInvalidoException.class)
+    public ResponseEntity<ApiError> handleTokenRecuperacaoInvalido(TokenRecuperacaoInvalidoException ex) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
