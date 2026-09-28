@@ -1,0 +1,44 @@
+package com.quickcare.backend.solicitacao.dto;
+
+import com.quickcare.backend.solicitacao.ModalidadeSolicitacao;
+import com.quickcare.backend.solicitacao.Solicitacao;
+import com.quickcare.backend.solicitacao.StatusSolicitacao;
+
+import java.time.Instant;
+import java.time.LocalDate;
+
+public record SolicitacaoResponse(
+        Long id,
+        Long pacienteId,
+        Long especialidadeId,
+        String especialidadeNome,
+        String descricao,
+        ModalidadeSolicitacao modalidade,
+        EnderecoSolicitacaoResponse endereco,
+        LocalDate prazoDesejado,
+        StatusSolicitacao status,
+        Instant criadoEm,
+        Instant atualizadoEm
+) {
+
+    public static SolicitacaoResponse de(Solicitacao solicitacao) {
+        EnderecoSolicitacaoResponse endereco = solicitacao.getModalidade() == ModalidadeSolicitacao.PRESENCIAL
+                ? new EnderecoSolicitacaoResponse(solicitacao.getLogradouro(), solicitacao.getCidade(), solicitacao.getUf())
+                : null;
+
+        return new SolicitacaoResponse(
+                solicitacao.getId(),
+                solicitacao.getPaciente().getId(),
+                solicitacao.getEspecialidade().getId(),
+                solicitacao.getEspecialidade().getNome(),
+                solicitacao.getDescricao(),
+                solicitacao.getModalidade(),
+                endereco,
+                solicitacao.getPrazoDesejado(),
+                solicitacao.getStatus(),
+                solicitacao.getCriadoEm(),
+                solicitacao.getAtualizadoEm()
+        );
+    }
+
+}
