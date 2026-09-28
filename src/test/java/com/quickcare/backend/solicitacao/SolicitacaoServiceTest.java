@@ -1,13 +1,17 @@
 package com.quickcare.backend.solicitacao;
 
+import com.quickcare.backend.cadastro.exception.EspecialidadeInvalidaException;
 import com.quickcare.backend.especialidade.CategoriaProfissional;
 import com.quickcare.backend.especialidade.Especialidade;
 import com.quickcare.backend.especialidade.EspecialidadeRepository;
+import com.quickcare.backend.especialidade.dto.EspecialidadeResponse;
 import com.quickcare.backend.paciente.Paciente;
 import com.quickcare.backend.paciente.PacienteRepository;
 import com.quickcare.backend.profissional.Profissional;
 import com.quickcare.backend.profissional.ProfissionalRepository;
 import com.quickcare.backend.solicitacao.dto.EnderecoSolicitacaoRequest;
+import com.quickcare.backend.solicitacao.dto.ProfissionalSolicitadoRequest;
+import com.quickcare.backend.solicitacao.dto.ProfissionalSolicitadoResponse;
 import com.quickcare.backend.solicitacao.dto.SolicitacaoRequest;
 import com.quickcare.backend.solicitacao.dto.SolicitacaoResponse;
 import com.quickcare.backend.solicitacao.exception.PerfilNaoAutorizadoException;
@@ -23,12 +27,18 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -38,6 +48,8 @@ class SolicitacaoServiceTest {
 
     private static final Long USUARIO_PACIENTE_ID = 1L;
     private static final Long USUARIO_PROFISSIONAL_ID = 2L;
+    private static final EnderecoSolicitacaoRequest ENDERECO =
+            new EnderecoSolicitacaoRequest("01310100", "Avenida Paulista", "1000", " ", "Bela Vista", "São Paulo", "sp");
 
     @Mock
     private SolicitacaoRepository solicitacaoRepository;
@@ -53,46 +65,121 @@ class SolicitacaoServiceTest {
 
     private Paciente paciente;
     private Especialidade nutricao;
+    private Especialidade curativos;
+    private Especialidade sondagem;
+    private Especialidade cuidadorIdosos;
 
     @BeforeEach
     void setUp() {
         Usuario usuario = Usuario.builder().id(USUARIO_PACIENTE_ID).build();
         paciente = Paciente.builder().id(10L).usuario(usuario).build();
-        nutricao = Especialidade.builder().id(4L).nome("Nutrição").categoria(CategoriaProfissional.values()[0]).build();
+        nutricao = especialidade(4L, "Nutrição", CategoriaProfissional.OUTRO);
+        curativos = especialidade(5L, "Curativos", CategoriaProfissional.ENFERMEIRO);
+        sondagem = especialidade(6L, "Sondagem", CategoriaProfissional.ENFERMEIRO);
+        cuidadorIdosos = especialidade(7L, "Cuidador de Idosos", CategoriaProfissional.CUIDADOR);
     }
 
     @Test
-    void criaSolicitacaoOnlineAbertaSemEndereco() {
-        when(pacienteRepository.findByUsuarioId(USUARIO_PACIENTE_ID)).thenReturn(Optional.of(paciente));
-        when(especialidadeRepository.findById(4L)).thenReturn(Optional.of(nutricao));
+    void criaSolicitacaoComProfissionalDeVariasEspecialidades() {
+        mockPaciente();
+        when(especialidadeRepository.findAllByIdIn(anyList())).thenReturn(List.of(curativos, sondagem, cuidadorIdosos));
         when(solicitacaoRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        EnderecoSolicitacaoRequest enderecoIgnorado = new EnderecoSolicitacaoRequest("Rua A", "São Paulo", "SP");
-        SolicitacaoResponse response = service.criar(USUARIO_PACIENTE_ID, request(ModalidadeSolicitacao.ONLINE, enderecoIgnorado));
+        SolicitacaoResponse response = service.criar(USUARIO_PACIENTE_ID, request(ModalidadeSolicitacao.PRESENCIAL, ENDERECO,
+                pedido(CategoriaProfissional.ENFERMEIRO, 2, curativos, sondagem),
+                pedido(CategoriaProfissional.CUIDADOR, 1, cuidadorIdosos)));
 
         assertThat(response.status()).isEqualTo(StatusSolicitacao.ABERTA);
+        assertThat(response.profissionais()).hasSize(2);
+
+        ProfissionalSolicitadoResponse enfermeiros = response.profissionais().get(0);
+        assertThat(enfermeiros.categoria()).isEqualTo(CategoriaProfissional.ENFERMEIRO);
+        assertThat(enfermeiros.quantidade()).isEqualTo(2);
+        assertThat(enfermeiros.especialidades()).extracting(EspecialidadeResponse::nome)
+                .containsExactly("Curativos", "Sondagem");
+
+        assertThat(response.endereco().uf()).isEqualTo("SP");
+        assertThat(response.endereco().complemento()).isNull();
+    }
+
+    @Test
+    void solicitacaoOnlineDescartaEndereco() {
+        mockPaciente();
+        when(especialidadeRepository.findAllByIdIn(anyList())).thenReturn(List.of(nutricao));
+        when(solicitacaoRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        SolicitacaoResponse response = service.criar(USUARIO_PACIENTE_ID,
+                request(ModalidadeSolicitacao.ONLINE, ENDERECO, pedido(CategoriaProfissional.OUTRO, 1, nutricao)));
+
         assertThat(response.endereco()).isNull();
-        assertThat(response.especialidadeNome()).isEqualTo("Nutrição");
+    }
+
+    @Test
+    void rejeitaEspecialidadeDeOutraCategoria() {
+        mockPaciente();
+        when(especialidadeRepository.findAllByIdIn(anyList())).thenReturn(List.of(curativos, cuidadorIdosos));
+
+        assertThatThrownBy(() -> service.criar(USUARIO_PACIENTE_ID, request(ModalidadeSolicitacao.ONLINE, null,
+                pedido(CategoriaProfissional.ENFERMEIRO, 1, curativos, cuidadorIdosos))))
+                .isInstanceOf(SolicitacaoInvalidaException.class)
+                .hasMessage("As especialidades de cada profissional devem ser da categoria escolhida.");
+        verify(solicitacaoRepository, never()).save(any());
+    }
+
+    @Test
+    void rejeitaLinhasComAsMesmasEspecialidades() {
+        mockPaciente();
+        when(especialidadeRepository.findAllByIdIn(anyList())).thenReturn(List.of(curativos, sondagem));
+
+        assertThatThrownBy(() -> service.criar(USUARIO_PACIENTE_ID, request(ModalidadeSolicitacao.ONLINE, null,
+                pedido(CategoriaProfissional.ENFERMEIRO, 1, curativos, sondagem),
+                pedido(CategoriaProfissional.ENFERMEIRO, 2, sondagem, curativos))))
+                .isInstanceOf(SolicitacaoInvalidaException.class);
+    }
+
+    @Test
+    void aceitaLinhasDaMesmaCategoriaComEspecialidadesDiferentes() {
+        mockPaciente();
+        when(especialidadeRepository.findAllByIdIn(anyList())).thenReturn(List.of(curativos, sondagem));
+        when(solicitacaoRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        SolicitacaoResponse response = service.criar(USUARIO_PACIENTE_ID, request(ModalidadeSolicitacao.ONLINE, null,
+                pedido(CategoriaProfissional.ENFERMEIRO, 1, curativos),
+                pedido(CategoriaProfissional.ENFERMEIRO, 1, curativos, sondagem)));
+
+        assertThat(response.profissionais()).hasSize(2);
+    }
+
+    @Test
+    void rejeitaEspecialidadeInexistente() {
+        mockPaciente();
+        when(especialidadeRepository.findAllByIdIn(anyList())).thenReturn(List.of(nutricao));
+
+        assertThatThrownBy(() -> service.criar(USUARIO_PACIENTE_ID, request(ModalidadeSolicitacao.ONLINE, null,
+                new ProfissionalSolicitadoRequest(CategoriaProfissional.OUTRO, Set.of(nutricao.getId(), 999L), 1))))
+                .isInstanceOf(EspecialidadeInvalidaException.class);
     }
 
     @Test
     void exigeEnderecoNoAtendimentoPresencial() {
-        when(pacienteRepository.findByUsuarioId(USUARIO_PACIENTE_ID)).thenReturn(Optional.of(paciente));
-        when(especialidadeRepository.findById(4L)).thenReturn(Optional.of(nutricao));
+        mockPaciente();
+        when(especialidadeRepository.findAllByIdIn(anyList())).thenReturn(List.of(nutricao));
 
-        assertThatThrownBy(() -> service.criar(USUARIO_PACIENTE_ID, request(ModalidadeSolicitacao.PRESENCIAL, null)))
+        assertThatThrownBy(() -> service.criar(USUARIO_PACIENTE_ID,
+                request(ModalidadeSolicitacao.PRESENCIAL, null, pedido(CategoriaProfissional.OUTRO, 1, nutricao))))
                 .isInstanceOf(SolicitacaoInvalidaException.class);
         verify(solicitacaoRepository, never()).save(any());
     }
 
     @Test
     void rejeitaUfInexistente() {
-        when(pacienteRepository.findByUsuarioId(USUARIO_PACIENTE_ID)).thenReturn(Optional.of(paciente));
-        when(especialidadeRepository.findById(4L)).thenReturn(Optional.of(nutricao));
+        mockPaciente();
+        when(especialidadeRepository.findAllByIdIn(anyList())).thenReturn(List.of(nutricao));
+        EnderecoSolicitacaoRequest endereco =
+                new EnderecoSolicitacaoRequest("01310100", "Rua A", "1", null, "Centro", "Cidade", "XX");
 
-        EnderecoSolicitacaoRequest endereco = new EnderecoSolicitacaoRequest("Rua A", "Cidade", "XX");
-
-        assertThatThrownBy(() -> service.criar(USUARIO_PACIENTE_ID, request(ModalidadeSolicitacao.PRESENCIAL, endereco)))
+        assertThatThrownBy(() -> service.criar(USUARIO_PACIENTE_ID,
+                request(ModalidadeSolicitacao.PRESENCIAL, endereco, pedido(CategoriaProfissional.OUTRO, 1, nutricao))))
                 .isInstanceOf(SolicitacaoInvalidaException.class)
                 .hasMessage("UF inválida.");
     }
@@ -101,15 +188,33 @@ class SolicitacaoServiceTest {
     void profissionalNaoPodeCriarSolicitacao() {
         when(pacienteRepository.findByUsuarioId(USUARIO_PROFISSIONAL_ID)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.criar(USUARIO_PROFISSIONAL_ID, request(ModalidadeSolicitacao.ONLINE, null)))
+        assertThatThrownBy(() -> service.criar(USUARIO_PROFISSIONAL_ID,
+                request(ModalidadeSolicitacao.ONLINE, null, pedido(CategoriaProfissional.OUTRO, 1, nutricao))))
                 .isInstanceOf(PerfilNaoAutorizadoException.class);
+    }
+
+    @Test
+    void edicaoSubstituiOsProfissionaisPedidos() {
+        Solicitacao solicitacao = mockSolicitacaoDoPaciente(StatusSolicitacao.ABERTA);
+        when(especialidadeRepository.findAllByIdIn(anyList())).thenReturn(List.of(curativos, sondagem));
+        when(solicitacaoRepository.saveAndFlush(solicitacao)).thenReturn(solicitacao);
+
+        service.atualizar(USUARIO_PACIENTE_ID, 50L,
+                request(ModalidadeSolicitacao.ONLINE, null, pedido(CategoriaProfissional.ENFERMEIRO, 3, curativos, sondagem)));
+
+        assertThat(solicitacao.getProfissionais()).singleElement().satisfies(linha -> {
+            assertThat(linha.getCategoria()).isEqualTo(CategoriaProfissional.ENFERMEIRO);
+            assertThat(linha.getQuantidade()).isEqualTo(3);
+            assertThat(linha.getEspecialidades()).containsExactly(curativos, sondagem);
+        });
     }
 
     @Test
     void bloqueiaEdicaoDeSolicitacaoEmAndamento() {
         mockSolicitacaoDoPaciente(StatusSolicitacao.EM_ANDAMENTO);
 
-        assertThatThrownBy(() -> service.atualizar(USUARIO_PACIENTE_ID, 50L, request(ModalidadeSolicitacao.ONLINE, null)))
+        assertThatThrownBy(() -> service.atualizar(USUARIO_PACIENTE_ID, 50L,
+                request(ModalidadeSolicitacao.ONLINE, null, pedido(CategoriaProfissional.OUTRO, 1, nutricao))))
                 .isInstanceOf(TransicaoStatusInvalidaException.class)
                 .hasMessage("Esta solicitação não pode mais ser editada.");
     }
@@ -142,48 +247,89 @@ class SolicitacaoServiceTest {
     }
 
     @Test
-    void escondeSolicitacaoDeQuemNaoEDonoNemDaEspecialidade() {
-        when(solicitacaoRepository.findById(50L)).thenReturn(Optional.of(solicitacao(StatusSolicitacao.ABERTA)));
-        Profissional outraEspecialidade = Profissional.builder()
-                .especialidades(Set.of(Especialidade.builder().id(99L).build()))
-                .build();
-        when(profissionalRepository.findByUsuarioId(USUARIO_PROFISSIONAL_ID)).thenReturn(Optional.of(outraEspecialidade));
+    void profissionalQueCobreTodasAsEspecialidadesVeASolicitacao() {
+        when(solicitacaoRepository.findById(50L)).thenReturn(Optional.of(solicitacaoPedindoEnfermeiroCurativosESondagem()));
+        mockProfissional(CategoriaProfissional.ENFERMEIRO, curativos, sondagem, nutricao);
+
+        assertThat(service.buscar(USUARIO_PROFISSIONAL_ID, 50L).id()).isEqualTo(50L);
+    }
+
+    @Test
+    void profissionalQueCobreSoParteDasEspecialidadesNaoVe() {
+        when(solicitacaoRepository.findById(50L)).thenReturn(Optional.of(solicitacaoPedindoEnfermeiroCurativosESondagem()));
+        mockProfissional(CategoriaProfissional.ENFERMEIRO, curativos);
 
         assertThatThrownBy(() -> service.buscar(USUARIO_PROFISSIONAL_ID, 50L))
                 .isInstanceOf(SolicitacaoNaoEncontradaException.class);
     }
 
     @Test
-    void profissionalDaEspecialidadeVeASolicitacao() {
-        when(solicitacaoRepository.findById(50L)).thenReturn(Optional.of(solicitacao(StatusSolicitacao.ABERTA)));
-        Profissional nutricionista = Profissional.builder().especialidades(Set.of(nutricao)).build();
-        when(profissionalRepository.findByUsuarioId(USUARIO_PROFISSIONAL_ID)).thenReturn(Optional.of(nutricionista));
+    void profissionalDeOutraCategoriaNaoVe() {
+        when(solicitacaoRepository.findById(50L)).thenReturn(Optional.of(solicitacaoPedindoEnfermeiroCurativosESondagem()));
+        mockProfissional(CategoriaProfissional.CUIDADOR, curativos, sondagem);
 
-        assertThat(service.buscar(USUARIO_PROFISSIONAL_ID, 50L).id()).isEqualTo(50L);
+        assertThatThrownBy(() -> service.buscar(USUARIO_PROFISSIONAL_ID, 50L))
+                .isInstanceOf(SolicitacaoNaoEncontradaException.class);
+    }
+
+    private static Especialidade especialidade(Long id, String nome, CategoriaProfissional categoria) {
+        return Especialidade.builder().id(id).nome(nome).categoria(categoria).build();
+    }
+
+    private void mockPaciente() {
+        when(pacienteRepository.findByUsuarioId(USUARIO_PACIENTE_ID)).thenReturn(Optional.of(paciente));
+    }
+
+    private void mockProfissional(CategoriaProfissional categoria, Especialidade... especialidades) {
+        Profissional profissional = Profissional.builder()
+                .categoria(categoria)
+                .especialidades(Set.of(especialidades))
+                .build();
+        when(profissionalRepository.findByUsuarioId(USUARIO_PROFISSIONAL_ID)).thenReturn(Optional.of(profissional));
     }
 
     private Solicitacao mockSolicitacaoDoPaciente(StatusSolicitacao status) {
-        Solicitacao solicitacao = solicitacao(status);
-        when(pacienteRepository.findByUsuarioId(USUARIO_PACIENTE_ID)).thenReturn(Optional.of(paciente));
+        Solicitacao solicitacao = solicitacao(status, CategoriaProfissional.OUTRO, nutricao);
+        mockPaciente();
         when(solicitacaoRepository.findByIdAndPacienteId(50L, paciente.getId())).thenReturn(Optional.of(solicitacao));
         return solicitacao;
     }
 
-    private Solicitacao solicitacao(StatusSolicitacao status) {
-        return Solicitacao.builder()
+    private Solicitacao solicitacaoPedindoEnfermeiroCurativosESondagem() {
+        return solicitacao(StatusSolicitacao.ABERTA, CategoriaProfissional.ENFERMEIRO, curativos, sondagem);
+    }
+
+    /** Solicitação online de outro usuário que pede 1 profissional com as especialidades informadas. */
+    private Solicitacao solicitacao(StatusSolicitacao status, CategoriaProfissional categoria, Especialidade... especialidades) {
+        Solicitacao solicitacao = Solicitacao.builder()
                 .id(50L)
                 .paciente(paciente)
-                .especialidade(nutricao)
-                .descricao("Acompanhamento nutricional para teste automatizado.")
+                .profissionais(new LinkedHashSet<>())
+                .descricao("Acompanhamento para teste automatizado.")
                 .modalidade(ModalidadeSolicitacao.ONLINE)
                 .prazoDesejado(LocalDate.now().plusDays(10))
                 .status(status)
                 .build();
+        solicitacao.getProfissionais().add(SolicitacaoProfissional.builder()
+                .id(1L)
+                .solicitacao(solicitacao)
+                .categoria(categoria)
+                .especialidades(new LinkedHashSet<>(Arrays.asList(especialidades)))
+                .quantidade(1)
+                .build());
+        return solicitacao;
     }
 
-    private SolicitacaoRequest request(ModalidadeSolicitacao modalidade, EnderecoSolicitacaoRequest endereco) {
-        return new SolicitacaoRequest(4L, "Acompanhamento nutricional para teste automatizado.", modalidade, endereco,
-                LocalDate.now().plusDays(10));
+    private ProfissionalSolicitadoRequest pedido(CategoriaProfissional categoria, int quantidade, Especialidade... especialidades) {
+        Set<Long> ids = Arrays.stream(especialidades).map(Especialidade::getId)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        return new ProfissionalSolicitadoRequest(categoria, ids, quantidade);
+    }
+
+    private SolicitacaoRequest request(ModalidadeSolicitacao modalidade, EnderecoSolicitacaoRequest endereco,
+                                       ProfissionalSolicitadoRequest... profissionais) {
+        return new SolicitacaoRequest(List.of(profissionais), "Acompanhamento para teste automatizado.",
+                modalidade, endereco, LocalDate.now().plusDays(10));
     }
 
 }
