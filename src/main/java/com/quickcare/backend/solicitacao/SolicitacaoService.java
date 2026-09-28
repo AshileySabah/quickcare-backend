@@ -9,6 +9,7 @@ import com.quickcare.backend.paciente.PacienteRepository;
 import com.quickcare.backend.profissional.Profissional;
 import com.quickcare.backend.profissional.ProfissionalRepository;
 import com.quickcare.backend.solicitacao.dto.EnderecoSolicitacaoRequest;
+import com.quickcare.backend.solicitacao.dto.ProfissionalSolicitadoRequest;
 import com.quickcare.backend.solicitacao.dto.SolicitacaoRequest;
 import com.quickcare.backend.solicitacao.dto.SolicitacaoResponse;
 import com.quickcare.backend.solicitacao.exception.PerfilNaoAutorizadoException;
@@ -19,9 +20,14 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -56,7 +62,8 @@ public class SolicitacaoService {
     }
 
     /**
-     * Solicitações que ainda recebem propostas nas especialidades do profissional.
+     * Solicitações que ainda recebem propostas e pedem ao menos um profissional
+     * que ele atende (mesma categoria e todas as especialidades da linha).
      */
     @Transactional(readOnly = true)
     public List<SolicitacaoResponse> listarDisponiveis(Long usuarioId) {
@@ -71,15 +78,16 @@ public class SolicitacaoService {
         }
 
         return solicitacaoRepository
-                .findByEspecialidadeIdInAndStatusInOrderByCriadoEmDesc(especialidadeIds, StatusSolicitacao.RECEBENDO_PROPOSTAS_STATUS)
+                .findDisponiveisPara(profissional.getCategoria(), especialidadeIds, StatusSolicitacao.RECEBENDO_PROPOSTAS_STATUS)
                 .stream()
                 .map(SolicitacaoResponse::de)
                 .toList();
     }
 
     /**
-     * Visível para o paciente dono e para profissionais da especialidade. Para os
-     * demais responde "não encontrada", sem revelar que a solicitação existe.
+     * Visível para o paciente dono e para profissionais que atendem alguma das
+     * linhas pedidas. Para os demais responde "não encontrada", sem revelar que
+     * a solicitação existe.
      */
     @Transactional(readOnly = true)
     public SolicitacaoResponse buscar(Long usuarioId, Long id) {
@@ -87,11 +95,12 @@ public class SolicitacaoService {
                 .orElseThrow(SolicitacaoNaoEncontradaException::new);
 
         boolean ehDono = solicitacao.getPaciente().getUsuario().getId().equals(usuarioId);
-        boolean ehProfissionalDaEspecialidade = profissionalRepository.findByUsuarioId(usuarioId)
-                .map(profissional -> idsDasEspecialidades(profissional).contains(solicitacao.getEspecialidade().getId()))
+        boolean ehProfissionalQueAtende = profissionalRepository.findByUsuarioId(usuarioId)
+                .map(profissional -> solicitacao.getProfissionais().stream()
+                        .anyMatch(pedido -> pedido.atendidaPor(profissional.getCategoria(), idsDasEspecialidades(profissional))))
                 .orElse(false);
 
-        if (!ehDono && !ehProfissionalDaEspecialidade) {
+        if (!ehDono && !ehProfissionalQueAtende) {
             throw new SolicitacaoNaoEncontradaException();
         }
 
@@ -135,27 +144,71 @@ public class SolicitacaoService {
     }
 
     private void aplicarDados(Solicitacao solicitacao, SolicitacaoRequest request) {
-        Especialidade especialidade = especialidadeRepository.findById(request.especialidadeId())
-                .orElseThrow(() -> new EspecialidadeInvalidaException("A especialidade informada não existe."));
-
-        solicitacao.setEspecialidade(especialidade);
+        aplicarProfissionais(solicitacao, request.profissionais());
         solicitacao.setDescricao(request.descricao().trim());
         solicitacao.setModalidade(request.modalidade());
         solicitacao.setPrazoDesejado(request.prazoDesejado());
+        aplicarEndereco(solicitacao, request);
+    }
 
-        if (request.modalidade() == ModalidadeSolicitacao.PRESENCIAL) {
-            EnderecoSolicitacaoRequest endereco = request.endereco();
-            if (endereco == null) {
-                throw new SolicitacaoInvalidaException("Informe o endereço para atendimento presencial.");
-            }
-            solicitacao.setLogradouro(endereco.logradouro().trim());
-            solicitacao.setCidade(endereco.cidade().trim());
-            solicitacao.setUf(validarUf(endereco.uf()));
-        } else {
-            solicitacao.setLogradouro(null);
-            solicitacao.setCidade(null);
-            solicitacao.setUf(null);
+    /** Valida todas as linhas antes de substituir as atuais (orphanRemoval apaga as antigas). */
+    private void aplicarProfissionais(Solicitacao solicitacao, List<ProfissionalSolicitadoRequest> pedidos) {
+        Set<Long> todosIds = pedidos.stream()
+                .flatMap(pedido -> pedido.especialidadeIds().stream())
+                .collect(Collectors.toSet());
+        Map<Long, Especialidade> especialidades = especialidadeRepository.findAllByIdIn(List.copyOf(todosIds)).stream()
+                .collect(Collectors.toMap(Especialidade::getId, Function.identity()));
+        if (especialidades.size() != todosIds.size()) {
+            throw new EspecialidadeInvalidaException("Uma ou mais especialidades informadas não existem.");
         }
+
+        Set<Set<Long>> linhasVistas = new HashSet<>();
+        List<SolicitacaoProfissional> novas = new ArrayList<>();
+
+        for (ProfissionalSolicitadoRequest pedido : pedidos) {
+            Set<Especialidade> especialidadesDaLinha = pedido.especialidadeIds().stream()
+                    .map(especialidades::get)
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+
+            if (especialidadesDaLinha.stream().anyMatch(especialidade -> especialidade.getCategoria() != pedido.categoria())) {
+                throw new SolicitacaoInvalidaException(
+                        "As especialidades de cada profissional devem ser da categoria escolhida.");
+            }
+            if (!linhasVistas.add(Set.copyOf(pedido.especialidadeIds()))) {
+                throw new SolicitacaoInvalidaException(
+                        "Há profissionais repetidos com as mesmas especialidades. Aumente a quantidade na linha existente.");
+            }
+
+            novas.add(SolicitacaoProfissional.builder()
+                    .solicitacao(solicitacao)
+                    .categoria(pedido.categoria())
+                    .especialidades(especialidadesDaLinha)
+                    .quantidade(pedido.quantidade())
+                    .build());
+        }
+
+        solicitacao.getProfissionais().clear();
+        solicitacao.getProfissionais().addAll(novas);
+    }
+
+    /** Online não guarda endereço, mesmo que o front envie um. */
+    private void aplicarEndereco(Solicitacao solicitacao, SolicitacaoRequest request) {
+        boolean presencial = request.modalidade() == ModalidadeSolicitacao.PRESENCIAL;
+        EnderecoSolicitacaoRequest endereco = presencial ? request.endereco() : null;
+
+        if (presencial && endereco == null) {
+            throw new SolicitacaoInvalidaException("Informe o endereço para atendimento presencial.");
+        }
+
+        solicitacao.setCep(endereco == null ? null : endereco.cep());
+        solicitacao.setLogradouro(endereco == null ? null : endereco.logradouro().trim());
+        solicitacao.setNumero(endereco == null ? null : endereco.numero().trim());
+        solicitacao.setComplemento(endereco == null || endereco.complemento() == null || endereco.complemento().isBlank()
+                ? null
+                : endereco.complemento().trim());
+        solicitacao.setBairro(endereco == null ? null : endereco.bairro().trim());
+        solicitacao.setCidade(endereco == null ? null : endereco.cidade().trim());
+        solicitacao.setUf(endereco == null ? null : validarUf(endereco.uf()));
     }
 
     private String validarUf(String uf) {
