@@ -3,6 +3,12 @@ spring:
     url: ${DB_URL}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
+    hikari:
+      data-source-properties:
+        # O pooler do Supabase na porta 6543 (modo transaction) não suporta
+        # prepared statements nomeados no servidor: sem isso o driver colide
+        # com "prepared statement S_n already exists" (inclusive no Flyway).
+        prepareThreshold: 0
   jpa:
     show-sql: false
   mail:

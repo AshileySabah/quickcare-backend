@@ -51,6 +51,14 @@ public class JwtService {
                 .compact();
     }
 
+    public Claims validarAccessToken(String token) {
+        Claims claims = parseClaims(token);
+        if (!TIPO_ACCESS.equals(claims.get(CLAIM_TIPO_TOKEN, String.class))) {
+            throw new TokenInvalidoException();
+        }
+        return claims;
+    }
+
     public Claims validarRefreshToken(String token) {
         Claims claims = parseClaims(token);
         if (!TIPO_REFRESH.equals(claims.get(CLAIM_TIPO_TOKEN, String.class))) {
