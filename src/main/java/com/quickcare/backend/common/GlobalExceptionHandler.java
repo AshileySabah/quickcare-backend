@@ -12,6 +12,10 @@ import com.quickcare.backend.cadastro.exception.RegistroProfissionalObrigatorioE
 import com.quickcare.backend.documento.ArquivoInvalidoException;
 import com.quickcare.backend.documento.DocumentoObrigatorioException;
 import com.quickcare.backend.jwt.TokenInvalidoException;
+import com.quickcare.backend.solicitacao.exception.PerfilNaoAutorizadoException;
+import com.quickcare.backend.solicitacao.exception.SolicitacaoInvalidaException;
+import com.quickcare.backend.solicitacao.exception.SolicitacaoNaoEncontradaException;
+import com.quickcare.backend.solicitacao.exception.TransicaoStatusInvalidaException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -82,6 +86,26 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(TokenInvalidoException.class)
     public ResponseEntity<ApiError> handleTokenInvalido(TokenInvalidoException ex) {
         return build(HttpStatus.UNAUTHORIZED, ex.getMessage());
+    }
+
+    @ExceptionHandler(SolicitacaoNaoEncontradaException.class)
+    public ResponseEntity<ApiError> handleSolicitacaoNaoEncontrada(SolicitacaoNaoEncontradaException ex) {
+        return build(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    @ExceptionHandler(SolicitacaoInvalidaException.class)
+    public ResponseEntity<ApiError> handleSolicitacaoInvalida(SolicitacaoInvalidaException ex) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(TransicaoStatusInvalidaException.class)
+    public ResponseEntity<ApiError> handleTransicaoStatusInvalida(TransicaoStatusInvalidaException ex) {
+        return build(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
+    @ExceptionHandler(PerfilNaoAutorizadoException.class)
+    public ResponseEntity<ApiError> handlePerfilNaoAutorizado(PerfilNaoAutorizadoException ex) {
+        return build(HttpStatus.FORBIDDEN, ex.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
