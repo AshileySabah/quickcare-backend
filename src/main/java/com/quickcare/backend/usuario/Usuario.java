@@ -52,6 +52,9 @@ public class Usuario {
     @Column(name = "token_recuperacao_expiracao")
     private LocalDateTime tokenRecuperacaoExpiracao;
 
+    @Column(name = "tentativas_recuperacao", nullable = false)
+    private int tentativasRecuperacao;
+
     @Column(name = "criado_em", nullable = false, updatable = false)
     private Instant criadoEm;
 
