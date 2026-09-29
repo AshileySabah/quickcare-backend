@@ -9,6 +9,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Past;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import com.quickcare.backend.common.validation.SenhaForte;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -16,7 +17,7 @@ import java.util.List;
 public record CadastroPacienteRequest(
         @NotBlank String nome,
         @NotBlank @Email String email,
-        @NotBlank @Size(min = 8) String senha,
+        @NotBlank @SenhaForte String senha,
         @NotBlank @Pattern(regexp = "\\d{11}") String cpf,
         String telefone,
         @NotNull @Past LocalDate dataNascimento,

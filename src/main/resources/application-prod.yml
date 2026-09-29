@@ -11,12 +11,30 @@ spring:
         prepareThreshold: 0
   jpa:
     show-sql: false
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${EMAIL_USERNAME:}
+    password: ${EMAIL_APP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
 
 supabase:
   storage:
     url: ${SUPABASE_URL}
     api-key: ${SUPABASE_SECRET_KEY}
     bucket: ${SUPABASE_BUCKET:quickcare-bucket-prod}
+
+management:
+  health:
+    mail:
+      enabled: false
+quickcare:
+  frontend-url: ${FRONTEND_URL:https://quickcare-frontend.vercel.app}
 
 logging:
   level:

@@ -12,6 +12,7 @@ import com.quickcare.backend.cadastro.exception.RegistroProfissionalObrigatorioE
 import com.quickcare.backend.documento.ArquivoInvalidoException;
 import com.quickcare.backend.documento.DocumentoObrigatorioException;
 import com.quickcare.backend.jwt.TokenInvalidoException;
+import com.quickcare.backend.auth.exception.TokenRecuperacaoInvalidoException;
 import com.quickcare.backend.solicitacao.exception.PerfilNaoAutorizadoException;
 import com.quickcare.backend.solicitacao.exception.SolicitacaoInvalidaException;
 import com.quickcare.backend.solicitacao.exception.SolicitacaoNaoEncontradaException;
@@ -86,6 +87,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(TokenInvalidoException.class)
     public ResponseEntity<ApiError> handleTokenInvalido(TokenInvalidoException ex) {
         return build(HttpStatus.UNAUTHORIZED, ex.getMessage());
+    }
+    
+    @ExceptionHandler(TokenRecuperacaoInvalidoException.class)
+    public ResponseEntity<ApiError> handleTokenRecuperacaoInvalido(TokenRecuperacaoInvalidoException ex) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 
     @ExceptionHandler(SolicitacaoNaoEncontradaException.class)

@@ -5,6 +5,17 @@ spring:
     password: ${POSTGRES_PASSWORD:quickcare}
   jpa:
     show-sql: true
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${EMAIL_USERNAME:}
+    password: ${EMAIL_APP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
   flyway:
     # db/seed-dev: massa de dados local (paciente de teste etc.), só no perfil dev.
     locations: classpath:db/migration,classpath:db/seed-dev
@@ -14,6 +25,11 @@ supabase:
     url: ${SUPABASE_URL}
     api-key: ${SUPABASE_SECRET_KEY}
     bucket: ${SUPABASE_BUCKET:quickcare-bucket-prod}
+
+management:
+  health:
+    mail:
+      enabled: false
 
 logging:
   level:
