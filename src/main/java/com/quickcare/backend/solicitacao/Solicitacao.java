@@ -1,7 +1,7 @@
 package com.quickcare.backend.solicitacao;
 
-import com.quickcare.backend.especialidade.Especialidade;
 import com.quickcare.backend.paciente.Paciente;
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -12,6 +12,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
@@ -23,6 +25,8 @@ import lombok.Setter;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "solicitacao")
@@ -41,9 +45,10 @@ public class Solicitacao {
     @JoinColumn(name = "paciente_id", nullable = false)
     private Paciente paciente;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "especialidade_id", nullable = false)
-    private Especialidade especialidade;
+    @OneToMany(mappedBy = "solicitacao", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("id")
+    @Builder.Default
+    private Set<SolicitacaoProfissional> profissionais = new LinkedHashSet<>();
 
     @Column(nullable = false, length = 1000)
     private String descricao;
@@ -52,8 +57,20 @@ public class Solicitacao {
     @Column(nullable = false, length = 20)
     private ModalidadeSolicitacao modalidade;
 
+    @Column(length = 8)
+    private String cep;
+
     @Column(length = 150)
     private String logradouro;
+
+    @Column(length = 20)
+    private String numero;
+
+    @Column(length = 100)
+    private String complemento;
+
+    @Column(length = 100)
+    private String bairro;
 
     @Column(length = 100)
     private String cidade;

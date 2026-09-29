@@ -6,12 +6,12 @@ import com.quickcare.backend.solicitacao.StatusSolicitacao;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 
 public record SolicitacaoResponse(
         Long id,
         Long pacienteId,
-        Long especialidadeId,
-        String especialidadeNome,
+        List<ProfissionalSolicitadoResponse> profissionais,
         String descricao,
         ModalidadeSolicitacao modalidade,
         EnderecoSolicitacaoResponse endereco,
@@ -23,14 +23,20 @@ public record SolicitacaoResponse(
 
     public static SolicitacaoResponse de(Solicitacao solicitacao) {
         EnderecoSolicitacaoResponse endereco = solicitacao.getModalidade() == ModalidadeSolicitacao.PRESENCIAL
-                ? new EnderecoSolicitacaoResponse(solicitacao.getLogradouro(), solicitacao.getCidade(), solicitacao.getUf())
+                ? new EnderecoSolicitacaoResponse(
+                        solicitacao.getCep(),
+                        solicitacao.getLogradouro(),
+                        solicitacao.getNumero(),
+                        solicitacao.getComplemento(),
+                        solicitacao.getBairro(),
+                        solicitacao.getCidade(),
+                        solicitacao.getUf())
                 : null;
 
         return new SolicitacaoResponse(
                 solicitacao.getId(),
                 solicitacao.getPaciente().getId(),
-                solicitacao.getEspecialidade().getId(),
-                solicitacao.getEspecialidade().getNome(),
+                solicitacao.getProfissionais().stream().map(ProfissionalSolicitadoResponse::de).toList(),
                 solicitacao.getDescricao(),
                 solicitacao.getModalidade(),
                 endereco,
