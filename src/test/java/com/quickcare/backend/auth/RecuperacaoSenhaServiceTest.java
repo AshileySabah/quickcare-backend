@@ -1,7 +1,6 @@
 package com.quickcare.backend.auth;
 
 import com.quickcare.backend.auth.dto.RedefinirSenhaRequest;
-import com.quickcare.backend.auth.dto.SolicitarRecuperacaoRequest;
 import com.quickcare.backend.auth.exception.TokenRecuperacaoInvalidoException;
 import com.quickcare.backend.common.EmailService;
 import com.quickcare.backend.usuario.Usuario;
@@ -9,10 +8,13 @@ import com.quickcare.backend.usuario.UsuarioRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
 import java.util.Map;
@@ -31,6 +33,8 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class RecuperacaoSenhaServiceTest {
 
+    private static final String TOKEN = "3f2a9c1e-7b4d-4e8a-9c3f-1a2b3c4d5e6f";
+
     @Mock
     private UsuarioRepository usuarioRepository;
 
@@ -40,63 +44,72 @@ class RecuperacaoSenhaServiceTest {
     @Mock
     private EmailService emailService;
 
+    @Captor
+    private ArgumentCaptor<Map<String, Object>> variaveisCaptor;
+
     @InjectMocks
-    private RecuperacaoSenhaService recuperacaoSenhaService;
+    private RecuperacaoSenhaService service;
 
     private Usuario usuario;
 
     @BeforeEach
     void setUp() {
+        ReflectionTestUtils.setField(service, "frontendUrl", "http://localhost:4200");
         usuario = Usuario.builder()
                 .id(1L)
                 .nome("Maria Silva")
-                .email("maria@email.com")
+                .email("Maria@Email.com")
                 .senhaHash("hash-antigo")
                 .build();
     }
 
+    private RedefinirSenhaRequest requisicao(String email, String token, String senha) {
+        RedefinirSenhaRequest request = new RedefinirSenhaRequest();
+        request.setEmail(email);
+        request.setToken(token);
+        request.setNovaSenha(senha);
+        return request;
+    }
+
+    private void comTokenValido() {
+        usuario.setTokenRecuperacao(TOKEN);
+        usuario.setTokenRecuperacaoExpiracao(LocalDateTime.now().plusHours(1));
+        when(usuarioRepository.findByEmailIgnoreCase("maria@email.com")).thenReturn(Optional.of(usuario));
+    }
+
     @Test
-    void deveGerarTokenESalvarQuandoEmailExiste() {
-        when(usuarioRepository.findByEmail("maria@email.com")).thenReturn(Optional.of(usuario));
+    void deveGerarUuidSalvarEEnviarLinkQuandoEmailExiste() {
+        when(usuarioRepository.findByEmailIgnoreCase("maria@email.com")).thenReturn(Optional.of(usuario));
 
-        SolicitarRecuperacaoRequest request = new SolicitarRecuperacaoRequest();
-        request.setEmail("maria@email.com");
+        service.processarSolicitacao("maria@email.com");
 
-        recuperacaoSenhaService.solicitarRecuperacao(request);
-
-        verify(usuarioRepository).save(usuario);
-        assertThat(usuario.getTokenRecuperacao()).isNotNull();
-        assertThat(usuario.getTokenRecuperacao()).hasSize(6);
+        assertThat(usuario.getTokenRecuperacao())
+                .matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
         assertThat(usuario.getTokenRecuperacaoExpiracao()).isAfter(LocalDateTime.now());
-        verify(emailService).enviarEmailTemplate(eq("maria@email.com"), anyString(), anyString(), anyMap());
+        assertThat(usuario.getTentativasRecuperacao()).isZero();
+        verify(usuarioRepository).save(usuario);
+        verify(emailService).enviarEmailTemplate(eq("Maria@Email.com"), anyString(),
+                eq("recuperacao-senha"), variaveisCaptor.capture());
+        assertThat((String) variaveisCaptor.getValue().get("link"))
+                .contains("token=" + usuario.getTokenRecuperacao());
     }
 
     @Test
     void naoDeveFazerNadaQuandoEmailNaoExiste() {
-        when(usuarioRepository.findByEmail("naoexiste@email.com")).thenReturn(Optional.empty());
+        when(usuarioRepository.findByEmailIgnoreCase("naoexiste@email.com")).thenReturn(Optional.empty());
 
-        SolicitarRecuperacaoRequest request = new SolicitarRecuperacaoRequest();
-        request.setEmail("naoexiste@email.com");
-
-        recuperacaoSenhaService.solicitarRecuperacao(request);
+        service.processarSolicitacao("naoexiste@email.com");
 
         verify(usuarioRepository, never()).save(any());
         verify(emailService, never()).enviarEmailTemplate(anyString(), anyString(), anyString(), anyMap());
     }
 
     @Test
-    void deveRedefinirSenhaComTokenValido() {
-        usuario.setTokenRecuperacao("123456");
-        usuario.setTokenRecuperacaoExpiracao(LocalDateTime.now().plusHours(1));
+    void deveRedefinirSenhaComEmailETokenCorretos() {
+        comTokenValido();
+        when(passwordEncoder.encode("NovaSenha@123")).thenReturn("hash-novo");
 
-        when(usuarioRepository.findByTokenRecuperacao("123456")).thenReturn(Optional.of(usuario));
-        when(passwordEncoder.encode("novaSenha123")).thenReturn("hash-novo");
-
-        RedefinirSenhaRequest request = new RedefinirSenhaRequest();
-        request.setToken("123456");
-        request.setNovaSenha("novaSenha123");
-
-        recuperacaoSenhaService.redefinirSenha(request);
+        service.redefinirSenha(requisicao("maria@email.com", TOKEN, "NovaSenha@123"));
 
         assertThat(usuario.getSenhaHash()).isEqualTo("hash-novo");
         assertThat(usuario.getTokenRecuperacao()).isNull();
@@ -105,31 +118,47 @@ class RecuperacaoSenhaServiceTest {
     }
 
     @Test
-    void deveRejeitarTokenExpirado() {
-        usuario.setTokenRecuperacao("123456");
-        usuario.setTokenRecuperacaoExpiracao(LocalDateTime.now().minusMinutes(1));
+    void deveRejeitarEmailInexistente() {
+        when(usuarioRepository.findByEmailIgnoreCase("naoexiste@email.com")).thenReturn(Optional.empty());
 
-        when(usuarioRepository.findByTokenRecuperacao("123456")).thenReturn(Optional.of(usuario));
-
-        RedefinirSenhaRequest request = new RedefinirSenhaRequest();
-        request.setToken("123456");
-        request.setNovaSenha("novaSenha123");
-
-        assertThatThrownBy(() -> recuperacaoSenhaService.redefinirSenha(request))
+        assertThatThrownBy(() -> service.redefinirSenha(requisicao("naoexiste@email.com", TOKEN, "NovaSenha@123")))
                 .isInstanceOf(TokenRecuperacaoInvalidoException.class);
-
-        verify(usuarioRepository, never()).save(any());
     }
 
     @Test
-    void deveRejeitarTokenInexistente() {
-        when(usuarioRepository.findByTokenRecuperacao("000000")).thenReturn(Optional.empty());
+    void deveRejeitarTokenExpirado() {
+        usuario.setTokenRecuperacao(TOKEN);
+        usuario.setTokenRecuperacaoExpiracao(LocalDateTime.now().minusMinutes(1));
+        when(usuarioRepository.findByEmailIgnoreCase("maria@email.com")).thenReturn(Optional.of(usuario));
 
-        RedefinirSenhaRequest request = new RedefinirSenhaRequest();
-        request.setToken("000000");
-        request.setNovaSenha("novaSenha123");
-
-        assertThatThrownBy(() -> recuperacaoSenhaService.redefinirSenha(request))
+        assertThatThrownBy(() -> service.redefinirSenha(requisicao("maria@email.com", TOKEN, "NovaSenha@123")))
                 .isInstanceOf(TokenRecuperacaoInvalidoException.class);
+
+        verify(passwordEncoder, never()).encode(anyString());
+    }
+
+    @Test
+    void deveContarTentativaQuandoTokenErrado() {
+        comTokenValido();
+
+        assertThatThrownBy(() -> service.redefinirSenha(requisicao("maria@email.com", "token-errado", "NovaSenha@123")))
+                .isInstanceOf(TokenRecuperacaoInvalidoException.class);
+
+        assertThat(usuario.getTentativasRecuperacao()).isEqualTo(1);
+        assertThat(usuario.getTokenRecuperacao()).isEqualTo(TOKEN);
+        verify(passwordEncoder, never()).encode(anyString());
+        verify(usuarioRepository).save(usuario);
+    }
+
+    @Test
+    void deveInvalidarTokenNaUltimaTentativaPermitida() {
+        comTokenValido();
+        usuario.setTentativasRecuperacao(RecuperacaoSenhaService.MAX_TENTATIVAS - 1);
+
+        assertThatThrownBy(() -> service.redefinirSenha(requisicao("maria@email.com", "token-errado", "NovaSenha@123")))
+                .isInstanceOf(TokenRecuperacaoInvalidoException.class);
+
+        assertThat(usuario.getTokenRecuperacao()).isNull();
+        assertThat(usuario.getTokenRecuperacaoExpiracao()).isNull();
     }
 }
