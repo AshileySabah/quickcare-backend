@@ -33,6 +33,8 @@ management:
   health:
     mail:
       enabled: false
+quickcare:
+  frontend-url: ${FRONTEND_URL:https://quickcare-frontend.vercel.app}
 
 logging:
   level:
