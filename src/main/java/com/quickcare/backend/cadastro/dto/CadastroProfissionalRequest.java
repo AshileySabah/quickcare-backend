@@ -13,6 +13,7 @@ import jakarta.validation.constraints.Past;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
+import com.quickcare.backend.common.validation.SenhaForte;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -21,7 +22,7 @@ import java.util.List;
 public record CadastroProfissionalRequest(
         @NotBlank String nome,
         @NotBlank @Email String email,
-        @NotBlank @Size(min = 8) String senha,
+        @NotBlank @SenhaForte String senha,
         @NotBlank @Pattern(regexp = "\\d{11}") String cpf,
         String telefone,
         @Pattern(regexp = "\\d{14}") String cnpj,
