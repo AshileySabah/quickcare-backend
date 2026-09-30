@@ -10,6 +10,7 @@ import com.quickcare.backend.cadastro.exception.EspecialidadeInvalidaException;
 import com.quickcare.backend.cadastro.exception.PerfilJaExistenteException;
 import com.quickcare.backend.cadastro.exception.RaioAtendimentoObrigatorioException;
 import com.quickcare.backend.cadastro.exception.RegistroProfissionalObrigatorioException;
+import com.quickcare.backend.paciente.exception.PacientePerfilNaoEncontradoException;
 import com.quickcare.backend.documento.ArquivoInvalidoException;
 import com.quickcare.backend.documento.DocumentoObrigatorioException;
 import com.quickcare.backend.jwt.TokenInvalidoException;
@@ -124,6 +125,11 @@ public class GlobalExceptionHandler {
 
     private ResponseEntity<ApiError> build(HttpStatus status, String mensagem) {
         return ResponseEntity.status(status).body(new ApiError(Instant.now(), status.value(), mensagem));
+    }
+    
+    @ExceptionHandler(PacientePerfilNaoEncontradoException.class)
+    public ResponseEntity<ApiError> handlePacientePerfilNaoEncontrado(PacientePerfilNaoEncontradoException ex) {
+        return build(HttpStatus.NOT_FOUND, ex.getMessage());
     }
 
 }
