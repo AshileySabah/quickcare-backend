@@ -17,6 +17,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -40,6 +42,10 @@ public class AuthService {
             throw new LoginInvalidoException();
         }
 
+        return iniciarSessao(usuario);
+    }
+
+    LoginResult iniciarSessao(Usuario usuario) {
         List<PerfilStatusResponse> perfis = new ArrayList<>();
         pacienteRepository.findByUsuarioId(usuario.getId())
                 .ifPresent(paciente -> perfis.add(new PerfilStatusResponse("PACIENTE", paciente.isBanido() ? "BANIDO" : "ATIVO")));
@@ -62,7 +68,17 @@ public class AuthService {
         Usuario usuario = usuarioRepository.findById(usuarioId)
                 .orElseThrow(TokenInvalidoException::new);
 
+        if (emitidoAntesDaTrocaDeSenha(claims, usuario)) {
+            throw new TokenInvalidoException();
+        }
+
         return jwtService.gerarAccessToken(usuario);
+    }
+
+    private boolean emitidoAntesDaTrocaDeSenha(Claims claims, Usuario usuario) {
+        Instant senhaAlteradaEm = usuario.getSenhaAlteradaEm();
+        return senhaAlteradaEm != null
+                && claims.getIssuedAt().toInstant().isBefore(senhaAlteradaEm.truncatedTo(ChronoUnit.SECONDS));
     }
 
 }

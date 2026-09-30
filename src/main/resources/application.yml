@@ -33,6 +33,7 @@ management:
         enabled: true
 
 quickcare:
+  frontend-url: ${FRONTEND_URL:http://localhost:4200}
   jwt:
     secret: ${JWT_SECRET:dev-only-secret-key-please-override-in-prod-0123456789abcdef}
     access-token-expiration-minutes: 15

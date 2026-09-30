@@ -34,6 +34,9 @@ services:
       SUPABASE_URL: ${SUPABASE_URL:-http://localhost:54321}
       SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:-dev}
       SUPABASE_BUCKET: ${SUPABASE_BUCKET:-quickcare-bucket-prod}
+      EMAIL_APP: ${EMAIL_APP:-}
+      EMAIL_APP_PASSWORD: ${EMAIL_APP_PASSWORD:-}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:4200}
     ports:
       - "8080:8080"
     healthcheck:

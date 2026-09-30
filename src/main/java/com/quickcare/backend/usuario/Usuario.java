@@ -14,7 +14,6 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.Instant;
-import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "usuario")
@@ -46,14 +45,8 @@ public class Usuario {
     @Column(name = "avatar_storage_key")
     private String avatarStorageKey;
 
-    @Column(name = "token_recuperacao")
-    private String tokenRecuperacao;
-
-    @Column(name = "token_recuperacao_expiracao")
-    private LocalDateTime tokenRecuperacaoExpiracao;
-
-    @Column(name = "tentativas_recuperacao", nullable = false)
-    private int tentativasRecuperacao;
+    @Column(name = "senha_alterada_em")
+    private Instant senhaAlteradaEm;
 
     @Column(name = "criado_em", nullable = false, updatable = false)
     private Instant criadoEm;

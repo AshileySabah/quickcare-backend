@@ -1,6 +1,7 @@
 package com.quickcare.backend.common;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
@@ -12,6 +13,7 @@ import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ExecutorService;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class EmailService {
@@ -30,7 +32,7 @@ public class EmailService {
                 helper.setText(corpoHtml, true);
                 mailSender.send(mensagem);
             } catch (Exception e) {
-                System.err.println("Erro ao enviar e-mail: " + e.getMessage());
+                log.error("Falha ao enviar e-mail \"{}\" para {}", assunto, destinatario, e);
             }
         });
     }
