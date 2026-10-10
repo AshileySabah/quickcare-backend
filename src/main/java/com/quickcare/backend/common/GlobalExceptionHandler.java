@@ -3,6 +3,9 @@ package com.quickcare.backend.common;
 import com.quickcare.backend.auth.exception.LoginInvalidoException;
 import com.quickcare.backend.auth.exception.TokenRedefinicaoInvalidoException;
 import com.quickcare.backend.cadastro.exception.CpfJaCadastradoException;
+import com.quickcare.backend.chat.exception.DestinatarioInvalidoException;
+import com.quickcare.backend.chat.exception.ExclusaoMensagemNaoAutorizadaException;
+import com.quickcare.backend.chat.exception.MensagemNaoEncontradaException;
 import com.quickcare.backend.cadastro.exception.CredenciaisInvalidasException;
 import com.quickcare.backend.cadastro.exception.DadosCadastraisConflitantesException;
 import com.quickcare.backend.cadastro.exception.EmailJaCadastradoException;
@@ -112,6 +115,21 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(PerfilNaoAutorizadoException.class)
     public ResponseEntity<ApiError> handlePerfilNaoAutorizado(PerfilNaoAutorizadoException ex) {
         return build(HttpStatus.FORBIDDEN, ex.getMessage());
+    }
+
+    @ExceptionHandler(MensagemNaoEncontradaException.class)
+    public ResponseEntity<ApiError> handleMensagemNaoEncontrada(MensagemNaoEncontradaException ex) {
+        return build(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    @ExceptionHandler(ExclusaoMensagemNaoAutorizadaException.class)
+    public ResponseEntity<ApiError> handleExclusaoMensagemNaoAutorizada(ExclusaoMensagemNaoAutorizadaException ex) {
+        return build(HttpStatus.FORBIDDEN, ex.getMessage());
+    }
+
+    @ExceptionHandler(DestinatarioInvalidoException.class)
+    public ResponseEntity<ApiError> handleDestinatarioInvalido(DestinatarioInvalidoException ex) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
