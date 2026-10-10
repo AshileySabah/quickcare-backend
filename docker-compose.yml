@@ -37,6 +37,7 @@ services:
       EMAIL_APP: ${EMAIL_APP:-}
       EMAIL_APP_PASSWORD: ${EMAIL_APP_PASSWORD:-}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:4200}
+      BREVO_API_KEY: ${BREVO_API_KEY:-}
     ports:
       - "8080:8080"
     healthcheck:

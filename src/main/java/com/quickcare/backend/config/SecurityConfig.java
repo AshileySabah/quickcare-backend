@@ -43,6 +43,7 @@ public class SecurityConfig {
                         .requestMatchers("/websocket/**").authenticated()
                         .requestMatchers("/solicitacoes/**").authenticated()
                         .requestMatchers("/mensagens/**").authenticated()
+                        .requestMatchers("/solicitacoes/**", "/perfil/**").authenticated()
                         .anyRequest().permitAll());
 
         return http.build();
