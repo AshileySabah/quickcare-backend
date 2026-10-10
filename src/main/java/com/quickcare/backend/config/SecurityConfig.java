@@ -39,7 +39,10 @@ public class SecurityConfig {
                             new ApiError(Instant.now(), HttpStatus.UNAUTHORIZED.value(), "Sessão expirada. Entre novamente."));
                 }))
                 .authorizeHttpRequests(auth -> auth
+                        // Handshake do SockJS/STOMP exige o cookie JWT: o principal vira o usuário da sessão WS
+                        .requestMatchers("/websocket/**").authenticated()
                         .requestMatchers("/solicitacoes/**").authenticated()
+                        .requestMatchers("/mensagens/**").authenticated()
                         .anyRequest().permitAll());
 
         return http.build();
