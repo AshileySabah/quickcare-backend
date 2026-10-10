@@ -7,6 +7,8 @@ public record LoginResponse(
         String nome,
         String email,
         String avatarUrl,
-        List<PerfilStatusResponse> perfis
+        List<PerfilStatusResponse> perfis,
+        String categoria,
+        List<Long> especialidadeIds
 ) {
 }

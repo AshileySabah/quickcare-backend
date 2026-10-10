@@ -49,14 +49,25 @@ public class AuthService {
         List<PerfilStatusResponse> perfis = new ArrayList<>();
         pacienteRepository.findByUsuarioId(usuario.getId())
                 .ifPresent(paciente -> perfis.add(new PerfilStatusResponse("PACIENTE", paciente.isBanido() ? "BANIDO" : "ATIVO")));
-        profissionalRepository.findByUsuarioId(usuario.getId())
-                .ifPresent(profissional -> perfis.add(new PerfilStatusResponse("PROFISSIONAL", profissional.isBanido() ? "BANIDO" : "ATIVO")));
+        String categoria = null;
+        List<Long> especialidadeIds = new ArrayList<>();
+
+        var optProfissional = profissionalRepository.findByUsuarioId(usuario.getId());
+        if (optProfissional.isPresent()) {
+            var profissional = optProfissional.get();
+            perfis.add(new PerfilStatusResponse("PROFISSIONAL", profissional.isBanido() ? "BANIDO" : "ATIVO"));
+            
+            categoria = profissional.getCategoria().name();
+            especialidadeIds = profissional.getEspecialidades().stream()
+                    .map(com.quickcare.backend.especialidade.Especialidade::getId)
+                    .toList();
+        }
 
         String avatarUrl = usuario.getAvatarStorageKey() != null
                 ? armazenamentoDocumentoService.gerarUrlAssinada(usuario.getAvatarStorageKey())
                 : null;
 
-        LoginResponse response = new LoginResponse(usuario.getId(), usuario.getNome(), usuario.getEmail(), avatarUrl, perfis);
+        LoginResponse response = new LoginResponse(usuario.getId(), usuario.getNome(), usuario.getEmail(), avatarUrl, perfis, categoria, especialidadeIds);
         return new LoginResult(response, jwtService.gerarAccessToken(usuario), jwtService.gerarRefreshToken(usuario));
     }
 
