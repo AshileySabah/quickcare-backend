@@ -19,6 +19,27 @@ FROM usuario
 WHERE email = 'paciente@quickcare.dev'
 ON CONFLICT DO NOTHING;
 
+-- Login do médico: medico@quickcare.dev / Senha@123
+INSERT INTO usuario (nome, email, senha_hash, cpf, telefone)
+VALUES ('Médico Teste', 'medico@quickcare.dev',
+        '$2a$10$ZgmQejKpnZ53yyHq49/Ey.D/MF1qIcHNerLZC7U1L2sh.ZS6xV3aq', -- BCrypt de "Senha@123"
+        '12345678901', '11987654322')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO profissional (usuario_id, modalidade_atendimento, raio_atendimento_km, cep, logradouro, numero, bairro, cidade, uf, categoria, data_nascimento, genero, confirmacao_informacoes_verdadeiras, consentimento_lgpd, possui_seguro_responsabilidade_civil, registro_profissional, registro_profissional_uf)
+SELECT id, 'AMBOS', 20.00, '01310100', 'Avenida Paulista', '2000', 'Bela Vista', 'São Paulo', 'SP', 'MEDICO', DATE '1985-05-10', 'MASCULINO', TRUE, TRUE, TRUE, '123456', 'SP'
+FROM usuario
+WHERE email = 'medico@quickcare.dev'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO profissional_especialidade (profissional_id, especialidade_id)
+SELECT p.id, e.id
+FROM profissional p
+JOIN usuario u ON u.id = p.usuario_id
+JOIN especialidade e ON e.nome = 'Clínica Médica'
+WHERE u.email = 'medico@quickcare.dev'
+ON CONFLICT DO NOTHING;
+
 -- Duas solicitações de exemplo, criadas só se o paciente ainda não tiver nenhuma:
 --   presencial: 2 enfermeiros que façam curativos E sondagem + 1 cuidador de idosos
 --   online:     1 nutricionista
