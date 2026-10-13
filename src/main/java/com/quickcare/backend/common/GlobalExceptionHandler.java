@@ -13,6 +13,8 @@ import com.quickcare.backend.cadastro.exception.RegistroProfissionalObrigatorioE
 import com.quickcare.backend.documento.ArquivoInvalidoException;
 import com.quickcare.backend.documento.DocumentoObrigatorioException;
 import com.quickcare.backend.jwt.TokenInvalidoException;
+import com.quickcare.backend.proposta.exception.PropostaJaEnviadaException;
+import com.quickcare.backend.proposta.exception.PropostaNaoEncontradaException;
 import com.quickcare.backend.solicitacao.exception.PerfilNaoAutorizadoException;
 import com.quickcare.backend.solicitacao.exception.SolicitacaoInvalidaException;
 import com.quickcare.backend.solicitacao.exception.SolicitacaoNaoEncontradaException;
@@ -97,6 +99,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(SolicitacaoNaoEncontradaException.class)
     public ResponseEntity<ApiError> handleSolicitacaoNaoEncontrada(SolicitacaoNaoEncontradaException ex) {
         return build(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    @ExceptionHandler(PropostaNaoEncontradaException.class)
+    public ResponseEntity<ApiError> handlePropostaNaoEncontrada(PropostaNaoEncontradaException ex) {
+        return build(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    @ExceptionHandler(PropostaJaEnviadaException.class)
+    public ResponseEntity<ApiError> handlePropostaJaEnviada(PropostaJaEnviadaException ex) {
+        return build(HttpStatus.CONFLICT, ex.getMessage());
     }
 
     @ExceptionHandler(SolicitacaoInvalidaException.class)

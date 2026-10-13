@@ -46,6 +46,18 @@ public class AuthService {
     }
 
     LoginResult iniciarSessao(Usuario usuario) {
+        return new LoginResult(montarResposta(usuario), jwtService.gerarAccessToken(usuario), jwtService.gerarRefreshToken(usuario));
+    }
+
+    /** Dados da sessão do usuário já autenticado pelo cookie — usado pelo front ao recarregar a página. */
+    @Transactional(readOnly = true)
+    public LoginResponse sessaoAtual(Long usuarioId) {
+        Usuario usuario = usuarioRepository.findById(usuarioId)
+                .orElseThrow(TokenInvalidoException::new);
+        return montarResposta(usuario);
+    }
+
+    private LoginResponse montarResposta(Usuario usuario) {
         List<PerfilStatusResponse> perfis = new ArrayList<>();
         pacienteRepository.findByUsuarioId(usuario.getId())
                 .ifPresent(paciente -> perfis.add(new PerfilStatusResponse("PACIENTE", paciente.isBanido() ? "BANIDO" : "ATIVO")));
@@ -56,8 +68,7 @@ public class AuthService {
                 ? armazenamentoDocumentoService.gerarUrlAssinada(usuario.getAvatarStorageKey())
                 : null;
 
-        LoginResponse response = new LoginResponse(usuario.getId(), usuario.getNome(), usuario.getEmail(), avatarUrl, perfis);
-        return new LoginResult(response, jwtService.gerarAccessToken(usuario), jwtService.gerarRefreshToken(usuario));
+        return new LoginResponse(usuario.getId(), usuario.getNome(), usuario.getEmail(), avatarUrl, perfis);
     }
 
     @Transactional(readOnly = true)

@@ -5,10 +5,17 @@ import com.quickcare.backend.especialidade.CategoriaProfissional;
 import com.quickcare.backend.especialidade.Especialidade;
 import com.quickcare.backend.especialidade.EspecialidadeRepository;
 import com.quickcare.backend.especialidade.dto.EspecialidadeResponse;
+import com.quickcare.backend.geolocalizacao.Coordenadas;
+import com.quickcare.backend.geolocalizacao.EnderecoGeocodificavel;
+import com.quickcare.backend.geolocalizacao.GeocodificacaoService;
 import com.quickcare.backend.paciente.Paciente;
 import com.quickcare.backend.paciente.PacienteRepository;
 import com.quickcare.backend.profissional.Profissional;
+import com.quickcare.backend.profissional.ModalidadeAtendimento;
 import com.quickcare.backend.profissional.ProfissionalRepository;
+import com.quickcare.backend.proposta.Proposta;
+import com.quickcare.backend.proposta.PropostaRepository;
+import com.quickcare.backend.proposta.StatusProposta;
 import com.quickcare.backend.solicitacao.dto.EnderecoSolicitacaoRequest;
 import com.quickcare.backend.solicitacao.dto.ProfissionalSolicitadoRequest;
 import com.quickcare.backend.solicitacao.dto.ProfissionalSolicitadoResponse;
@@ -22,10 +29,12 @@ import com.quickcare.backend.usuario.Usuario;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -59,6 +68,10 @@ class SolicitacaoServiceTest {
     private ProfissionalRepository profissionalRepository;
     @Mock
     private EspecialidadeRepository especialidadeRepository;
+    @Mock
+    private PropostaRepository propostaRepository;
+    @Mock
+    private GeocodificacaoService geocodificacaoService;
 
     @InjectMocks
     private SolicitacaoService service;
@@ -210,6 +223,57 @@ class SolicitacaoServiceTest {
     }
 
     @Test
+    void solicitacaoPresencialGuardaAsCoordenadasDoEndereco() {
+        mockPaciente();
+        when(especialidadeRepository.findAllByIdIn(anyList())).thenReturn(List.of(nutricao));
+        when(solicitacaoRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        Coordenadas paulista = new Coordenadas(new BigDecimal("-23.564100"), new BigDecimal("-46.652400"));
+        when(geocodificacaoService.geocodificar(new EnderecoGeocodificavel(
+                "01310100", "Avenida Paulista", "1000", "São Paulo", "SP"))).thenReturn(Optional.of(paulista));
+        ArgumentCaptor<Solicitacao> salva = ArgumentCaptor.forClass(Solicitacao.class);
+
+        service.criar(USUARIO_PACIENTE_ID,
+                request(ModalidadeSolicitacao.PRESENCIAL, ENDERECO, pedido(CategoriaProfissional.OUTRO, 1, nutricao)));
+
+        verify(solicitacaoRepository).save(salva.capture());
+        assertThat(salva.getValue().getLatitude()).isEqualByComparingTo("-23.564100");
+        assertThat(salva.getValue().getLongitude()).isEqualByComparingTo("-46.652400");
+    }
+
+    @Test
+    void bloqueiaEdicaoComVagaJaPreenchida() {
+        Solicitacao solicitacao = mockSolicitacaoDoPaciente(StatusSolicitacao.RECEBENDO_PROPOSTAS);
+        solicitacao.getProfissionais().iterator().next().setVagasPreenchidas(1);
+
+        assertThatThrownBy(() -> service.atualizar(USUARIO_PACIENTE_ID, 50L,
+                request(ModalidadeSolicitacao.ONLINE, null, pedido(CategoriaProfissional.OUTRO, 1, nutricao))))
+                .isInstanceOf(TransicaoStatusInvalidaException.class)
+                .hasMessage("Esta solicitação já tem propostas aceitas e não pode mais ser editada.");
+    }
+
+    @Test
+    void disponiveisDescartaPresencialForaDoRaio() {
+        Profissional profissional = mockProfissional(ModalidadeAtendimento.AMBOS, CategoriaProfissional.ENFERMEIRO, curativos, sondagem);
+        profissional.setRaioAtendimentoKm(new BigDecimal("10"));
+        profissional.setLatitude(new BigDecimal("-23.552300"));
+        profissional.setLongitude(new BigDecimal("-46.647000"));
+
+        Solicitacao perto = solicitacaoPedindoEnfermeiroCurativosESondagem();
+        perto.setModalidade(ModalidadeSolicitacao.PRESENCIAL);
+        perto.setLatitude(new BigDecimal("-23.564100"));
+        perto.setLongitude(new BigDecimal("-46.652400"));
+        Solicitacao longe = solicitacaoPedindoEnfermeiroCurativosESondagem();
+        longe.setId(51L);
+        longe.setModalidade(ModalidadeSolicitacao.PRESENCIAL);
+        longe.setLatitude(new BigDecimal("-22.905600"));
+        longe.setLongitude(new BigDecimal("-47.060800"));
+        when(solicitacaoRepository.findDisponiveisPara(any(), any(), any(), any())).thenReturn(List.of(perto, longe));
+
+        assertThat(service.listarDisponiveis(USUARIO_PROFISSIONAL_ID))
+                .extracting(SolicitacaoResponse::id).containsExactly(50L);
+    }
+
+    @Test
     void bloqueiaEdicaoDeSolicitacaoEmAndamento() {
         mockSolicitacaoDoPaciente(StatusSolicitacao.EM_ANDAMENTO);
 
@@ -227,6 +291,18 @@ class SolicitacaoServiceTest {
         SolicitacaoResponse response = service.cancelar(USUARIO_PACIENTE_ID, 50L);
 
         assertThat(response.status()).isEqualTo(StatusSolicitacao.CANCELADA);
+    }
+
+    @Test
+    void cancelarRecusaAsPropostasPendentes() {
+        Solicitacao solicitacao = mockSolicitacaoDoPaciente(StatusSolicitacao.RECEBENDO_PROPOSTAS);
+        Proposta pendente = Proposta.builder().id(1L).status(StatusProposta.PENDENTE).build();
+        when(propostaRepository.findBySolicitacaoIdAndStatus(50L, StatusProposta.PENDENTE)).thenReturn(List.of(pendente));
+        when(solicitacaoRepository.saveAndFlush(solicitacao)).thenReturn(solicitacao);
+
+        service.cancelar(USUARIO_PACIENTE_ID, 50L);
+
+        assertThat(pendente.getStatus()).isEqualTo(StatusProposta.RECUSADA);
     }
 
     @Test
@@ -272,6 +348,35 @@ class SolicitacaoServiceTest {
                 .isInstanceOf(SolicitacaoNaoEncontradaException.class);
     }
 
+    @Test
+    void profissionalQueSoAtendePresencialNaoVeSolicitacaoOnline() {
+        when(solicitacaoRepository.findById(50L)).thenReturn(Optional.of(solicitacaoPedindoEnfermeiroCurativosESondagem()));
+        mockProfissional(ModalidadeAtendimento.PRESENCIAL, CategoriaProfissional.ENFERMEIRO, curativos, sondagem);
+
+        assertThatThrownBy(() -> service.buscar(USUARIO_PROFISSIONAL_ID, 50L))
+                .isInstanceOf(SolicitacaoNaoEncontradaException.class);
+    }
+
+    @Test
+    void profissionalQueJaEnviouPropostaContinuaVendoASolicitacao() {
+        when(solicitacaoRepository.findById(50L)).thenReturn(Optional.of(solicitacaoPedindoEnfermeiroCurativosESondagem()));
+        mockProfissional(ModalidadeAtendimento.PRESENCIAL, CategoriaProfissional.ENFERMEIRO, curativos, sondagem);
+        when(propostaRepository.existsBySolicitacaoIdAndProfissionalIdAndStatusNot(any(), any(), any())).thenReturn(true);
+
+        assertThat(service.buscar(USUARIO_PROFISSIONAL_ID, 50L).id()).isEqualTo(50L);
+    }
+
+    @Test
+    void disponiveisFiltraPelasModalidadesQueOProfissionalAtende() {
+        mockProfissional(ModalidadeAtendimento.REMOTO, CategoriaProfissional.ENFERMEIRO, curativos);
+
+        service.listarDisponiveis(USUARIO_PROFISSIONAL_ID);
+
+        verify(solicitacaoRepository).findDisponiveisPara(
+                CategoriaProfissional.ENFERMEIRO, Set.of(curativos.getId()),
+                Set.of(ModalidadeSolicitacao.ONLINE), StatusSolicitacao.RECEBENDO_PROPOSTAS_STATUS);
+    }
+
     private static Especialidade especialidade(Long id, String nome, CategoriaProfissional categoria) {
         return Especialidade.builder().id(id).nome(nome).categoria(categoria).build();
     }
@@ -281,11 +386,19 @@ class SolicitacaoServiceTest {
     }
 
     private void mockProfissional(CategoriaProfissional categoria, Especialidade... especialidades) {
+        mockProfissional(ModalidadeAtendimento.AMBOS, categoria, especialidades);
+    }
+
+    private Profissional mockProfissional(ModalidadeAtendimento modalidade, CategoriaProfissional categoria,
+                                          Especialidade... especialidades) {
         Profissional profissional = Profissional.builder()
+                .id(20L)
+                .modalidadeAtendimento(modalidade)
                 .categoria(categoria)
                 .especialidades(Set.of(especialidades))
                 .build();
         when(profissionalRepository.findByUsuarioId(USUARIO_PROFISSIONAL_ID)).thenReturn(Optional.of(profissional));
+        return profissional;
     }
 
     private Solicitacao mockSolicitacaoDoPaciente(StatusSolicitacao status) {

@@ -21,6 +21,7 @@ import com.quickcare.backend.documento.TipoDocumento;
 import com.quickcare.backend.especialidade.CategoriaProfissional;
 import com.quickcare.backend.especialidade.Especialidade;
 import com.quickcare.backend.especialidade.EspecialidadeRepository;
+import com.quickcare.backend.geolocalizacao.GeocodificacaoService;
 import com.quickcare.backend.paciente.Paciente;
 import com.quickcare.backend.paciente.PacienteRepository;
 import com.quickcare.backend.profissional.ModalidadeAtendimento;
@@ -55,6 +56,7 @@ public class CadastroService {
     private final DocumentoRepository documentoRepository;
     private final ArmazenamentoDocumentoService armazenamentoDocumentoService;
     private final PasswordEncoder passwordEncoder;
+    private final GeocodificacaoService geocodificacaoService;
 
     @Transactional
     public CadastroResponse cadastrarPaciente(
@@ -165,36 +167,36 @@ public class CadastroService {
             throw new RaioAtendimentoObrigatorioException();
         }
 
-        Profissional profissional = profissionalRepository.save(
-                Profissional.builder()
-                        .usuario(usuario)
-                        .banido(false)
-                        .categoria(request.categoria())
-                        .registroProfissional(registroObrigatorio ? request.registroProfissional() : null)
-                        .registroProfissionalUf(registroObrigatorio ? request.registroProfissionalUf().toUpperCase() : null)
-                        .dataNascimento(request.dataNascimento())
-                        .genero(request.genero())
-                        .contatosEmergencia(mapContatos(request.contatosEmergencia()))
-                        .confirmacaoInformacoesVerdadeiras(request.confirmacaoInformacoesVerdadeiras())
-                        .consentimentoLgpd(request.consentimentoLgpd())
-                        .possuiSeguroResponsabilidadeCivil(request.possuiSeguroResponsabilidadeCivil())
-                        .modalidadeAtendimento(request.modalidadeAtendimento())
-                        .raioAtendimentoKm(
-                                request.modalidadeAtendimento() == ModalidadeAtendimento.REMOTO
-                                        ? null
-                                        : request.raioAtendimentoKm()
-                        )
-                        .cnpj(request.cnpj())
-                        .cep(request.cep())
-                        .logradouro(request.logradouro())
-                        .numero(request.numero())
-                        .complemento(request.complemento())
-                        .bairro(request.bairro())
-                        .cidade(request.cidade())
-                        .uf(request.uf().toUpperCase())
-                        .especialidades(new HashSet<>(especialidadesPorId.values()))
-                        .build()
-        );
+        Profissional novo = Profissional.builder()
+                .usuario(usuario)
+                .banido(false)
+                .categoria(request.categoria())
+                .registroProfissional(registroObrigatorio ? request.registroProfissional() : null)
+                .registroProfissionalUf(registroObrigatorio ? request.registroProfissionalUf().toUpperCase() : null)
+                .dataNascimento(request.dataNascimento())
+                .genero(request.genero())
+                .contatosEmergencia(mapContatos(request.contatosEmergencia()))
+                .confirmacaoInformacoesVerdadeiras(request.confirmacaoInformacoesVerdadeiras())
+                .consentimentoLgpd(request.consentimentoLgpd())
+                .possuiSeguroResponsabilidadeCivil(request.possuiSeguroResponsabilidadeCivil())
+                .modalidadeAtendimento(request.modalidadeAtendimento())
+                .raioAtendimentoKm(
+                        request.modalidadeAtendimento() == ModalidadeAtendimento.REMOTO
+                                ? null
+                                : request.raioAtendimentoKm()
+                )
+                .cnpj(request.cnpj())
+                .cep(request.cep())
+                .logradouro(request.logradouro())
+                .numero(request.numero())
+                .complemento(request.complemento())
+                .bairro(request.bairro())
+                .cidade(request.cidade())
+                .uf(request.uf().toUpperCase())
+                .especialidades(new HashSet<>(especialidadesPorId.values()))
+                .build();
+        novo.definirCoordenadas(geocodificacaoService.geocodificar(novo.endereco()).orElse(null));
+        Profissional profissional = profissionalRepository.save(novo);
 
         for (DocumentoParaSalvar documento : documentosValidados) {
             salvarDocumento(documento.tipo(), documento.arquivo(), null, profissional);

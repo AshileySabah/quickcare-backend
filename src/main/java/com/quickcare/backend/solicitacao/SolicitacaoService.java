@@ -3,11 +3,17 @@ package com.quickcare.backend.solicitacao;
 import com.quickcare.backend.cadastro.exception.EspecialidadeInvalidaException;
 import com.quickcare.backend.especialidade.Especialidade;
 import com.quickcare.backend.especialidade.EspecialidadeRepository;
+import com.quickcare.backend.geolocalizacao.Coordenadas;
+import com.quickcare.backend.geolocalizacao.EnderecoGeocodificavel;
+import com.quickcare.backend.geolocalizacao.GeocodificacaoService;
 import com.quickcare.backend.localizacao.Uf;
 import com.quickcare.backend.paciente.Paciente;
 import com.quickcare.backend.paciente.PacienteRepository;
 import com.quickcare.backend.profissional.Profissional;
 import com.quickcare.backend.profissional.ProfissionalRepository;
+import com.quickcare.backend.proposta.PropostaRepository;
+import com.quickcare.backend.proposta.PropostaRepository.ContagemPropostas;
+import com.quickcare.backend.proposta.StatusProposta;
 import com.quickcare.backend.solicitacao.dto.EnderecoSolicitacaoRequest;
 import com.quickcare.backend.solicitacao.dto.ProfissionalSolicitadoRequest;
 import com.quickcare.backend.solicitacao.dto.SolicitacaoRequest;
@@ -38,6 +44,8 @@ public class SolicitacaoService {
     private final PacienteRepository pacienteRepository;
     private final ProfissionalRepository profissionalRepository;
     private final EspecialidadeRepository especialidadeRepository;
+    private final PropostaRepository propostaRepository;
+    private final GeocodificacaoService geocodificacaoService;
 
     @Transactional
     public SolicitacaoResponse criar(Long usuarioId, SolicitacaoRequest request) {
@@ -49,21 +57,20 @@ public class SolicitacaoService {
                 .build();
         aplicarDados(solicitacao, request);
 
-        return SolicitacaoResponse.de(solicitacaoRepository.save(solicitacao));
+        return SolicitacaoResponse.de(solicitacaoRepository.save(solicitacao), 0);
     }
 
     @Transactional(readOnly = true)
     public List<SolicitacaoResponse> listarDoPaciente(Long usuarioId) {
         Paciente paciente = buscarPacienteAtivo(usuarioId);
 
-        return solicitacaoRepository.findByPacienteIdOrderByCriadoEmDesc(paciente.getId()).stream()
-                .map(SolicitacaoResponse::de)
-                .toList();
+        return responder(solicitacaoRepository.findByPacienteIdOrderByCriadoEmDesc(paciente.getId()));
     }
 
     /**
-     * Solicitações que ainda recebem propostas e pedem ao menos um profissional
-     * que ele atende (mesma categoria e todas as especialidades da linha).
+     * Solicitações que ainda recebem propostas, numa modalidade que o
+     * profissional atende, e que pedem ao menos um profissional da categoria
+     * dele com todas as especialidades da linha entre as suas.
      */
     @Transactional(readOnly = true)
     public List<SolicitacaoResponse> listarDisponiveis(Long usuarioId) {
@@ -77,34 +84,39 @@ public class SolicitacaoService {
             return List.of();
         }
 
-        return solicitacaoRepository
-                .findDisponiveisPara(profissional.getCategoria(), especialidadeIds, StatusSolicitacao.RECEBENDO_PROPOSTAS_STATUS)
-                .stream()
-                .map(SolicitacaoResponse::de)
-                .toList();
+        List<Solicitacao> candidatas = solicitacaoRepository.findDisponiveisPara(
+                profissional.getCategoria(),
+                especialidadeIds,
+                ModalidadeSolicitacao.atendidasPor(profissional.getModalidadeAtendimento()),
+                StatusSolicitacao.RECEBENDO_PROPOSTAS_STATUS);
+
+        // A distância até o endereço presencial é conferida na entidade.
+        return responder(candidatas.stream().filter(solicitacao -> solicitacao.atendidaPor(profissional)).toList());
     }
 
     /**
-     * Visível para o paciente dono e para profissionais que atendem alguma das
-     * linhas pedidas. Para os demais responde "não encontrada", sem revelar que
-     * a solicitação existe.
+     * Visível para o paciente dono, para profissionais compatíveis e para quem
+     * já enviou proposta (mesmo depois de a solicitação sair de "recebendo
+     * propostas"). Para os demais responde "não encontrada", sem revelar que a
+     * solicitação existe.
      */
     @Transactional(readOnly = true)
     public SolicitacaoResponse buscar(Long usuarioId, Long id) {
         Solicitacao solicitacao = solicitacaoRepository.findById(id)
                 .orElseThrow(SolicitacaoNaoEncontradaException::new);
 
-        boolean ehDono = solicitacao.getPaciente().getUsuario().getId().equals(usuarioId);
-        boolean ehProfissionalQueAtende = profissionalRepository.findByUsuarioId(usuarioId)
-                .map(profissional -> solicitacao.getProfissionais().stream()
-                        .anyMatch(pedido -> pedido.atendidaPor(profissional.getCategoria(), idsDasEspecialidades(profissional))))
+        boolean ehDono = solicitacao.ehDoUsuario(usuarioId);
+        boolean ehProfissionalEnvolvido = profissionalRepository.findByUsuarioId(usuarioId)
+                .map(profissional -> solicitacao.atendidaPor(profissional)
+                        || propostaRepository.existsBySolicitacaoIdAndProfissionalIdAndStatusNot(
+                                id, profissional.getId(), StatusProposta.CANCELADA))
                 .orElse(false);
 
-        if (!ehDono && !ehProfissionalQueAtende) {
+        if (!ehDono && !ehProfissionalEnvolvido) {
             throw new SolicitacaoNaoEncontradaException();
         }
 
-        return SolicitacaoResponse.de(solicitacao);
+        return responder(solicitacao);
     }
 
     @Transactional
@@ -114,11 +126,17 @@ public class SolicitacaoService {
         if (!solicitacao.getStatus().podeSerEditada()) {
             throw new TransicaoStatusInvalidaException("Esta solicitação não pode mais ser editada.");
         }
+        // Editar substitui as linhas pedidas, o que apagaria as vagas já ocupadas.
+        if (solicitacao.temVagaPreenchida()) {
+            throw new TransicaoStatusInvalidaException(
+                    "Esta solicitação já tem propostas aceitas e não pode mais ser editada.");
+        }
 
         aplicarDados(solicitacao, request);
-        return SolicitacaoResponse.de(solicitacaoRepository.saveAndFlush(solicitacao));
+        return responder(solicitacaoRepository.saveAndFlush(solicitacao));
     }
 
+    /** Propostas ainda pendentes são recusadas junto com o cancelamento. */
     @Transactional
     public SolicitacaoResponse cancelar(Long usuarioId, Long id) {
         Solicitacao solicitacao = buscarDoPaciente(usuarioId, id);
@@ -127,8 +145,10 @@ public class SolicitacaoService {
             throw new TransicaoStatusInvalidaException("Esta solicitação não pode mais ser cancelada.");
         }
 
+        propostaRepository.findBySolicitacaoIdAndStatus(id, StatusProposta.PENDENTE)
+                .forEach(proposta -> proposta.setStatus(StatusProposta.RECUSADA));
         solicitacao.setStatus(StatusSolicitacao.CANCELADA);
-        return SolicitacaoResponse.de(solicitacaoRepository.saveAndFlush(solicitacao));
+        return responder(solicitacaoRepository.saveAndFlush(solicitacao));
     }
 
     @Transactional
@@ -140,7 +160,28 @@ public class SolicitacaoService {
         }
 
         solicitacao.setStatus(StatusSolicitacao.CONCLUIDA);
-        return SolicitacaoResponse.de(solicitacaoRepository.saveAndFlush(solicitacao));
+        return responder(solicitacaoRepository.saveAndFlush(solicitacao));
+    }
+
+    private SolicitacaoResponse responder(Solicitacao solicitacao) {
+        return responder(List.of(solicitacao)).get(0);
+    }
+
+    /** Uma única consulta de contagem de propostas para a lista toda. */
+    private List<SolicitacaoResponse> responder(List<Solicitacao> solicitacoes) {
+        if (solicitacoes.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, Long> totalPorSolicitacao = propostaRepository
+                .contarPorSolicitacao(solicitacoes.stream().map(Solicitacao::getId).toList(), StatusProposta.CANCELADA)
+                .stream()
+                .collect(Collectors.toMap(ContagemPropostas::getSolicitacaoId, ContagemPropostas::getTotal));
+
+        return solicitacoes.stream()
+                .map(solicitacao -> SolicitacaoResponse.de(
+                        solicitacao, totalPorSolicitacao.getOrDefault(solicitacao.getId(), 0L)))
+                .toList();
     }
 
     private void aplicarDados(Solicitacao solicitacao, SolicitacaoRequest request) {
@@ -209,6 +250,12 @@ public class SolicitacaoService {
         solicitacao.setBairro(endereco == null ? null : endereco.bairro().trim());
         solicitacao.setCidade(endereco == null ? null : endereco.cidade().trim());
         solicitacao.setUf(endereco == null ? null : validarUf(endereco.uf()));
+
+        Coordenadas coordenadas = endereco == null ? null : geocodificacaoService.geocodificar(new EnderecoGeocodificavel(
+                solicitacao.getCep(), solicitacao.getLogradouro(), solicitacao.getNumero(),
+                solicitacao.getCidade(), solicitacao.getUf())).orElse(null);
+        solicitacao.setLatitude(coordenadas == null ? null : coordenadas.latitude());
+        solicitacao.setLongitude(coordenadas == null ? null : coordenadas.longitude());
     }
 
     private String validarUf(String uf) {
