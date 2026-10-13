@@ -11,7 +11,8 @@ public record ProfissionalSolicitadoResponse(
         CategoriaProfissional categoria,
         String categoriaRotulo,
         List<EspecialidadeResponse> especialidades,
-        int quantidade
+        int quantidade,
+        int vagasPreenchidas
 ) {
 
     public static ProfissionalSolicitadoResponse de(SolicitacaoProfissional profissional) {
@@ -23,7 +24,8 @@ public record ProfissionalSolicitadoResponse(
                                 especialidade.getId(), especialidade.getNome(), especialidade.getCategoria()))
                         .sorted(Comparator.comparing(EspecialidadeResponse::nome))
                         .toList(),
-                profissional.getQuantidade()
+                profissional.getQuantidade(),
+                profissional.getVagasPreenchidas()
         );
     }
 

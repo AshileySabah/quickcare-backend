@@ -36,6 +36,10 @@ quickcare:
   frontend-url: ${FRONTEND_URL:http://localhost:4200}
   email:
     brevo-api-key: ${BREVO_API_KEY:}
+  geocodificacao:
+    habilitada: ${GEOCODIFICACAO_HABILITADA:true}
+    url: ${GEOCODIFICACAO_URL:https://nominatim.openstreetmap.org}
+    user-agent: ${GEOCODIFICACAO_USER_AGENT:QuickCare/1.0 (TCC Fatec)}
   jwt:
     secret: ${JWT_SECRET:dev-only-secret-key-please-override-in-prod-0123456789abcdef}
     access-token-expiration-minutes: 15

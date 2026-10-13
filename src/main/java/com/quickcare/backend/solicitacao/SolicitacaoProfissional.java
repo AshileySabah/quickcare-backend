@@ -61,10 +61,25 @@ public class SolicitacaoProfissional {
     @Column(nullable = false)
     private int quantidade;
 
+    /** Propostas aceitas para esta linha; nunca passa de {@code quantidade}. */
+    @Column(name = "vagas_preenchidas", nullable = false)
+    private int vagasPreenchidas;
+
     /** O profissional atende esta linha se for da categoria e cobrir todas as especialidades. */
     public boolean atendidaPor(CategoriaProfissional categoriaProfissional, Set<Long> especialidadeIdsDoProfissional) {
         return categoria == categoriaProfissional
                 && especialidades.stream().allMatch(especialidade -> especialidadeIdsDoProfissional.contains(especialidade.getId()));
+    }
+
+    public boolean temVaga() {
+        return vagasPreenchidas < quantidade;
+    }
+
+    public void preencherVaga() {
+        if (!temVaga()) {
+            throw new IllegalStateException("Linha sem vagas.");
+        }
+        vagasPreenchidas++;
     }
 
 }

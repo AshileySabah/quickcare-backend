@@ -3,7 +3,8 @@
 -- Migration repetível: roda de novo sempre que este arquivo mudar, por isso
 -- tudo aqui precisa ser idempotente.
 --
--- Login do paciente: paciente@quickcare.dev / Senha@123
+-- Login do paciente:     paciente@quickcare.dev / Senha@123
+-- Login do profissional: profissional@quickcare.dev / Senha@123
 
 INSERT INTO usuario (nome, email, senha_hash, cpf, telefone)
 VALUES ('Paciente Teste', 'paciente@quickcare.dev',
@@ -64,3 +65,41 @@ FROM profissionais sp
 JOIN novas n ON n.id = sp.solicitacao_id
 JOIN pedidos p ON p.modalidade = n.modalidade AND p.categoria = sp.categoria
 JOIN especialidade e ON e.nome = p.especialidade;
+
+-- Enfermeiro(a) que atende presencial e online, com Curativos e Sondagem:
+-- compatível com a solicitação presencial do paciente de teste.
+INSERT INTO usuario (nome, email, senha_hash, cpf, telefone)
+VALUES ('Profissional Teste', 'profissional@quickcare.dev',
+        '$2a$10$ZgmQejKpnZ53yyHq49/Ey.D/MF1qIcHNerLZC7U1L2sh.ZS6xV3aq', -- BCrypt de "Senha@123"
+        '11144477735', '11912345678')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO profissional (usuario_id, categoria, registro_profissional, registro_profissional_uf, data_nascimento,
+                          genero, confirmacao_informacoes_verdadeiras, consentimento_lgpd,
+                          possui_seguro_responsabilidade_civil, modalidade_atendimento, raio_atendimento_km,
+                          cep, logradouro, numero, bairro, cidade, uf)
+SELECT id, 'ENFERMEIRO', '123456', 'SP', DATE '1988-03-20', 'PREFIRO_NAO_INFORMAR', TRUE, TRUE, TRUE, 'AMBOS', 15,
+       '01311000', 'Rua Augusta', '500', 'Consolação', 'São Paulo', 'SP'
+FROM usuario
+WHERE email = 'profissional@quickcare.dev'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO profissional_especialidade (profissional_id, especialidade_id)
+SELECT p.id, e.id
+FROM profissional p
+JOIN usuario u ON u.id = p.usuario_id
+JOIN especialidade e ON e.nome IN ('Curativos', 'Sondagem')
+WHERE u.email = 'profissional@quickcare.dev'
+ON CONFLICT DO NOTHING;
+-- Coordenadas dos dados de teste (no app real vêm da geocodificação do endereço).
+UPDATE profissional p
+SET latitude = -23.552300, longitude = -46.647000
+FROM usuario u
+WHERE u.id = p.usuario_id AND u.email = 'profissional@quickcare.dev' AND p.latitude IS NULL;
+
+UPDATE solicitacao s
+SET latitude = -23.564887, longitude = -46.651918
+FROM paciente pa
+JOIN usuario u ON u.id = pa.usuario_id
+WHERE s.paciente_id = pa.id AND u.email = 'paciente@quickcare.dev'
+  AND s.modalidade = 'PRESENCIAL' AND s.latitude IS NULL;

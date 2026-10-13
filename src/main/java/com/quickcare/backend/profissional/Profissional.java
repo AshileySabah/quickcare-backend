@@ -2,6 +2,8 @@ package com.quickcare.backend.profissional;
 
 import com.quickcare.backend.especialidade.CategoriaProfissional;
 import com.quickcare.backend.especialidade.Especialidade;
+import com.quickcare.backend.geolocalizacao.Coordenadas;
+import com.quickcare.backend.geolocalizacao.EnderecoGeocodificavel;
 import com.quickcare.backend.usuario.ContatoEmergencia;
 import com.quickcare.backend.usuario.Genero;
 import com.quickcare.backend.usuario.Usuario;
@@ -138,6 +140,16 @@ public class Profissional {
         if (criadoEm == null) {
             criadoEm = Instant.now();
         }
+    }
+
+    public EnderecoGeocodificavel endereco() {
+        return new EnderecoGeocodificavel(cep, logradouro, numero, cidade, uf);
+    }
+
+    /** null limpa as coordenadas antigas quando o novo endereço não foi encontrado. */
+    public void definirCoordenadas(Coordenadas coordenadas) {
+        latitude = coordenadas == null ? null : coordenadas.latitude();
+        longitude = coordenadas == null ? null : coordenadas.longitude();
     }
 
 }
