@@ -22,6 +22,8 @@ import com.quickcare.backend.solicitacao.exception.PerfilNaoAutorizadoException;
 import com.quickcare.backend.solicitacao.exception.SolicitacaoInvalidaException;
 import com.quickcare.backend.solicitacao.exception.SolicitacaoNaoEncontradaException;
 import com.quickcare.backend.solicitacao.exception.TransicaoStatusInvalidaException;
+import com.quickcare.backend.validacao.StatusValidacao;
+import com.quickcare.backend.validacao.exception.CadastroNaoValidadoException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,6 +53,11 @@ public class SolicitacaoService {
     public SolicitacaoResponse criar(Long usuarioId, SolicitacaoRequest request) {
         Paciente paciente = buscarPacienteAtivo(usuarioId);
 
+        if (paciente.getStatusValidacao() != StatusValidacao.APROVADO) {
+            throw new CadastroNaoValidadoException(
+                    "Seu cadastro ainda não foi aprovado. Você poderá criar solicitações assim que ele for validado.");
+        }
+
         Solicitacao solicitacao = Solicitacao.builder()
                 .paciente(paciente)
                 .status(StatusSolicitacao.ABERTA)
@@ -77,6 +84,10 @@ public class SolicitacaoService {
         Profissional profissional = profissionalRepository.findByUsuarioId(usuarioId)
                 .filter(p -> !p.isBanido())
                 .orElseThrow(() -> new PerfilNaoAutorizadoException("Apenas profissionais podem ver solicitações disponíveis."));
+
+        if (profissional.getStatusValidacao() != StatusValidacao.APROVADO) {
+            throw new CadastroNaoValidadoException("Seu cadastro ainda não foi aprovado.");
+        }
 
         Set<Long> especialidadeIds = idsDasEspecialidades(profissional);
 

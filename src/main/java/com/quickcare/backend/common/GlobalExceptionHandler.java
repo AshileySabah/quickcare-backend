@@ -4,6 +4,7 @@ import com.quickcare.backend.auth.exception.LoginInvalidoException;
 import com.quickcare.backend.auth.exception.TokenRedefinicaoInvalidoException;
 import com.quickcare.backend.cadastro.exception.CpfJaCadastradoException;
 import com.quickcare.backend.cadastro.exception.CredenciaisInvalidasException;
+import com.quickcare.backend.cadastro.exception.DocumentoIdentidadeInvalidoException;
 import com.quickcare.backend.cadastro.exception.DadosCadastraisConflitantesException;
 import com.quickcare.backend.cadastro.exception.EmailJaCadastradoException;
 import com.quickcare.backend.cadastro.exception.EspecialidadeInvalidaException;
@@ -19,6 +20,11 @@ import com.quickcare.backend.solicitacao.exception.PerfilNaoAutorizadoException;
 import com.quickcare.backend.solicitacao.exception.SolicitacaoInvalidaException;
 import com.quickcare.backend.solicitacao.exception.SolicitacaoNaoEncontradaException;
 import com.quickcare.backend.solicitacao.exception.TransicaoStatusInvalidaException;
+import com.quickcare.backend.validacao.exception.CadastroNaoEncontradoException;
+import com.quickcare.backend.validacao.exception.CadastroNaoValidadoException;
+import com.quickcare.backend.validacao.exception.EtapaNaoEncontradaException;
+import com.quickcare.backend.validacao.exception.TransicaoEtapaInvalidaException;
+import com.quickcare.backend.validacao.exception.ValidacaoInvalidaException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -123,6 +129,36 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(PerfilNaoAutorizadoException.class)
     public ResponseEntity<ApiError> handlePerfilNaoAutorizado(PerfilNaoAutorizadoException ex) {
+        return build(HttpStatus.FORBIDDEN, ex.getMessage());
+    }
+
+    @ExceptionHandler(DocumentoIdentidadeInvalidoException.class)
+    public ResponseEntity<ApiError> handleDocumentoIdentidadeInvalido(DocumentoIdentidadeInvalidoException ex) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(CadastroNaoEncontradoException.class)
+    public ResponseEntity<ApiError> handleCadastroNaoEncontrado(CadastroNaoEncontradoException ex) {
+        return build(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    @ExceptionHandler(EtapaNaoEncontradaException.class)
+    public ResponseEntity<ApiError> handleEtapaNaoEncontrada(EtapaNaoEncontradaException ex) {
+        return build(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    @ExceptionHandler(TransicaoEtapaInvalidaException.class)
+    public ResponseEntity<ApiError> handleTransicaoEtapaInvalida(TransicaoEtapaInvalidaException ex) {
+        return build(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
+    @ExceptionHandler(ValidacaoInvalidaException.class)
+    public ResponseEntity<ApiError> handleValidacaoInvalida(ValidacaoInvalidaException ex) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(CadastroNaoValidadoException.class)
+    public ResponseEntity<ApiError> handleCadastroNaoValidado(CadastroNaoValidadoException ex) {
         return build(HttpStatus.FORBIDDEN, ex.getMessage());
     }
 

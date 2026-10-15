@@ -26,6 +26,8 @@ import com.quickcare.backend.solicitacao.exception.SolicitacaoInvalidaException;
 import com.quickcare.backend.solicitacao.exception.SolicitacaoNaoEncontradaException;
 import com.quickcare.backend.solicitacao.exception.TransicaoStatusInvalidaException;
 import com.quickcare.backend.usuario.Usuario;
+import com.quickcare.backend.validacao.StatusValidacao;
+import com.quickcare.backend.validacao.exception.CadastroNaoValidadoException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -85,7 +87,7 @@ class SolicitacaoServiceTest {
     @BeforeEach
     void setUp() {
         Usuario usuario = Usuario.builder().id(USUARIO_PACIENTE_ID).build();
-        paciente = Paciente.builder().id(10L).usuario(usuario).build();
+        paciente = Paciente.builder().id(10L).usuario(usuario).statusValidacao(StatusValidacao.APROVADO).build();
         nutricao = especialidade(4L, "Nutrição", CategoriaProfissional.OUTRO);
         curativos = especialidade(5L, "Curativos", CategoriaProfissional.ENFERMEIRO);
         sondagem = especialidade(6L, "Sondagem", CategoriaProfissional.ENFERMEIRO);
@@ -195,6 +197,26 @@ class SolicitacaoServiceTest {
                 request(ModalidadeSolicitacao.PRESENCIAL, endereco, pedido(CategoriaProfissional.OUTRO, 1, nutricao))))
                 .isInstanceOf(SolicitacaoInvalidaException.class)
                 .hasMessage("UF inválida.");
+    }
+
+    @Test
+    void pacienteComCadastroEmAnaliseNaoCriaSolicitacao() {
+        paciente.setStatusValidacao(StatusValidacao.PENDENTE);
+        mockPaciente();
+
+        assertThatThrownBy(() -> service.criar(USUARIO_PACIENTE_ID,
+                request(ModalidadeSolicitacao.ONLINE, null, pedido(CategoriaProfissional.OUTRO, 1, nutricao))))
+                .isInstanceOf(CadastroNaoValidadoException.class);
+        verify(solicitacaoRepository, never()).save(any());
+    }
+
+    @Test
+    void profissionalComCadastroEmAnaliseNaoVeSolicitacoesDisponiveis() {
+        Profissional pendente = mockProfissional(ModalidadeAtendimento.AMBOS, CategoriaProfissional.ENFERMEIRO, curativos);
+        pendente.setStatusValidacao(StatusValidacao.PENDENTE);
+
+        assertThatThrownBy(() -> service.listarDisponiveis(USUARIO_PROFISSIONAL_ID))
+                .isInstanceOf(CadastroNaoValidadoException.class);
     }
 
     @Test
@@ -392,6 +414,7 @@ class SolicitacaoServiceTest {
     private Profissional mockProfissional(ModalidadeAtendimento modalidade, CategoriaProfissional categoria,
                                           Especialidade... especialidades) {
         Profissional profissional = Profissional.builder()
+                .statusValidacao(StatusValidacao.APROVADO)
                 .id(20L)
                 .modalidadeAtendimento(modalidade)
                 .categoria(categoria)

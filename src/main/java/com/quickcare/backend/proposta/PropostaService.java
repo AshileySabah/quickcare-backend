@@ -13,6 +13,8 @@ import com.quickcare.backend.solicitacao.StatusSolicitacao;
 import com.quickcare.backend.solicitacao.exception.PerfilNaoAutorizadoException;
 import com.quickcare.backend.solicitacao.exception.SolicitacaoNaoEncontradaException;
 import com.quickcare.backend.solicitacao.exception.TransicaoStatusInvalidaException;
+import com.quickcare.backend.validacao.StatusValidacao;
+import com.quickcare.backend.validacao.exception.CadastroNaoValidadoException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,6 +37,9 @@ public class PropostaService {
     @Transactional
     public PropostaResponse enviar(Long usuarioId, Long solicitacaoId, PropostaRequest request) {
         Profissional profissional = buscarProfissionalAtivo(usuarioId);
+        if (profissional.getStatusValidacao() != StatusValidacao.APROVADO) {
+            throw new CadastroNaoValidadoException("Só profissionais com cadastro aprovado podem enviar propostas.");
+        }
         Solicitacao solicitacao = solicitacaoRepository.findById(solicitacaoId)
                 .filter(s -> s.atendidaPor(profissional))
                 .orElseThrow(SolicitacaoNaoEncontradaException::new);

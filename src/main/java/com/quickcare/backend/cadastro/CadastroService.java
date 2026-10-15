@@ -30,6 +30,7 @@ import com.quickcare.backend.profissional.ProfissionalRepository;
 import com.quickcare.backend.usuario.ContatoEmergencia;
 import com.quickcare.backend.usuario.Usuario;
 import com.quickcare.backend.usuario.UsuarioRepository;
+import com.quickcare.backend.validacao.ValidacaoService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -38,6 +39,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -57,6 +59,7 @@ public class CadastroService {
     private final ArmazenamentoDocumentoService armazenamentoDocumentoService;
     private final PasswordEncoder passwordEncoder;
     private final GeocodificacaoService geocodificacaoService;
+    private final ValidacaoService validacaoService;
 
     @Transactional
     public CadastroResponse cadastrarPaciente(
@@ -71,7 +74,10 @@ public class CadastroService {
             throw new DocumentoObrigatorioException("Envie um documento que valide seu CPF.");
         }
 
-        Usuario usuario = resolverUsuario(request.nome(), request.email(), request.senha(), request.cpf(), request.telefone(), avatar);
+        DocumentoIdentidade identidade = DocumentoIdentidade.validar(
+                request.documentoIdentidadeTipo(), request.documentoIdentidadeNumero(), request.documentoIdentidadeUf());
+
+        Usuario usuario = resolverUsuario(request.nome(), request.email(), request.senha(), request.cpf(), request.telefone(), identidade, avatar);
 
         if (pacienteRepository.existsByUsuarioId(usuario.getId())) {
             throw new PerfilJaExistenteException("paciente");
@@ -99,9 +105,7 @@ public class CadastroService {
                         .build()
         );
 
-        for (DocumentoParaSalvar documento : documentosValidados) {
-            salvarDocumento(documento.tipo(), documento.arquivo(), paciente, null);
-        }
+        validacaoService.iniciar(paciente, salvarDocumentos(documentosValidados, paciente, null));
 
         return new CadastroResponse(usuario.getId(), paciente.getId(), usuario.getNome(), usuario.getEmail(), "PACIENTE");
     }
@@ -126,7 +130,10 @@ public class CadastroService {
             throw new DocumentoObrigatorioException("Envie um documento que valide o CNPJ informado.");
         }
 
-        Usuario usuario = resolverUsuario(request.nome(), request.email(), request.senha(), request.cpf(), request.telefone(), avatar);
+        DocumentoIdentidade identidade = DocumentoIdentidade.validar(
+                request.documentoIdentidadeTipo(), request.documentoIdentidadeNumero(), request.documentoIdentidadeUf());
+
+        Usuario usuario = resolverUsuario(request.nome(), request.email(), request.senha(), request.cpf(), request.telefone(), identidade, avatar);
 
         if (profissionalRepository.existsByUsuarioId(usuario.getId())) {
             throw new PerfilJaExistenteException("profissional");
@@ -185,7 +192,7 @@ public class CadastroService {
                                 ? null
                                 : request.raioAtendimentoKm()
                 )
-                .cnpj(request.cnpj())
+                .cnpj(temCnpj ? request.cnpj() : null)
                 .cep(request.cep())
                 .logradouro(request.logradouro())
                 .numero(request.numero())
@@ -198,9 +205,7 @@ public class CadastroService {
         novo.definirCoordenadas(geocodificacaoService.geocodificar(novo.endereco()).orElse(null));
         Profissional profissional = profissionalRepository.save(novo);
 
-        for (DocumentoParaSalvar documento : documentosValidados) {
-            salvarDocumento(documento.tipo(), documento.arquivo(), null, profissional);
-        }
+        validacaoService.iniciar(profissional, salvarDocumentos(documentosValidados, null, profissional));
 
         return new CadastroResponse(usuario.getId(), profissional.getId(), usuario.getNome(), usuario.getEmail(), "PROFISSIONAL");
     }
@@ -243,10 +248,19 @@ public class CadastroService {
                 .toList();
     }
 
-    private void salvarDocumento(TipoDocumento tipo, MultipartFile arquivo, Paciente paciente, Profissional profissional) {
+    /** Devolve o último documento salvo de cada tipo, que é o conferido na etapa correspondente. */
+    private Map<TipoDocumento, Documento> salvarDocumentos(List<DocumentoParaSalvar> documentos, Paciente paciente, Profissional profissional) {
+        Map<TipoDocumento, Documento> salvos = new EnumMap<>(TipoDocumento.class);
+        for (DocumentoParaSalvar documento : documentos) {
+            salvos.put(documento.tipo(), salvarDocumento(documento.tipo(), documento.arquivo(), paciente, profissional));
+        }
+        return salvos;
+    }
+
+    private Documento salvarDocumento(TipoDocumento tipo, MultipartFile arquivo, Paciente paciente, Profissional profissional) {
         String storageKey = armazenamentoDocumentoService.enviar(tipo, arquivo);
 
-        documentoRepository.save(
+        return documentoRepository.save(
                 Documento.builder()
                         .paciente(paciente)
                         .profissional(profissional)
@@ -259,7 +273,12 @@ public class CadastroService {
         );
     }
 
-    private Usuario resolverUsuario(String nome, String email, String senha, String cpf, String telefone, MultipartFile avatar) {
+    /**
+     * Quem já tem conta (mesmo e-mail e CPF) e cria o outro perfil reaproveita o
+     * usuário; o documento de identidade só é gravado se ainda não havia um.
+     */
+    private Usuario resolverUsuario(String nome, String email, String senha, String cpf, String telefone,
+                                    DocumentoIdentidade identidade, MultipartFile avatar) {
         Optional<Usuario> porEmail = usuarioRepository.findByEmail(email);
         Optional<Usuario> porCpf = usuarioRepository.findByCpf(cpf);
 
@@ -273,6 +292,9 @@ public class CadastroService {
                 throw new CredenciaisInvalidasException();
             }
 
+            if (usuario.getDocumentoIdentidadeNumero() == null) {
+                aplicarIdentidade(usuario, identidade);
+            }
             return usuario;
         }
 
@@ -288,16 +310,22 @@ public class CadastroService {
                 ? armazenamentoDocumentoService.enviarAvatar(avatar)
                 : null;
 
-        return usuarioRepository.save(
-                Usuario.builder()
-                        .nome(nome)
-                        .email(email)
-                        .senhaHash(passwordEncoder.encode(senha))
-                        .cpf(cpf)
-                        .telefone(telefone)
-                        .avatarStorageKey(avatarStorageKey)
-                        .build()
-        );
+        Usuario novo = Usuario.builder()
+                .nome(nome)
+                .email(email)
+                .senhaHash(passwordEncoder.encode(senha))
+                .cpf(cpf)
+                .telefone(telefone)
+                .avatarStorageKey(avatarStorageKey)
+                .build();
+        aplicarIdentidade(novo, identidade);
+        return usuarioRepository.save(novo);
+    }
+
+    private void aplicarIdentidade(Usuario usuario, DocumentoIdentidade identidade) {
+        usuario.setDocumentoIdentidadeTipo(identidade.tipo());
+        usuario.setDocumentoIdentidadeNumero(identidade.numero());
+        usuario.setDocumentoIdentidadeUf(identidade.uf());
     }
 
 }
