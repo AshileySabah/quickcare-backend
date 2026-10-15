@@ -20,6 +20,8 @@ import com.quickcare.backend.solicitacao.exception.PerfilNaoAutorizadoException;
 import com.quickcare.backend.solicitacao.exception.SolicitacaoNaoEncontradaException;
 import com.quickcare.backend.solicitacao.exception.TransicaoStatusInvalidaException;
 import com.quickcare.backend.usuario.Usuario;
+import com.quickcare.backend.validacao.StatusValidacao;
+import com.quickcare.backend.validacao.exception.CadastroNaoValidadoException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -115,6 +117,16 @@ class PropostaServiceTest {
         assertThat(response.profissional().nome()).isEqualTo("Profissional 20");
         assertThat(response.solicitacao().pacienteNome()).isEqualTo("Paciente Teste");
         assertThat(solicitacao.getStatus()).isEqualTo(StatusSolicitacao.RECEBENDO_PROPOSTAS);
+    }
+
+    @Test
+    void profissionalComCadastroEmAnaliseNaoEnviaProposta() {
+        profissional.setStatusValidacao(StatusValidacao.REPROVADO);
+        mockProfissional(profissional);
+
+        assertThatThrownBy(() -> service.enviar(USUARIO_PROFISSIONAL_ID, 50L, REQUEST))
+                .isInstanceOf(CadastroNaoValidadoException.class);
+        verify(propostaRepository, never()).save(any());
     }
 
     @Test
@@ -347,6 +359,7 @@ class PropostaServiceTest {
 
     private Profissional profissional(Long id, Long usuarioId, ModalidadeAtendimento modalidade) {
         return Profissional.builder()
+                .statusValidacao(StatusValidacao.APROVADO)
                 .id(id)
                 .usuario(Usuario.builder().id(usuarioId).nome("Profissional " + id).build())
                 .categoria(CategoriaProfissional.ENFERMEIRO)

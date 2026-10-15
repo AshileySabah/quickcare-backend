@@ -43,6 +43,12 @@ public class ArmazenamentoDocumentoService {
         return enviarParaPasta("avatares", arquivo);
     }
 
+    /** Evidência anexada pelo admin ao aprovar/reprovar uma etapa da validação cadastral. */
+    public String enviarAnexoValidacao(MultipartFile arquivo) {
+        validar(arquivo, TIPOS_ACEITOS, "Envie um arquivo PDF, JPG ou PNG.");
+        return enviarParaPasta("anexos-validacao", arquivo);
+    }
+
     private String enviarParaPasta(String pasta, MultipartFile arquivo) {
         String nomeArquivo = UUID.randomUUID() + extrairExtensao(arquivo.getOriginalFilename());
 

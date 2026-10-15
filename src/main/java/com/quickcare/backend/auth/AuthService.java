@@ -1,5 +1,6 @@
 package com.quickcare.backend.auth;
 
+import com.quickcare.backend.administrador.AdministradorRepository;
 import com.quickcare.backend.auth.dto.LoginRequest;
 import com.quickcare.backend.auth.dto.LoginResponse;
 import com.quickcare.backend.auth.dto.PerfilStatusResponse;
@@ -27,6 +28,7 @@ import java.util.List;
 public class AuthService {
 
     private final UsuarioRepository usuarioRepository;
+    private final AdministradorRepository administradorRepository;
     private final PacienteRepository pacienteRepository;
     private final ProfissionalRepository profissionalRepository;
     private final PasswordEncoder passwordEncoder;
@@ -59,10 +61,15 @@ public class AuthService {
 
     private LoginResponse montarResposta(Usuario usuario) {
         List<PerfilStatusResponse> perfis = new ArrayList<>();
+        if (administradorRepository.existsByUsuarioId(usuario.getId())) {
+            perfis.add(new PerfilStatusResponse("ADMIN", "ATIVO", null));
+        }
         pacienteRepository.findByUsuarioId(usuario.getId())
-                .ifPresent(paciente -> perfis.add(new PerfilStatusResponse("PACIENTE", paciente.isBanido() ? "BANIDO" : "ATIVO")));
+                .ifPresent(paciente -> perfis.add(new PerfilStatusResponse(
+                        "PACIENTE", paciente.isBanido() ? "BANIDO" : "ATIVO", paciente.getStatusValidacao())));
         profissionalRepository.findByUsuarioId(usuario.getId())
-                .ifPresent(profissional -> perfis.add(new PerfilStatusResponse("PROFISSIONAL", profissional.isBanido() ? "BANIDO" : "ATIVO")));
+                .ifPresent(profissional -> perfis.add(new PerfilStatusResponse(
+                        "PROFISSIONAL", profissional.isBanido() ? "BANIDO" : "ATIVO", profissional.getStatusValidacao())));
 
         String avatarUrl = usuario.getAvatarStorageKey() != null
                 ? armazenamentoDocumentoService.gerarUrlAssinada(usuario.getAvatarStorageKey())
