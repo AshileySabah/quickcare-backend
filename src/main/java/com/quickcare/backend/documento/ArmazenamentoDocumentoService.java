@@ -87,7 +87,7 @@ public class ArmazenamentoDocumentoService {
         try {
             SignedUrlResponse resposta = restClientBuilder.build()
                     .post()
-                    .uri(properties.url() + "/storage/v1/object/sign/{bucket}/{chave}", properties.bucket(), storageKey)
+                    .uri(properties.url() + "/storage/v1/object/sign/" + properties.bucket() + "/" + storageKey)
                     .header("Authorization", "Bearer " + properties.apiKey())
                     .header("apikey", properties.apiKey())
                     .contentType(MediaType.APPLICATION_JSON)
