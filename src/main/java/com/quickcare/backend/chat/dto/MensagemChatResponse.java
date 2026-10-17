@@ -9,16 +9,26 @@ public record MensagemChatResponse(
         Long remetenteId,
         Long destinatarioId,
         String conteudo,
-        Instant dataEnvio
+        Instant dataEnvio,
+        String anexoUrl,
+        String anexoNomeOriginal,
+        String anexoTipo
 ) {
 
-    public static MensagemChatResponse de(Mensagem mensagem) {
+    /**
+     * A URL do anexo é assinada e temporária, então é gerada pelo service a cada
+     * leitura e apenas repassada aqui.
+     */
+    public static MensagemChatResponse de(Mensagem mensagem, String anexoUrl) {
         return new MensagemChatResponse(
                 mensagem.getId(),
                 mensagem.getRemetenteId(),
                 mensagem.getDestinatarioId(),
                 mensagem.getConteudo(),
-                mensagem.getDataEnvio()
+                mensagem.getDataEnvio(),
+                anexoUrl,
+                mensagem.getAnexoNomeOriginal(),
+                mensagem.getAnexoTipo()
         );
     }
 

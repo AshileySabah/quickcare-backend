@@ -6,6 +6,7 @@ import com.quickcare.backend.cadastro.exception.CpfJaCadastradoException;
 import com.quickcare.backend.chat.exception.DestinatarioInvalidoException;
 import com.quickcare.backend.chat.exception.ExclusaoMensagemNaoAutorizadaException;
 import com.quickcare.backend.chat.exception.MensagemNaoEncontradaException;
+import com.quickcare.backend.chat.exception.MensagemVaziaException;
 import com.quickcare.backend.cadastro.exception.CredenciaisInvalidasException;
 import com.quickcare.backend.cadastro.exception.DocumentoIdentidadeInvalidoException;
 import com.quickcare.backend.cadastro.exception.DadosCadastraisConflitantesException;
@@ -149,8 +150,9 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleDestinatarioInvalido(DestinatarioInvalidoException ex) {
         return build(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
-    @ExceptionHandler(DocumentoIdentidadeInvalidoException.class)
-    public ResponseEntity<ApiError> handleDocumentoIdentidadeInvalido(DocumentoIdentidadeInvalidoException ex) {
+
+    @ExceptionHandler(MensagemVaziaException.class)
+    public ResponseEntity<ApiError> handleMensagemVazia(MensagemVaziaException ex) {
         return build(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 

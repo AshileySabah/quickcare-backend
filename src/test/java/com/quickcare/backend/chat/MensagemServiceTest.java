@@ -6,6 +6,8 @@ import com.quickcare.backend.chat.dto.MensagemExcluidaEvento;
 import com.quickcare.backend.chat.exception.DestinatarioInvalidoException;
 import com.quickcare.backend.chat.exception.ExclusaoMensagemNaoAutorizadaException;
 import com.quickcare.backend.chat.exception.MensagemNaoEncontradaException;
+import com.quickcare.backend.chat.exception.MensagemVaziaException;
+import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
 import com.quickcare.backend.usuario.UsuarioRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -13,6 +15,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.mock.web.MockMultipartFile;
 
 import java.util.List;
 import java.util.Optional;
@@ -23,6 +26,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
@@ -38,6 +42,9 @@ class MensagemServiceTest {
     @Mock
     private SimpMessagingTemplate messagingTemplate;
 
+    @Mock
+    private ArmazenamentoDocumentoService armazenamentoDocumentoService;
+
     @InjectMocks
     private MensagemService service;
 
@@ -46,19 +53,49 @@ class MensagemServiceTest {
         when(usuarioRepository.existsById(2L)).thenReturn(true);
         when(mensagemRepository.save(any(Mensagem.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        MensagemChatResponse response = service.enviar(1L, new EnviarMensagemRequest(2L, "Olá"));
+        MensagemChatResponse response = service.enviar(1L, new EnviarMensagemRequest(2L, "Olá"), null);
 
         assertThat(response.remetenteId()).isEqualTo(1L);
         assertThat(response.destinatarioId()).isEqualTo(2L);
         assertThat(response.conteudo()).isEqualTo("Olá");
+        assertThat(response.anexoUrl()).isNull();
         verify(messagingTemplate).convertAndSendToUser(
                 eq("2"), eq(MensagemService.FILA_MENSAGENS), any(MensagemChatResponse.class));
         verifyNoMoreInteractions(messagingTemplate);
+        verifyNoInteractions(armazenamentoDocumentoService);
+    }
+
+    @Test
+    void deveEnviarAnexoEEntregarComUrlAssinada() {
+        MockMultipartFile arquivo = new MockMultipartFile("arquivo", "exame.pdf", "application/pdf", new byte[]{1, 2, 3});
+        when(usuarioRepository.existsById(2L)).thenReturn(true);
+        when(armazenamentoDocumentoService.enviarAnexoChat(arquivo)).thenReturn("chat-anexos/abc.pdf");
+        when(armazenamentoDocumentoService.gerarUrlAssinada("chat-anexos/abc.pdf")).thenReturn("https://storage/assinada");
+        when(mensagemRepository.save(any(Mensagem.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        MensagemChatResponse response = service.enviar(1L, new EnviarMensagemRequest(2L, null), arquivo);
+
+        assertThat(response.conteudo()).isEmpty();
+        assertThat(response.anexoUrl()).isEqualTo("https://storage/assinada");
+        assertThat(response.anexoNomeOriginal()).isEqualTo("exame.pdf");
+        assertThat(response.anexoTipo()).isEqualTo("application/pdf");
+        verify(messagingTemplate).convertAndSendToUser(eq("2"), eq(MensagemService.FILA_MENSAGENS), eq(response));
+    }
+
+    @Test
+    void deveRejeitarMensagemSemTextoESemAnexo() {
+        when(usuarioRepository.existsById(2L)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.enviar(1L, new EnviarMensagemRequest(2L, "   "), null))
+                .isInstanceOf(MensagemVaziaException.class);
+
+        verify(mensagemRepository, never()).save(any());
+        verifyNoInteractions(armazenamentoDocumentoService);
     }
 
     @Test
     void deveRejeitarEnvioParaSiMesmo() {
-        assertThatThrownBy(() -> service.enviar(1L, new EnviarMensagemRequest(1L, "Olá")))
+        assertThatThrownBy(() -> service.enviar(1L, new EnviarMensagemRequest(1L, "Olá"), null))
                 .isInstanceOf(DestinatarioInvalidoException.class);
 
         verify(mensagemRepository, never()).save(any());
@@ -68,7 +105,7 @@ class MensagemServiceTest {
     void deveRejeitarDestinatarioInexistente() {
         when(usuarioRepository.existsById(99L)).thenReturn(false);
 
-        assertThatThrownBy(() -> service.enviar(1L, new EnviarMensagemRequest(99L, "Olá")))
+        assertThatThrownBy(() -> service.enviar(1L, new EnviarMensagemRequest(99L, "Olá"), null))
                 .isInstanceOf(DestinatarioInvalidoException.class);
 
         verify(mensagemRepository, never()).save(any());
@@ -82,6 +119,21 @@ class MensagemServiceTest {
         List<MensagemChatResponse> resultado = service.listar(1L);
 
         assertThat(resultado).extracting(MensagemChatResponse::conteudo).containsExactly("Oi", "Olá");
+    }
+
+    @Test
+    void deveGerarUrlAssinadaAoListarMensagemComAnexo() {
+        Mensagem comAnexo = new Mensagem(1L, 2L, "");
+        comAnexo.anexar("chat-anexos/foto.png", "foto.png", "image/png");
+        when(mensagemRepository.findMensagensAtivasPorUsuario(1L))
+                .thenReturn(List.of(new Mensagem(1L, 2L, "Oi"), comAnexo));
+        when(armazenamentoDocumentoService.gerarUrlAssinada("chat-anexos/foto.png")).thenReturn("https://storage/foto");
+
+        List<MensagemChatResponse> resultado = service.listar(1L);
+
+        assertThat(resultado).extracting(MensagemChatResponse::anexoUrl).containsExactly(null, "https://storage/foto");
+        verify(armazenamentoDocumentoService).gerarUrlAssinada("chat-anexos/foto.png");
+        verifyNoMoreInteractions(armazenamentoDocumentoService);
     }
 
     @Test

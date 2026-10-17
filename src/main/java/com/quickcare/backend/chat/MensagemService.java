@@ -6,11 +6,14 @@ import com.quickcare.backend.chat.dto.MensagemExcluidaEvento;
 import com.quickcare.backend.chat.exception.DestinatarioInvalidoException;
 import com.quickcare.backend.chat.exception.ExclusaoMensagemNaoAutorizadaException;
 import com.quickcare.backend.chat.exception.MensagemNaoEncontradaException;
+import com.quickcare.backend.chat.exception.MensagemVaziaException;
+import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
 import com.quickcare.backend.usuario.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -27,9 +30,10 @@ public class MensagemService {
     private final MensagemRepository mensagemRepository;
     private final UsuarioRepository usuarioRepository;
     private final SimpMessagingTemplate messagingTemplate;
+    private final ArmazenamentoDocumentoService armazenamentoDocumentoService;
 
     @Transactional
-    public MensagemChatResponse enviar(Long remetenteId, EnviarMensagemRequest request) {
+    public MensagemChatResponse enviar(Long remetenteId, EnviarMensagemRequest request, MultipartFile arquivo) {
         if (request.destinatarioId().equals(remetenteId)) {
             throw new DestinatarioInvalidoException("Não é possível enviar mensagem para si mesmo.");
         }
@@ -37,9 +41,19 @@ public class MensagemService {
             throw new DestinatarioInvalidoException("Destinatário não encontrado.");
         }
 
-        Mensagem mensagem = mensagemRepository.save(
-                new Mensagem(remetenteId, request.destinatarioId(), request.conteudo()));
-        MensagemChatResponse response = MensagemChatResponse.de(mensagem);
+        boolean possuiArquivo = arquivo != null && !arquivo.isEmpty();
+        String conteudo = request.conteudo() == null ? "" : request.conteudo().trim();
+        if (conteudo.isEmpty() && !possuiArquivo) {
+            throw new MensagemVaziaException();
+        }
+
+        Mensagem mensagem = new Mensagem(remetenteId, request.destinatarioId(), conteudo);
+        if (possuiArquivo) {
+            String storageKey = armazenamentoDocumentoService.enviarAnexoChat(arquivo);
+            mensagem.anexar(storageKey, arquivo.getOriginalFilename(), arquivo.getContentType());
+        }
+
+        MensagemChatResponse response = paraResponse(mensagemRepository.save(mensagem));
 
         messagingTemplate.convertAndSendToUser(String.valueOf(request.destinatarioId()), FILA_MENSAGENS, response);
 
@@ -49,7 +63,7 @@ public class MensagemService {
     @Transactional(readOnly = true)
     public List<MensagemChatResponse> listar(Long usuarioId) {
         return mensagemRepository.findMensagensAtivasPorUsuario(usuarioId).stream()
-                .map(MensagemChatResponse::de)
+                .map(this::paraResponse)
                 .toList();
     }
 
@@ -69,6 +83,14 @@ public class MensagemService {
                 String.valueOf(mensagem.getDestinatarioId()),
                 FILA_MENSAGENS,
                 MensagemExcluidaEvento.de(mensagem.getId()));
+    }
+
+    /** A URL do anexo é assinada e expira, por isso é gerada a cada leitura. */
+    private MensagemChatResponse paraResponse(Mensagem mensagem) {
+        String anexoUrl = mensagem.possuiAnexo()
+                ? armazenamentoDocumentoService.gerarUrlAssinada(mensagem.getAnexoStorageKey())
+                : null;
+        return MensagemChatResponse.de(mensagem, anexoUrl);
     }
 
 }

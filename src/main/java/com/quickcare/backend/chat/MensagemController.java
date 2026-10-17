@@ -4,15 +4,17 @@ import com.quickcare.backend.chat.dto.EnviarMensagemRequest;
 import com.quickcare.backend.chat.dto.MensagemChatResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -27,12 +29,13 @@ public class MensagemController {
 
     private final MensagemService mensagemService;
 
-    @PostMapping
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public MensagemChatResponse enviar(
             @AuthenticationPrincipal Long usuarioId,
-            @Valid @RequestBody EnviarMensagemRequest request
+            @Valid @RequestPart("dados") EnviarMensagemRequest request,
+            @RequestPart(value = "arquivo", required = false) MultipartFile arquivo
     ) {
-        return mensagemService.enviar(usuarioId, request);
+        return mensagemService.enviar(usuarioId, request, arquivo);
     }
 
     @GetMapping

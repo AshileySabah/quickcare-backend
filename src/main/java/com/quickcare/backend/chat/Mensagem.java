@@ -43,11 +43,30 @@ public class Mensagem {
     @Column(nullable = false)
     private boolean ativo;
 
+    @Column(name = "anexo_storage_key")
+    private String anexoStorageKey;
+
+    @Column(name = "anexo_nome_original")
+    private String anexoNomeOriginal;
+
+    @Column(name = "anexo_tipo", length = 100)
+    private String anexoTipo;
+
     public Mensagem(Long remetenteId, Long destinatarioId, String conteudo) {
         this.remetenteId = remetenteId;
         this.destinatarioId = destinatarioId;
         this.conteudo = conteudo;
         this.ativo = true;
+    }
+
+    public void anexar(String storageKey, String nomeOriginal, String tipo) {
+        this.anexoStorageKey = storageKey;
+        this.anexoNomeOriginal = nomeOriginal;
+        this.anexoTipo = tipo;
+    }
+
+    public boolean possuiAnexo() {
+        return anexoStorageKey != null;
     }
 
     @PrePersist
