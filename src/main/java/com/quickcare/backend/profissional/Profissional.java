@@ -2,9 +2,12 @@ package com.quickcare.backend.profissional;
 
 import com.quickcare.backend.especialidade.CategoriaProfissional;
 import com.quickcare.backend.especialidade.Especialidade;
+import com.quickcare.backend.geolocalizacao.Coordenadas;
+import com.quickcare.backend.geolocalizacao.EnderecoGeocodificavel;
 import com.quickcare.backend.usuario.ContatoEmergencia;
 import com.quickcare.backend.usuario.Genero;
 import com.quickcare.backend.usuario.Usuario;
+import com.quickcare.backend.validacao.StatusValidacao;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
@@ -54,6 +57,11 @@ public class Profissional {
 
     @Column(nullable = false)
     private boolean banido;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status_validacao", nullable = false, length = 20)
+    @Builder.Default
+    private StatusValidacao statusValidacao = StatusValidacao.PENDENTE;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -138,6 +146,16 @@ public class Profissional {
         if (criadoEm == null) {
             criadoEm = Instant.now();
         }
+    }
+
+    public EnderecoGeocodificavel endereco() {
+        return new EnderecoGeocodificavel(cep, logradouro, numero, cidade, uf);
+    }
+
+    /** null limpa as coordenadas antigas quando o novo endereço não foi encontrado. */
+    public void definirCoordenadas(Coordenadas coordenadas) {
+        latitude = coordenadas == null ? null : coordenadas.latitude();
+        longitude = coordenadas == null ? null : coordenadas.longitude();
     }
 
 }

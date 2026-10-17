@@ -1,8 +1,11 @@
 package com.quickcare.backend.cadastro.dto;
 
+import com.quickcare.backend.common.validation.Cnpj;
+import com.quickcare.backend.common.validation.Cpf;
 import com.quickcare.backend.especialidade.CategoriaProfissional;
 import com.quickcare.backend.profissional.ModalidadeAtendimento;
 import com.quickcare.backend.usuario.Genero;
+import com.quickcare.backend.usuario.TipoDocumentoIdentidade;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Email;
@@ -23,9 +26,12 @@ public record CadastroProfissionalRequest(
         @NotBlank String nome,
         @NotBlank @Email String email,
         @NotBlank @SenhaForte String senha,
-        @NotBlank @Pattern(regexp = "\\d{11}") String cpf,
+        @NotBlank @Pattern(regexp = "\\d{11}") @Cpf String cpf,
         String telefone,
-        @Pattern(regexp = "\\d{14}") String cnpj,
+        @NotNull TipoDocumentoIdentidade documentoIdentidadeTipo,
+        @NotBlank @Size(max = 20) String documentoIdentidadeNumero,
+        @Pattern(regexp = "(?i)^[a-z]{2}$") String documentoIdentidadeUf,
+        @Pattern(regexp = "\\d{14}") @Cnpj String cnpj,
         @NotNull CategoriaProfissional categoria,
         @NotEmpty List<Long> especialidadeIds,
         String registroProfissional,

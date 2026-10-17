@@ -3,6 +3,7 @@ package com.quickcare.backend.paciente;
 import com.quickcare.backend.usuario.ContatoEmergencia;
 import com.quickcare.backend.usuario.Genero;
 import com.quickcare.backend.usuario.Usuario;
+import com.quickcare.backend.validacao.StatusValidacao;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
@@ -47,6 +48,11 @@ public class Paciente {
 
     @Column(nullable = false)
     private boolean banido;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status_validacao", nullable = false, length = 20)
+    @Builder.Default
+    private StatusValidacao statusValidacao = StatusValidacao.PENDENTE;
 
     @Column(name = "data_nascimento", nullable = false)
     private LocalDate dataNascimento;

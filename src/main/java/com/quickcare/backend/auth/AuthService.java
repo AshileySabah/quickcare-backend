@@ -1,5 +1,6 @@
 package com.quickcare.backend.auth;
 
+import com.quickcare.backend.administrador.AdministradorRepository;
 import com.quickcare.backend.auth.dto.LoginRequest;
 import com.quickcare.backend.auth.dto.LoginResponse;
 import com.quickcare.backend.auth.dto.PerfilStatusResponse;
@@ -27,6 +28,7 @@ import java.util.List;
 public class AuthService {
 
     private final UsuarioRepository usuarioRepository;
+    private final AdministradorRepository administradorRepository;
     private final PacienteRepository pacienteRepository;
     private final ProfissionalRepository profissionalRepository;
     private final PasswordEncoder passwordEncoder;
@@ -46,17 +48,35 @@ public class AuthService {
     }
 
     LoginResult iniciarSessao(Usuario usuario) {
+        return new LoginResult(montarResposta(usuario), jwtService.gerarAccessToken(usuario), jwtService.gerarRefreshToken(usuario));
+    }
+
+    /** Dados da sessão do usuário já autenticado pelo cookie — usado pelo front ao recarregar a página. */
+    @Transactional(readOnly = true)
+    public LoginResponse sessaoAtual(Long usuarioId) {
+        Usuario usuario = usuarioRepository.findById(usuarioId)
+                .orElseThrow(TokenInvalidoException::new);
+        return montarResposta(usuario);
+    }
+
+    private LoginResponse montarResposta(Usuario usuario) {
         List<PerfilStatusResponse> perfis = new ArrayList<>();
+        if (administradorRepository.existsByUsuarioId(usuario.getId())) {
+            perfis.add(new PerfilStatusResponse("ADMIN", "ATIVO", null));
+        }
         pacienteRepository.findByUsuarioId(usuario.getId())
-                .ifPresent(paciente -> perfis.add(new PerfilStatusResponse("PACIENTE", paciente.isBanido() ? "BANIDO" : "ATIVO")));
+                .ifPresent(paciente -> perfis.add(new PerfilStatusResponse(
+                        "PACIENTE", paciente.isBanido() ? "BANIDO" : "ATIVO", paciente.getStatusValidacao())));
+
         String categoria = null;
         List<Long> especialidadeIds = new ArrayList<>();
 
         var optProfissional = profissionalRepository.findByUsuarioId(usuario.getId());
         if (optProfissional.isPresent()) {
             var profissional = optProfissional.get();
-            perfis.add(new PerfilStatusResponse("PROFISSIONAL", profissional.isBanido() ? "BANIDO" : "ATIVO"));
-            
+            perfis.add(new PerfilStatusResponse(
+                    "PROFISSIONAL", profissional.isBanido() ? "BANIDO" : "ATIVO", profissional.getStatusValidacao()));
+
             categoria = profissional.getCategoria().name();
             especialidadeIds = profissional.getEspecialidades().stream()
                     .map(com.quickcare.backend.especialidade.Especialidade::getId)
@@ -67,8 +87,7 @@ public class AuthService {
                 ? armazenamentoDocumentoService.gerarUrlAssinada(usuario.getAvatarStorageKey())
                 : null;
 
-        LoginResponse response = new LoginResponse(usuario.getId(), usuario.getNome(), usuario.getEmail(), avatarUrl, perfis, categoria, especialidadeIds);
-        return new LoginResult(response, jwtService.gerarAccessToken(usuario), jwtService.gerarRefreshToken(usuario));
+        return new LoginResponse(usuario.getId(), usuario.getNome(), usuario.getEmail(), avatarUrl, perfis, categoria, especialidadeIds);
     }
 
     @Transactional(readOnly = true)

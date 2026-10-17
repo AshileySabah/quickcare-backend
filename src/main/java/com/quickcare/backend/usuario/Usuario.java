@@ -2,6 +2,8 @@ package com.quickcare.backend.usuario;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -41,6 +43,16 @@ public class Usuario {
     private String cpf;
 
     private String telefone;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "documento_identidade_tipo", length = 10)
+    private TipoDocumentoIdentidade documentoIdentidadeTipo;
+
+    @Column(name = "documento_identidade_numero", length = 20)
+    private String documentoIdentidadeNumero;
+
+    @Column(name = "documento_identidade_uf", length = 2)
+    private String documentoIdentidadeUf;
 
     @Column(name = "avatar_storage_key")
     private String avatarStorageKey;

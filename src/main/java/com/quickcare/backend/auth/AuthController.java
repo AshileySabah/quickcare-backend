@@ -7,7 +7,9 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.CookieValue;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -29,6 +31,11 @@ public class AuthController {
                 .header(HttpHeaders.SET_COOKIE, authCookies.accessToken(resultado.accessToken()).toString())
                 .header(HttpHeaders.SET_COOKIE, authCookies.refreshToken(resultado.refreshToken()).toString())
                 .body(resultado.response());
+    }
+
+    @GetMapping("/me")
+    public LoginResponse me(@AuthenticationPrincipal Long usuarioId) {
+        return authService.sessaoAtual(usuarioId);
     }
 
     @PostMapping("/refresh")

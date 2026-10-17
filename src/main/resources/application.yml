@@ -36,6 +36,17 @@ quickcare:
   frontend-url: ${FRONTEND_URL:http://localhost:4200}
   email:
     brevo-api-key: ${BREVO_API_KEY:}
+  geocodificacao:
+    habilitada: ${GEOCODIFICACAO_HABILITADA:true}
+    url: ${GEOCODIFICACAO_URL:https://nominatim.openstreetmap.org}
+    user-agent: ${GEOCODIFICACAO_USER_AGENT:QuickCare/1.0 (TCC Fatec)}
+  validacao-externa:
+    timeout-segundos: ${VALIDACAO_EXTERNA_TIMEOUT_SEGUNDOS:8}
+    cpf:
+      url: ${SERPRO_CPF_URL:https://gateway.apiserpro.serpro.gov.br/consulta-cpf-df-trial/v1}
+      token: ${SERPRO_CPF_TOKEN:06aef429-a981-3ec5-a1f8-71d38d86481e}
+    cnpj:
+      url: ${BRASILAPI_URL:https://brasilapi.com.br/api}
   jwt:
     secret: ${JWT_SECRET:dev-only-secret-key-please-override-in-prod-0123456789abcdef}
     access-token-expiration-minutes: 15

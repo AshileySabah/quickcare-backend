@@ -18,10 +18,12 @@ public record SolicitacaoResponse(
         LocalDate prazoDesejado,
         StatusSolicitacao status,
         Instant criadoEm,
-        Instant atualizadoEm
+        Instant atualizadoEm,
+        long totalPropostas
 ) {
 
-    public static SolicitacaoResponse de(Solicitacao solicitacao) {
+    /** {@code totalPropostas}: propostas não canceladas recebidas. */
+    public static SolicitacaoResponse de(Solicitacao solicitacao, long totalPropostas) {
         EnderecoSolicitacaoResponse endereco = solicitacao.getModalidade() == ModalidadeSolicitacao.PRESENCIAL
                 ? new EnderecoSolicitacaoResponse(
                         solicitacao.getCep(),
@@ -43,7 +45,8 @@ public record SolicitacaoResponse(
                 solicitacao.getPrazoDesejado(),
                 solicitacao.getStatus(),
                 solicitacao.getCriadoEm(),
-                solicitacao.getAtualizadoEm()
+                solicitacao.getAtualizadoEm(),
+                totalPropostas
         );
     }
 

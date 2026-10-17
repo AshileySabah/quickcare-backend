@@ -3,6 +3,7 @@ package com.quickcare.backend.perfil;
 import com.quickcare.backend.cadastro.dto.ContatoEmergenciaRequest;
 import com.quickcare.backend.cadastro.exception.RaioAtendimentoObrigatorioException;
 import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
+import com.quickcare.backend.geolocalizacao.GeocodificacaoService;
 import com.quickcare.backend.paciente.Paciente;
 import com.quickcare.backend.paciente.PacienteRepository;
 import com.quickcare.backend.perfil.dto.AtualizarPerfilPacienteRequest;
@@ -30,6 +31,7 @@ public class PerfilService {
     private final PacienteRepository pacienteRepository;
     private final ProfissionalRepository profissionalRepository;
     private final ArmazenamentoDocumentoService armazenamentoDocumentoService;
+    private final GeocodificacaoService geocodificacaoService;
 
     @Transactional(readOnly = true)
     public PerfilPacienteResponse buscarPaciente(Long usuarioId) {
@@ -88,6 +90,7 @@ public class PerfilService {
         profissional.setBairro(request.bairro());
         profissional.setCidade(request.cidade());
         profissional.setUf(request.uf().toUpperCase());
+        profissional.definirCoordenadas(geocodificacaoService.geocodificar(profissional.endereco()).orElse(null));
 
         return paraResponse(profissional);
     }
