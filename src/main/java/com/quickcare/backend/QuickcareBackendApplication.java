@@ -1,5 +1,6 @@
 package com.quickcare.backend;
 
+import com.quickcare.backend.administrador.AdministradorInicialProperties;
 import com.quickcare.backend.geolocalizacao.GeocodificacaoProperties;
 import com.quickcare.backend.jwt.JwtProperties;
 import com.quickcare.backend.storage.SupabaseStorageProperties;
@@ -12,7 +13,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
 @SpringBootApplication
 @EnableAsync
 @EnableConfigurationProperties({JwtProperties.class, SupabaseStorageProperties.class, GeocodificacaoProperties.class,
-        ValidacaoExternaProperties.class})
+        ValidacaoExternaProperties.class, AdministradorInicialProperties.class})
 public class QuickcareBackendApplication {
 
     public static void main(String[] args) {

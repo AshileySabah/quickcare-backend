@@ -40,6 +40,11 @@ quickcare:
     habilitada: ${GEOCODIFICACAO_HABILITADA:true}
     url: ${GEOCODIFICACAO_URL:https://nominatim.openstreetmap.org}
     user-agent: ${GEOCODIFICACAO_USER_AGENT:QuickCare/1.0 (TCC Fatec)}
+  admin-inicial:
+    email: ${ADMIN_EMAIL:}
+    senha: ${ADMIN_SENHA:}
+    nome: ${ADMIN_NOME:Administrador}
+    cpf: ${ADMIN_CPF:}
   validacao-externa:
     timeout-segundos: ${VALIDACAO_EXTERNA_TIMEOUT_SEGUNDOS:8}
     cpf:
