@@ -38,6 +38,10 @@ services:
       EMAIL_APP_PASSWORD: ${EMAIL_APP_PASSWORD:-}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:4200}
       BREVO_API_KEY: ${BREVO_API_KEY:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_SENHA: ${ADMIN_SENHA:-}
+      ADMIN_NOME: ${ADMIN_NOME:-}
+      ADMIN_CPF: ${ADMIN_CPF:-}
     ports:
       - "8080:8080"
     healthcheck:
