@@ -10,6 +10,8 @@ import com.quickcare.backend.jwt.JwtService;
 import com.quickcare.backend.jwt.TokenInvalidoException;
 import com.quickcare.backend.paciente.PacienteRepository;
 import com.quickcare.backend.profissional.ProfissionalRepository;
+import com.quickcare.backend.solicitacao.exception.PerfilNaoAutorizadoException;
+import com.quickcare.backend.usuario.TipoPerfil;
 import com.quickcare.backend.usuario.Usuario;
 import com.quickcare.backend.usuario.UsuarioRepository;
 import io.jsonwebtoken.Claims;
@@ -75,7 +77,27 @@ public class AuthService {
                 ? armazenamentoDocumentoService.gerarUrlAssinada(usuario.getAvatarStorageKey())
                 : null;
 
-        return new LoginResponse(usuario.getId(), usuario.getNome(), usuario.getEmail(), avatarUrl, perfis);
+        return new LoginResponse(usuario.getId(), usuario.getNome(), usuario.getEmail(), avatarUrl, perfis,
+                usuario.getUltimoPerfil());
+    }
+
+    /** Guarda o perfil escolhido no seletor; só vale para um perfil que o usuário tem e que está ativo. */
+    @Transactional
+    public LoginResponse definirPerfilAtivo(Long usuarioId, TipoPerfil perfil) {
+        Usuario usuario = usuarioRepository.findById(usuarioId)
+                .orElseThrow(TokenInvalidoException::new);
+
+        boolean ativo = switch (perfil) {
+            case PACIENTE -> pacienteRepository.findByUsuarioId(usuarioId).filter(p -> !p.isBanido()).isPresent();
+            case PROFISSIONAL -> profissionalRepository.findByUsuarioId(usuarioId).filter(p -> !p.isBanido()).isPresent();
+        };
+        if (!ativo) {
+            throw new PerfilNaoAutorizadoException("Você não tem um perfil ativo de "
+                    + (perfil == TipoPerfil.PACIENTE ? "paciente." : "profissional."));
+        }
+
+        usuario.setUltimoPerfil(perfil);
+        return montarResposta(usuario);
     }
 
     @Transactional(readOnly = true)

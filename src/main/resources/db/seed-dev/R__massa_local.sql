@@ -6,6 +6,7 @@
 -- Login do paciente:     paciente@quickcare.dev / Senha@123
 -- Login do profissional: profissional@quickcare.dev / Senha@123
 -- Login do admin:        admin@quickcare.dev / Senha@123
+-- Paciente e profissional (alternância de perfil): ambos@quickcare.dev / Senha@123
 --
 -- Cadastros aguardando validação (mesma senha), com CPFs do ambiente de
 -- demonstração da Serpro para testar a pré-validação do admin:
@@ -134,6 +135,41 @@ SET status_validacao = 'APROVADO'
 FROM usuario u
 WHERE u.id = p.usuario_id AND u.email = 'profissional@quickcare.dev'
   AND NOT EXISTS (SELECT 1 FROM etapa_validacao e WHERE e.profissional_id = p.id);
+
+-- Usuário com os dois perfis aprovados, para testar a alternância de perfil.
+INSERT INTO usuario (nome, email, senha_hash, cpf, telefone,
+                     documento_identidade_tipo, documento_identidade_numero, documento_identidade_uf)
+VALUES ('Ana Duplo Perfil', 'ambos@quickcare.dev',
+        '$2a$10$ZgmQejKpnZ53yyHq49/Ey.D/MF1qIcHNerLZC7U1L2sh.ZS6xV3aq', -- BCrypt de "Senha@123"
+        '39053344705', '11977776666', 'RG', '246781312', 'SP')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO paciente (usuario_id, status_validacao, data_nascimento, genero, confirmacao_informacoes_verdadeiras,
+                      consentimento_lgpd, cep, logradouro, numero, bairro, cidade, uf)
+SELECT id, 'APROVADO', DATE '1985-07-02', 'FEMININO', TRUE, TRUE,
+       '01310100', 'Avenida Paulista', '1500', 'Bela Vista', 'São Paulo', 'SP'
+FROM usuario
+WHERE email = 'ambos@quickcare.dev'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO profissional (usuario_id, status_validacao, categoria, data_nascimento, genero,
+                          confirmacao_informacoes_verdadeiras, consentimento_lgpd, possui_seguro_responsabilidade_civil,
+                          modalidade_atendimento, raio_atendimento_km, cep, logradouro, numero, bairro, cidade, uf,
+                          latitude, longitude)
+SELECT id, 'APROVADO', 'CUIDADOR', DATE '1985-07-02', 'FEMININO', TRUE, TRUE, FALSE,
+       'PRESENCIAL', 10, '01310100', 'Avenida Paulista', '1500', 'Bela Vista', 'São Paulo', 'SP',
+       -23.561400, -46.655900
+FROM usuario
+WHERE email = 'ambos@quickcare.dev'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO profissional_especialidade (profissional_id, especialidade_id)
+SELECT p.id, e.id
+FROM profissional p
+JOIN usuario u ON u.id = p.usuario_id
+JOIN especialidade e ON e.nome = 'Cuidador de Idosos'
+WHERE u.email = 'ambos@quickcare.dev'
+ON CONFLICT DO NOTHING;
 
 -- Admin
 INSERT INTO usuario (nome, email, senha_hash, cpf)

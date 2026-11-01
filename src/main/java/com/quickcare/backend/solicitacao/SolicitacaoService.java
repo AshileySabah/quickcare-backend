@@ -101,8 +101,12 @@ public class SolicitacaoService {
                 ModalidadeSolicitacao.atendidasPor(profissional.getModalidadeAtendimento()),
                 StatusSolicitacao.RECEBENDO_PROPOSTAS_STATUS);
 
-        // A distância até o endereço presencial é conferida na entidade.
-        return responder(candidatas.stream().filter(solicitacao -> solicitacao.atendidaPor(profissional)).toList());
+        // A distância até o endereço presencial é conferida na entidade. Quem
+        // também é paciente não vê as próprias solicitações.
+        return responder(candidatas.stream()
+                .filter(solicitacao -> !solicitacao.ehDoUsuario(usuarioId))
+                .filter(solicitacao -> solicitacao.atendidaPor(profissional))
+                .toList());
     }
 
     /**

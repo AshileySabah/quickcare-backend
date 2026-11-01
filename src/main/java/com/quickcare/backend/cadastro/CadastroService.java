@@ -1,9 +1,12 @@
 package com.quickcare.backend.cadastro;
 
+import com.quickcare.backend.administrador.AdministradorRepository;
 import com.quickcare.backend.cadastro.dto.CadastroPacienteRequest;
 import com.quickcare.backend.cadastro.dto.CadastroProfissionalRequest;
 import com.quickcare.backend.cadastro.dto.CadastroResponse;
 import com.quickcare.backend.cadastro.dto.ContatoEmergenciaRequest;
+import com.quickcare.backend.cadastro.dto.NovoPerfilPacienteRequest;
+import com.quickcare.backend.cadastro.dto.NovoPerfilProfissionalRequest;
 import com.quickcare.backend.cadastro.exception.CpfJaCadastradoException;
 import com.quickcare.backend.cadastro.exception.CredenciaisInvalidasException;
 import com.quickcare.backend.cadastro.exception.DadosCadastraisConflitantesException;
@@ -22,12 +25,15 @@ import com.quickcare.backend.especialidade.CategoriaProfissional;
 import com.quickcare.backend.especialidade.Especialidade;
 import com.quickcare.backend.especialidade.EspecialidadeRepository;
 import com.quickcare.backend.geolocalizacao.GeocodificacaoService;
+import com.quickcare.backend.jwt.TokenInvalidoException;
 import com.quickcare.backend.paciente.Paciente;
 import com.quickcare.backend.paciente.PacienteRepository;
 import com.quickcare.backend.profissional.ModalidadeAtendimento;
 import com.quickcare.backend.profissional.Profissional;
 import com.quickcare.backend.profissional.ProfissionalRepository;
+import com.quickcare.backend.solicitacao.exception.PerfilNaoAutorizadoException;
 import com.quickcare.backend.usuario.ContatoEmergencia;
+import com.quickcare.backend.usuario.TipoPerfil;
 import com.quickcare.backend.usuario.Usuario;
 import com.quickcare.backend.usuario.UsuarioRepository;
 import com.quickcare.backend.validacao.ValidacaoService;
@@ -60,6 +66,7 @@ public class CadastroService {
     private final PasswordEncoder passwordEncoder;
     private final GeocodificacaoService geocodificacaoService;
     private final ValidacaoService validacaoService;
+    private final AdministradorRepository administradorRepository;
 
     @Transactional
     public CadastroResponse cadastrarPaciente(
@@ -69,16 +76,77 @@ public class CadastroService {
             MultipartFile avatar
     ) {
         List<DocumentoParaSalvar> documentosValidados = validarDocumentos(documentos, tiposDocumento);
-
-        if (documentosValidados.stream().noneMatch(doc -> doc.tipo() == TipoDocumento.VALIDACAO_CPF)) {
-            throw new DocumentoObrigatorioException("Envie um documento que valide seu CPF.");
-        }
+        exigirDocumentoCpf(documentosValidados);
 
         DocumentoIdentidade identidade = DocumentoIdentidade.validar(
                 request.documentoIdentidadeTipo(), request.documentoIdentidadeNumero(), request.documentoIdentidadeUf());
 
         Usuario usuario = resolverUsuario(request.nome(), request.email(), request.senha(), request.cpf(), request.telefone(), identidade, avatar);
 
+        return criarPaciente(usuario, request.perfil(), documentosValidados);
+    }
+
+    @Transactional
+    public CadastroResponse cadastrarProfissional(
+            CadastroProfissionalRequest request,
+            List<MultipartFile> documentos,
+            List<TipoDocumento> tiposDocumento,
+            MultipartFile avatar
+    ) {
+        List<DocumentoParaSalvar> documentosValidados = validarDocumentos(documentos, tiposDocumento);
+        exigirDocumentosDoProfissional(request.perfil(), documentosValidados);
+
+        DocumentoIdentidade identidade = DocumentoIdentidade.validar(
+                request.documentoIdentidadeTipo(), request.documentoIdentidadeNumero(), request.documentoIdentidadeUf());
+
+        Usuario usuario = resolverUsuario(request.nome(), request.email(), request.senha(), request.cpf(), request.telefone(), identidade, avatar);
+
+        return criarProfissional(usuario, request.perfil(), documentosValidados);
+    }
+
+    /**
+     * Quem já está logado cria o outro perfil sem refazer a conta. O perfil novo
+     * passa pela validação completa, inclusive a identidade, mesmo que ela já
+     * tenha sido aprovada no outro perfil.
+     */
+    @Transactional
+    public CadastroResponse criarPerfilPaciente(
+            Long usuarioId,
+            NovoPerfilPacienteRequest request,
+            List<MultipartFile> documentos,
+            List<TipoDocumento> tiposDocumento
+    ) {
+        Usuario usuario = buscarUsuarioQuePodeTerOutroPerfil(usuarioId);
+        List<DocumentoParaSalvar> documentosValidados = validarDocumentos(documentos, tiposDocumento);
+        exigirDocumentoCpf(documentosValidados);
+
+        return criarPaciente(usuario, request, documentosValidados);
+    }
+
+    @Transactional
+    public CadastroResponse criarPerfilProfissional(
+            Long usuarioId,
+            NovoPerfilProfissionalRequest request,
+            List<MultipartFile> documentos,
+            List<TipoDocumento> tiposDocumento
+    ) {
+        Usuario usuario = buscarUsuarioQuePodeTerOutroPerfil(usuarioId);
+        List<DocumentoParaSalvar> documentosValidados = validarDocumentos(documentos, tiposDocumento);
+        exigirDocumentosDoProfissional(request, documentosValidados);
+
+        return criarProfissional(usuario, request, documentosValidados);
+    }
+
+    private Usuario buscarUsuarioQuePodeTerOutroPerfil(Long usuarioId) {
+        if (administradorRepository.existsByUsuarioId(usuarioId)) {
+            throw new PerfilNaoAutorizadoException("Administradores não podem ter perfil de paciente ou profissional.");
+        }
+        return usuarioRepository.findById(usuarioId).orElseThrow(TokenInvalidoException::new);
+    }
+
+    /** O perfil recém-criado passa a ser o ativo, para a pessoa já cair nele. */
+    private CadastroResponse criarPaciente(Usuario usuario, NovoPerfilPacienteRequest request,
+                                           List<DocumentoParaSalvar> documentosValidados) {
         if (pacienteRepository.existsByUsuarioId(usuario.getId())) {
             throw new PerfilJaExistenteException("paciente");
         }
@@ -106,39 +174,18 @@ public class CadastroService {
         );
 
         validacaoService.iniciar(paciente, salvarDocumentos(documentosValidados, paciente, null));
+        usuario.setUltimoPerfil(TipoPerfil.PACIENTE);
 
         return new CadastroResponse(usuario.getId(), paciente.getId(), usuario.getNome(), usuario.getEmail(), "PACIENTE");
     }
 
-    @Transactional
-    public CadastroResponse cadastrarProfissional(
-            CadastroProfissionalRequest request,
-            List<MultipartFile> documentos,
-            List<TipoDocumento> tiposDocumento,
-            MultipartFile avatar
-    ) {
-        List<DocumentoParaSalvar> documentosValidados = validarDocumentos(documentos, tiposDocumento);
-
-        boolean temCnpj = request.cnpj() != null && !request.cnpj().isBlank();
-        boolean registroObrigatorio = request.categoria() != CategoriaProfissional.CUIDADOR;
-
-        if (documentosValidados.stream().noneMatch(doc -> doc.tipo() == TipoDocumento.VALIDACAO_CPF)) {
-            throw new DocumentoObrigatorioException("Envie um documento que valide seu CPF.");
-        }
-
-        if (temCnpj && documentosValidados.stream().noneMatch(doc -> doc.tipo() == TipoDocumento.VALIDACAO_CNPJ)) {
-            throw new DocumentoObrigatorioException("Envie um documento que valide o CNPJ informado.");
-        }
-
-        DocumentoIdentidade identidade = DocumentoIdentidade.validar(
-                request.documentoIdentidadeTipo(), request.documentoIdentidadeNumero(), request.documentoIdentidadeUf());
-
-        Usuario usuario = resolverUsuario(request.nome(), request.email(), request.senha(), request.cpf(), request.telefone(), identidade, avatar);
-
+    private CadastroResponse criarProfissional(Usuario usuario, NovoPerfilProfissionalRequest request,
+                                               List<DocumentoParaSalvar> documentosValidados) {
         if (profissionalRepository.existsByUsuarioId(usuario.getId())) {
             throw new PerfilJaExistenteException("profissional");
         }
 
+        boolean registroObrigatorio = registroObrigatorio(request);
         List<Long> especialidadeIds = request.especialidadeIds();
 
         Map<Long, Especialidade> especialidadesPorId = especialidadeRepository.findAllByIdIn(especialidadeIds).stream()
@@ -166,10 +213,6 @@ public class CadastroService {
             throw new RegistroProfissionalObrigatorioException();
         }
 
-        if (registroObrigatorio && documentosValidados.stream().noneMatch(doc -> doc.tipo() == TipoDocumento.REGISTRO_PROFISSIONAL)) {
-            throw new DocumentoObrigatorioException("Envie um documento que valide seu registro profissional.");
-        }
-
         if (request.modalidadeAtendimento() != ModalidadeAtendimento.REMOTO && request.raioAtendimentoKm() == null) {
             throw new RaioAtendimentoObrigatorioException();
         }
@@ -192,7 +235,7 @@ public class CadastroService {
                                 ? null
                                 : request.raioAtendimentoKm()
                 )
-                .cnpj(temCnpj ? request.cnpj() : null)
+                .cnpj(temCnpj(request) ? request.cnpj() : null)
                 .cep(request.cep())
                 .logradouro(request.logradouro())
                 .numero(request.numero())
@@ -206,8 +249,35 @@ public class CadastroService {
         Profissional profissional = profissionalRepository.save(novo);
 
         validacaoService.iniciar(profissional, salvarDocumentos(documentosValidados, null, profissional));
+        usuario.setUltimoPerfil(TipoPerfil.PROFISSIONAL);
 
         return new CadastroResponse(usuario.getId(), profissional.getId(), usuario.getNome(), usuario.getEmail(), "PROFISSIONAL");
+    }
+
+    private void exigirDocumentoCpf(List<DocumentoParaSalvar> documentos) {
+        if (documentos.stream().noneMatch(doc -> doc.tipo() == TipoDocumento.VALIDACAO_CPF)) {
+            throw new DocumentoObrigatorioException("Envie um documento que valide seu CPF.");
+        }
+    }
+
+    private void exigirDocumentosDoProfissional(NovoPerfilProfissionalRequest request, List<DocumentoParaSalvar> documentos) {
+        exigirDocumentoCpf(documentos);
+
+        if (temCnpj(request) && documentos.stream().noneMatch(doc -> doc.tipo() == TipoDocumento.VALIDACAO_CNPJ)) {
+            throw new DocumentoObrigatorioException("Envie um documento que valide o CNPJ informado.");
+        }
+
+        if (registroObrigatorio(request) && documentos.stream().noneMatch(doc -> doc.tipo() == TipoDocumento.REGISTRO_PROFISSIONAL)) {
+            throw new DocumentoObrigatorioException("Envie um documento que valide seu registro profissional.");
+        }
+    }
+
+    private static boolean temCnpj(NovoPerfilProfissionalRequest request) {
+        return request.cnpj() != null && !request.cnpj().isBlank();
+    }
+
+    private static boolean registroObrigatorio(NovoPerfilProfissionalRequest request) {
+        return request.categoria() != CategoriaProfissional.CUIDADOR;
     }
 
     private record DocumentoParaSalvar(TipoDocumento tipo, MultipartFile arquivo) {

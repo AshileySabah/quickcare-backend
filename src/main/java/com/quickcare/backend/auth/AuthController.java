@@ -2,6 +2,7 @@ package com.quickcare.backend.auth;
 
 import com.quickcare.backend.auth.dto.LoginRequest;
 import com.quickcare.backend.auth.dto.LoginResponse;
+import com.quickcare.backend.auth.dto.PerfilAtivoRequest;
 import com.quickcare.backend.jwt.TokenInvalidoException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -10,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -36,6 +38,14 @@ public class AuthController {
     @GetMapping("/me")
     public LoginResponse me(@AuthenticationPrincipal Long usuarioId) {
         return authService.sessaoAtual(usuarioId);
+    }
+
+    @PatchMapping("/perfil-ativo")
+    public LoginResponse definirPerfilAtivo(
+            @AuthenticationPrincipal Long usuarioId,
+            @Valid @RequestBody PerfilAtivoRequest request
+    ) {
+        return authService.definirPerfilAtivo(usuarioId, request.perfil());
     }
 
     @PostMapping("/refresh")

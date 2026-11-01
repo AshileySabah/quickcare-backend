@@ -60,6 +60,10 @@ public class Usuario {
     @Column(name = "senha_alterada_em")
     private Instant senhaAlteradaEm;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "ultimo_perfil", length = 20)
+    private TipoPerfil ultimoPerfil;
+
     @Column(name = "criado_em", nullable = false, updatable = false)
     private Instant criadoEm;
 
