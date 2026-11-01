@@ -31,8 +31,9 @@ public class PropostaService {
 
     /**
      * O profissional só envia proposta para solicitação compatível com ele e
-     * que ainda recebe propostas. A primeira proposta move a solicitação de
-     * ABERTA para RECEBENDO_PROPOSTAS.
+     * que ainda recebe propostas — nunca para a que ele mesmo abriu no perfil
+     * de paciente. A primeira proposta move a solicitação de ABERTA para
+     * RECEBENDO_PROPOSTAS.
      */
     @Transactional
     public PropostaResponse enviar(Long usuarioId, Long solicitacaoId, PropostaRequest request) {
@@ -41,6 +42,7 @@ public class PropostaService {
             throw new CadastroNaoValidadoException("Só profissionais com cadastro aprovado podem enviar propostas.");
         }
         Solicitacao solicitacao = solicitacaoRepository.findById(solicitacaoId)
+                .filter(s -> !s.ehDoUsuario(usuarioId))
                 .filter(s -> s.atendidaPor(profissional))
                 .orElseThrow(SolicitacaoNaoEncontradaException::new);
 

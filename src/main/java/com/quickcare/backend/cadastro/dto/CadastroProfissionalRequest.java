@@ -52,4 +52,13 @@ public record CadastroProfissionalRequest(
         @NotBlank String cidade,
         @NotBlank @Pattern(regexp = "(?i)^[a-z]{2}$") String uf
 ) {
+
+    /** Os dados que pertencem ao perfil, sem os da conta. */
+    public NovoPerfilProfissionalRequest perfil() {
+        return new NovoPerfilProfissionalRequest(cnpj, categoria, especialidadeIds, registroProfissional,
+                registroProfissionalUf, dataNascimento, genero, contatosEmergencia, confirmacaoInformacoesVerdadeiras,
+                consentimentoLgpd, possuiSeguroResponsabilidadeCivil, modalidadeAtendimento, raioAtendimentoKm,
+                cep, logradouro, numero, complemento, bairro, cidade, uf);
+    }
+
 }

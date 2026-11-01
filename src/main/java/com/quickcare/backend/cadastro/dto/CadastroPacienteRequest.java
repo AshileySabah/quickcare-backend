@@ -41,4 +41,12 @@ public record CadastroPacienteRequest(
         @NotBlank String cidade,
         @NotBlank @Pattern(regexp = "(?i)^[a-z]{2}$") String uf
 ) {
+
+    /** Os dados que pertencem ao perfil, sem os da conta. */
+    public NovoPerfilPacienteRequest perfil() {
+        return new NovoPerfilPacienteRequest(dataNascimento, genero, contatosEmergencia,
+                confirmacaoInformacoesVerdadeiras, consentimentoLgpd, alergias, condicoesSaude, medicamentosEmUso,
+                cep, logradouro, numero, complemento, bairro, cidade, uf);
+    }
+
 }

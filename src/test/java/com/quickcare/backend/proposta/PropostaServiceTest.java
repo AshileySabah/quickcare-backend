@@ -141,6 +141,17 @@ class PropostaServiceTest {
     }
 
     @Test
+    void naoEnviaPropostaParaAPropriaSolicitacaoAbertaNoPerfilDePaciente() {
+        Profissional mesmoUsuario = profissional(22L, USUARIO_PACIENTE_ID, ModalidadeAtendimento.AMBOS);
+        mockProfissional(mesmoUsuario);
+        when(solicitacaoRepository.findById(50L)).thenReturn(Optional.of(solicitacao));
+
+        assertThatThrownBy(() -> service.enviar(USUARIO_PACIENTE_ID, 50L, REQUEST))
+                .isInstanceOf(SolicitacaoNaoEncontradaException.class);
+        verify(propostaRepository, never()).save(any());
+    }
+
+    @Test
     void naoEnviaParaEnderecoForaDoRaio() {
         profissional.definirCoordenadas(CAMPINAS);
         mockProfissional(profissional);

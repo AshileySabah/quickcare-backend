@@ -389,6 +389,22 @@ class SolicitacaoServiceTest {
     }
 
     @Test
+    void profissionalQueTambemEhPacienteNaoVeAsPropriasSolicitacoes() {
+        Profissional mesmoUsuario = Profissional.builder()
+                .statusValidacao(StatusValidacao.APROVADO)
+                .id(21L)
+                .modalidadeAtendimento(ModalidadeAtendimento.AMBOS)
+                .categoria(CategoriaProfissional.ENFERMEIRO)
+                .especialidades(Set.of(curativos, sondagem))
+                .build();
+        when(profissionalRepository.findByUsuarioId(USUARIO_PACIENTE_ID)).thenReturn(Optional.of(mesmoUsuario));
+        when(solicitacaoRepository.findDisponiveisPara(any(), any(), any(), any()))
+                .thenReturn(List.of(solicitacaoPedindoEnfermeiroCurativosESondagem()));
+
+        assertThat(service.listarDisponiveis(USUARIO_PACIENTE_ID)).isEmpty();
+    }
+
+    @Test
     void disponiveisFiltraPelasModalidadesQueOProfissionalAtende() {
         mockProfissional(ModalidadeAtendimento.REMOTO, CategoriaProfissional.ENFERMEIRO, curativos);
 
