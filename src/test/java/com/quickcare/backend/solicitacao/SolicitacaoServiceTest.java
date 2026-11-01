@@ -389,6 +389,21 @@ class SolicitacaoServiceTest {
     }
 
     @Test
+    void solicitacaoComPropostaDoProfissionalSaiDasDisponiveis() {
+        mockProfissional(CategoriaProfissional.ENFERMEIRO, curativos, sondagem);
+        Solicitacao comProposta = solicitacaoPedindoEnfermeiroCurativosESondagem();
+        Solicitacao semProposta = solicitacaoPedindoEnfermeiroCurativosESondagem();
+        semProposta.setId(51L);
+        when(solicitacaoRepository.findDisponiveisPara(any(), any(), any(), any()))
+                .thenReturn(List.of(comProposta, semProposta));
+        when(propostaRepository.findSolicitacaoIdsComPropostaDoProfissional(20L, StatusProposta.CANCELADA))
+                .thenReturn(Set.of(50L));
+
+        assertThat(service.listarDisponiveis(USUARIO_PROFISSIONAL_ID))
+                .extracting(SolicitacaoResponse::id).containsExactly(51L);
+    }
+
+    @Test
     void profissionalQueTambemEhPacienteNaoVeAsPropriasSolicitacoes() {
         Profissional mesmoUsuario = Profissional.builder()
                 .statusValidacao(StatusValidacao.APROVADO)

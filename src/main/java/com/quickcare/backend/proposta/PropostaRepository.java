@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 
 public interface PropostaRepository extends JpaRepository<Proposta, Long> {
 
@@ -21,6 +22,17 @@ public interface PropostaRepository extends JpaRepository<Proposta, Long> {
     boolean existsBySolicitacaoIdAndProfissionalIdAndStatusNot(Long solicitacaoId, Long profissionalId, StatusProposta status);
 
     boolean existsBySolicitacaoIdAndStatus(Long solicitacaoId, StatusProposta status);
+
+    /** Solicitações em que o profissional tem proposta com status diferente do informado (o cancelado). */
+    @Query("""
+            select distinct p.solicitacao.id
+            from Proposta p
+            where p.profissional.id = :profissionalId
+              and p.status <> :ignorado
+            """)
+    Set<Long> findSolicitacaoIdsComPropostaDoProfissional(
+            @Param("profissionalId") Long profissionalId,
+            @Param("ignorado") StatusProposta ignorado);
 
     List<Proposta> findBySolicitacaoIdAndStatus(Long solicitacaoId, StatusProposta status);
 
