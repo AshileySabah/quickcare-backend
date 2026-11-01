@@ -77,7 +77,8 @@ public class SolicitacaoService {
     /**
      * Solicitações que ainda recebem propostas, numa modalidade que o
      * profissional atende, e que pedem ao menos um profissional da categoria
-     * dele com todas as especialidades da linha entre as suas.
+     * dele com todas as especialidades da linha entre as suas. As que já têm
+     * proposta dele (não cancelada) saem daqui e ficam em "Minhas propostas".
      */
     @Transactional(readOnly = true)
     public List<SolicitacaoResponse> listarDisponiveis(Long usuarioId) {
@@ -101,10 +102,14 @@ public class SolicitacaoService {
                 ModalidadeSolicitacao.atendidasPor(profissional.getModalidadeAtendimento()),
                 StatusSolicitacao.RECEBENDO_PROPOSTAS_STATUS);
 
+        Set<Long> comProposta = propostaRepository.findSolicitacaoIdsComPropostaDoProfissional(
+                profissional.getId(), StatusProposta.CANCELADA);
+
         // A distância até o endereço presencial é conferida na entidade. Quem
         // também é paciente não vê as próprias solicitações.
         return responder(candidatas.stream()
                 .filter(solicitacao -> !solicitacao.ehDoUsuario(usuarioId))
+                .filter(solicitacao -> !comProposta.contains(solicitacao.getId()))
                 .filter(solicitacao -> solicitacao.atendidaPor(profissional))
                 .toList());
     }
