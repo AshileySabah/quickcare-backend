@@ -35,6 +35,8 @@ management:
       enabled: false
 quickcare:
   frontend-url: ${FRONTEND_URL:https://quickcare-frontend.vercel.app}
+  keep-alive:
+    habilitado: ${KEEP_ALIVE_HABILITADO:true}
 
 logging:
   level:
