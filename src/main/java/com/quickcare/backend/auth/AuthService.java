@@ -73,11 +73,8 @@ public class AuthService {
                 .ifPresent(profissional -> perfis.add(new PerfilStatusResponse(
                         "PROFISSIONAL", profissional.isBanido() ? "BANIDO" : "ATIVO", profissional.getStatusValidacao())));
 
-        String avatarUrl = usuario.getAvatarStorageKey() != null
-                ? armazenamentoDocumentoService.gerarUrlAssinada(usuario.getAvatarStorageKey())
-                : null;
-
-        return new LoginResponse(usuario.getId(), usuario.getNome(), usuario.getEmail(), avatarUrl, perfis,
+        return new LoginResponse(usuario.getId(), usuario.getNome(), usuario.getEmail(),
+                armazenamentoDocumentoService.urlDoAvatar(usuario), perfis,
                 usuario.getUltimoPerfil());
     }
 

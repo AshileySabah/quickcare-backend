@@ -14,6 +14,7 @@ import com.quickcare.backend.cadastro.exception.RegistroProfissionalObrigatorioE
 import com.quickcare.backend.documento.ArquivoInvalidoException;
 import com.quickcare.backend.documento.DocumentoObrigatorioException;
 import com.quickcare.backend.jwt.TokenInvalidoException;
+import com.quickcare.backend.perfil.exception.PerfilNaoEncontradoException;
 import com.quickcare.backend.proposta.exception.PropostaJaEnviadaException;
 import com.quickcare.backend.proposta.exception.PropostaNaoEncontradaException;
 import com.quickcare.backend.solicitacao.exception.PerfilNaoAutorizadoException;
@@ -135,6 +136,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(DocumentoIdentidadeInvalidoException.class)
     public ResponseEntity<ApiError> handleDocumentoIdentidadeInvalido(DocumentoIdentidadeInvalidoException ex) {
         return build(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(PerfilNaoEncontradoException.class)
+    public ResponseEntity<ApiError> handlePerfilNaoEncontrado(PerfilNaoEncontradoException ex) {
+        return build(HttpStatus.NOT_FOUND, ex.getMessage());
     }
 
     @ExceptionHandler(CadastroNaoEncontradoException.class)

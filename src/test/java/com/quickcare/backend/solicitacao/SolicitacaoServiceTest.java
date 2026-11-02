@@ -13,6 +13,7 @@ import com.quickcare.backend.paciente.PacienteRepository;
 import com.quickcare.backend.profissional.Profissional;
 import com.quickcare.backend.profissional.ModalidadeAtendimento;
 import com.quickcare.backend.profissional.ProfissionalRepository;
+import com.quickcare.backend.proposta.MotivoReaceite;
 import com.quickcare.backend.proposta.Proposta;
 import com.quickcare.backend.proposta.PropostaRepository;
 import com.quickcare.backend.proposta.StatusProposta;
@@ -263,14 +264,22 @@ class SolicitacaoServiceTest {
     }
 
     @Test
-    void bloqueiaEdicaoComVagaJaPreenchida() {
-        Solicitacao solicitacao = mockSolicitacaoDoPaciente(StatusSolicitacao.RECEBENDO_PROPOSTAS);
-        solicitacao.getProfissionais().iterator().next().setVagasPreenchidas(1);
+    void editarComPropostaAceitaLiberaAVagaEPedeNovoAceite() {
+        Solicitacao solicitacao = mockSolicitacaoDoPaciente(StatusSolicitacao.EM_ANDAMENTO);
+        SolicitacaoProfissional linha = solicitacao.getProfissionais().iterator().next();
+        linha.setVagasPreenchidas(1);
+        Proposta aceita = Proposta.builder().id(100L).solicitacao(solicitacao).vaga(linha).status(StatusProposta.ACEITA).build();
+        when(propostaRepository.findBySolicitacaoIdAndStatus(50L, StatusProposta.ACEITA)).thenReturn(List.of(aceita));
+        when(especialidadeRepository.findAllByIdIn(anyList())).thenReturn(List.of(nutricao));
+        when(solicitacaoRepository.saveAndFlush(solicitacao)).thenReturn(solicitacao);
 
-        assertThatThrownBy(() -> service.atualizar(USUARIO_PACIENTE_ID, 50L,
-                request(ModalidadeSolicitacao.ONLINE, null, pedido(CategoriaProfissional.OUTRO, 1, nutricao))))
-                .isInstanceOf(TransicaoStatusInvalidaException.class)
-                .hasMessage("Esta solicitação já tem propostas aceitas e não pode mais ser editada.");
+        service.atualizar(USUARIO_PACIENTE_ID, 50L,
+                request(ModalidadeSolicitacao.ONLINE, null, pedido(CategoriaProfissional.OUTRO, 1, nutricao)));
+
+        assertThat(aceita.getStatus()).isEqualTo(StatusProposta.PENDENTE);
+        assertThat(aceita.getMotivoReaceite()).isEqualTo(MotivoReaceite.SOLICITACAO_ALTERADA);
+        assertThat(aceita.getVaga()).isNull();
+        assertThat(solicitacao.getStatus()).isEqualTo(StatusSolicitacao.RECEBENDO_PROPOSTAS);
     }
 
     @Test
@@ -296,8 +305,8 @@ class SolicitacaoServiceTest {
     }
 
     @Test
-    void bloqueiaEdicaoDeSolicitacaoEmAndamento() {
-        mockSolicitacaoDoPaciente(StatusSolicitacao.EM_ANDAMENTO);
+    void bloqueiaEdicaoDeSolicitacaoConcluida() {
+        mockSolicitacaoDoPaciente(StatusSolicitacao.CONCLUIDA);
 
         assertThatThrownBy(() -> service.atualizar(USUARIO_PACIENTE_ID, 50L,
                 request(ModalidadeSolicitacao.ONLINE, null, pedido(CategoriaProfissional.OUTRO, 1, nutricao))))
@@ -396,7 +405,7 @@ class SolicitacaoServiceTest {
         semProposta.setId(51L);
         when(solicitacaoRepository.findDisponiveisPara(any(), any(), any(), any()))
                 .thenReturn(List.of(comProposta, semProposta));
-        when(propostaRepository.findSolicitacaoIdsComPropostaDoProfissional(20L, StatusProposta.CANCELADA))
+        when(propostaRepository.findSolicitacaoIdsComPropostaDoProfissional(20L, StatusProposta.ATIVAS))
                 .thenReturn(Set.of(50L));
 
         assertThat(service.listarDisponiveis(USUARIO_PROFISSIONAL_ID))

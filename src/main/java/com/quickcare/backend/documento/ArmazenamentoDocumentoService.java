@@ -1,6 +1,7 @@
 package com.quickcare.backend.documento;
 
 import com.quickcare.backend.storage.SupabaseStorageProperties;
+import com.quickcare.backend.usuario.Usuario;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -69,6 +70,11 @@ public class ArmazenamentoDocumentoService {
         }
 
         return pasta + "/" + nomeArquivo;
+    }
+
+    /** URL temporária do avatar do usuário; nula se ele não tem foto. */
+    public String urlDoAvatar(Usuario usuario) {
+        return usuario.getAvatarStorageKey() != null ? gerarUrlAssinada(usuario.getAvatarStorageKey()) : null;
     }
 
     /**

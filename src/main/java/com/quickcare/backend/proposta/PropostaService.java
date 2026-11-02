@@ -1,5 +1,6 @@
 package com.quickcare.backend.proposta;
 
+import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
 import com.quickcare.backend.profissional.Profissional;
 import com.quickcare.backend.profissional.ProfissionalRepository;
 import com.quickcare.backend.proposta.dto.PropostaRequest;
@@ -28,11 +29,12 @@ public class PropostaService {
     private final PropostaRepository propostaRepository;
     private final SolicitacaoRepository solicitacaoRepository;
     private final ProfissionalRepository profissionalRepository;
+    private final ArmazenamentoDocumentoService armazenamentoDocumentoService;
 
     /**
      * O profissional só envia proposta para solicitação compatível com ele e
      * que ainda recebe propostas — nunca para a que ele mesmo abriu no perfil
-     * de paciente. A primeira proposta move a solicitação de ABERTA para
+     * de paciente. Depois de uma recusada ou cancelada, pode enviar outra. A primeira proposta move a solicitação de ABERTA para
      * RECEBENDO_PROPOSTAS.
      */
     @Transactional
@@ -49,8 +51,8 @@ public class PropostaService {
         if (!solicitacao.getStatus().recebePropostas()) {
             throw new TransicaoStatusInvalidaException("Esta solicitação não está mais recebendo propostas.");
         }
-        if (propostaRepository.existsBySolicitacaoIdAndProfissionalIdAndStatusNot(
-                solicitacaoId, profissional.getId(), StatusProposta.CANCELADA)) {
+        if (propostaRepository.existsBySolicitacaoIdAndProfissionalIdAndStatusIn(
+                solicitacaoId, profissional.getId(), StatusProposta.ATIVAS)) {
             throw new PropostaJaEnviadaException();
         }
 
@@ -65,7 +67,7 @@ public class PropostaService {
             solicitacao.setStatus(StatusSolicitacao.RECEBENDO_PROPOSTAS);
         }
 
-        return PropostaResponse.de(propostaRepository.save(proposta));
+        return responder(propostaRepository.save(proposta));
     }
 
     /**
@@ -80,7 +82,7 @@ public class PropostaService {
         if (solicitacao.ehDoUsuario(usuarioId)) {
             return propostaRepository.findBySolicitacaoIdOrderByCriadoEmAsc(solicitacaoId).stream()
                     .filter(proposta -> proposta.getStatus() != StatusProposta.CANCELADA)
-                    .map(PropostaResponse::de)
+                    .map(this::responder)
                     .toList();
         }
 
@@ -93,7 +95,7 @@ public class PropostaService {
             throw new SolicitacaoNaoEncontradaException();
         }
 
-        return minhas.stream().map(PropostaResponse::de).toList();
+        return minhas.stream().map(this::responder).toList();
     }
 
     @Transactional(readOnly = true)
@@ -101,7 +103,7 @@ public class PropostaService {
         Profissional profissional = buscarProfissionalAtivo(usuarioId);
 
         return propostaRepository.findByProfissionalIdOrderByCriadoEmDesc(profissional.getId()).stream()
-                .map(PropostaResponse::de)
+                .map(this::responder)
                 .toList();
     }
 
@@ -112,47 +114,75 @@ public class PropostaService {
                 .filter(p -> p.ehDoUsuario(usuarioId) || p.getSolicitacao().ehDoUsuario(usuarioId))
                 .orElseThrow(PropostaNaoEncontradaException::new);
 
-        return PropostaResponse.de(proposta);
+        return responder(proposta);
     }
 
     @Transactional
     public PropostaResponse atualizar(Long usuarioId, Long id, PropostaRequest request) {
-        Proposta proposta = buscarDoProfissional(usuarioId, id);
+        Proposta proposta = buscarAlteravelDoProfissional(usuarioId, id, "editada");
 
-        if (!proposta.getStatus().pendente()) {
-            throw new TransicaoStatusInvalidaException("Esta proposta não pode mais ser editada.");
-        }
-        if (!proposta.getSolicitacao().getStatus().recebePropostas()) {
-            throw new TransicaoStatusInvalidaException("Esta solicitação não está mais recebendo propostas.");
+        if (proposta.getStatus() == StatusProposta.ACEITA) {
+            proposta.voltarParaReaceite(MotivoReaceite.PROPOSTA_ALTERADA);
+            reabrirParaPropostas(proposta.getSolicitacao());
         }
 
         aplicarDados(proposta, request);
-        return PropostaResponse.de(propostaRepository.saveAndFlush(proposta));
+        return responder(propostaRepository.saveAndFlush(proposta));
     }
 
     /**
-     * Exclusão lógica. Se não sobrou nenhuma proposta pendente nem aceita, a
-     * solicitação volta a ABERTA.
+     * Exclusão lógica, também da proposta já aceita (a vaga reabre). Se não
+     * sobrou nenhuma proposta pendente nem aceita, a solicitação volta a ABERTA.
      */
     @Transactional
     public PropostaResponse cancelar(Long usuarioId, Long id) {
-        Proposta proposta = buscarDoProfissional(usuarioId, id);
+        Proposta proposta = buscarAlteravelDoProfissional(usuarioId, id, "cancelada");
 
-        if (!proposta.getStatus().pendente()) {
-            throw new TransicaoStatusInvalidaException("Esta proposta não pode mais ser cancelada.");
+        if (proposta.getStatus() == StatusProposta.ACEITA) {
+            proposta.liberarVaga();
+            reabrirParaPropostas(proposta.getSolicitacao());
         }
 
         proposta.setStatus(StatusProposta.CANCELADA);
         propostaRepository.saveAndFlush(proposta);
+        reabrirSeNaoSobrouProposta(proposta.getSolicitacao());
 
-        Solicitacao solicitacao = proposta.getSolicitacao();
+        return responder(proposta);
+    }
+
+    /**
+     * O paciente recusa uma proposta pendente; para o profissional ela aparece
+     * como recusada (diferente de cancelada, que é quando ele mesmo desiste).
+     */
+    @Transactional
+    public PropostaResponse recusar(Long usuarioId, Long id) {
+        Proposta proposta = buscarDoPaciente(usuarioId, id);
+
+        if (!proposta.getStatus().pendente() || !proposta.getSolicitacao().getStatus().recebePropostas()) {
+            throw new TransicaoStatusInvalidaException("Esta proposta não pode mais ser recusada.");
+        }
+
+        proposta.setStatus(StatusProposta.RECUSADA);
+        propostaRepository.saveAndFlush(proposta);
+        reabrirSeNaoSobrouProposta(proposta.getSolicitacao());
+
+        return responder(proposta);
+    }
+
+    /** Uma vaga reabriu: a solicitação em andamento volta a receber propostas. */
+    private void reabrirParaPropostas(Solicitacao solicitacao) {
+        if (solicitacao.getStatus() == StatusSolicitacao.EM_ANDAMENTO) {
+            solicitacao.setStatus(StatusSolicitacao.RECEBENDO_PROPOSTAS);
+        }
+    }
+
+    /** Sem proposta pendente nem vaga preenchida, a solicitação volta a ABERTA. */
+    private void reabrirSeNaoSobrouProposta(Solicitacao solicitacao) {
         if (solicitacao.getStatus() == StatusSolicitacao.RECEBENDO_PROPOSTAS
                 && !solicitacao.temVagaPreenchida()
                 && !propostaRepository.existsBySolicitacaoIdAndStatus(solicitacao.getId(), StatusProposta.PENDENTE)) {
             solicitacao.setStatus(StatusSolicitacao.ABERTA);
         }
-
-        return PropostaResponse.de(proposta);
     }
 
     /**
@@ -163,14 +193,9 @@ public class PropostaService {
      */
     @Transactional
     public PropostaResponse aceitar(Long usuarioId, Long id) {
-        Proposta proposta = propostaRepository.findById(id)
-                .filter(p -> p.getSolicitacao().ehDoUsuario(usuarioId))
-                .orElseThrow(PropostaNaoEncontradaException::new);
+        Proposta proposta = buscarDoPaciente(usuarioId, id);
         Solicitacao solicitacao = proposta.getSolicitacao();
 
-        if (solicitacao.getPaciente().isBanido()) {
-            throw new PerfilNaoAutorizadoException("Apenas pacientes podem aceitar propostas.");
-        }
         if (!proposta.getStatus().pendente() || !solicitacao.getStatus().recebePropostas()) {
             throw new TransicaoStatusInvalidaException("Esta proposta não está mais disponível para aceite.");
         }
@@ -181,6 +206,7 @@ public class PropostaService {
         vaga.preencherVaga();
         proposta.setVaga(vaga);
         proposta.setStatus(StatusProposta.ACEITA);
+        proposta.setMotivoReaceite(null);
 
         boolean completa = solicitacao.todasAsVagasPreenchidas();
         propostaRepository.findBySolicitacaoIdAndStatus(solicitacao.getId(), StatusProposta.PENDENTE).stream()
@@ -192,7 +218,11 @@ public class PropostaService {
             solicitacao.setStatus(StatusSolicitacao.EM_ANDAMENTO);
         }
 
-        return PropostaResponse.de(propostaRepository.saveAndFlush(proposta));
+        return responder(propostaRepository.saveAndFlush(proposta));
+    }
+
+    private PropostaResponse responder(Proposta proposta) {
+        return PropostaResponse.de(proposta, armazenamentoDocumentoService::urlDoAvatar);
     }
 
     private void aplicarDados(Proposta proposta, PropostaRequest request) {
@@ -205,6 +235,29 @@ public class PropostaService {
         return profissionalRepository.findByUsuarioId(usuarioId)
                 .filter(profissional -> !profissional.isBanido())
                 .orElseThrow(() -> new PerfilNaoAutorizadoException("Apenas profissionais podem gerenciar propostas."));
+    }
+
+    /** Proposta recebida numa solicitação do paciente, que precisa estar ativo. */
+    private Proposta buscarDoPaciente(Long usuarioId, Long id) {
+        Proposta proposta = propostaRepository.findById(id)
+                .filter(p -> p.getSolicitacao().ehDoUsuario(usuarioId))
+                .orElseThrow(PropostaNaoEncontradaException::new);
+
+        if (proposta.getSolicitacao().getPaciente().isBanido()) {
+            throw new PerfilNaoAutorizadoException("Apenas pacientes podem responder propostas.");
+        }
+        return proposta;
+    }
+
+    /** Pendente ou aceita, numa solicitação ainda em curso. */
+    private Proposta buscarAlteravelDoProfissional(Long usuarioId, Long id, String acao) {
+        Proposta proposta = buscarDoProfissional(usuarioId, id);
+
+        if (!proposta.getStatus().podeSerAlterada()
+                || !StatusSolicitacao.EM_CURSO.contains(proposta.getSolicitacao().getStatus())) {
+            throw new TransicaoStatusInvalidaException("Esta proposta não pode mais ser " + acao + ".");
+        }
+        return proposta;
     }
 
     private Proposta buscarDoProfissional(Long usuarioId, Long id) {

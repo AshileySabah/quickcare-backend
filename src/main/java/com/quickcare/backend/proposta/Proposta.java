@@ -65,6 +65,11 @@ public class Proposta {
     @Column(nullable = false, length = 20)
     private StatusProposta status;
 
+    /** Preenchido quando a proposta já aceita voltou a aguardar o aceite do paciente. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "motivo_reaceite", length = 30)
+    private MotivoReaceite motivoReaceite;
+
     @Column(name = "criado_em", nullable = false, updatable = false)
     private Instant criadoEm;
 
@@ -83,6 +88,26 @@ public class Proposta {
     @PreUpdate
     private void aoAtualizar() {
         atualizadoEm = Instant.now();
+    }
+
+    /**
+     * A proposta aceita sai da vaga e volta a pendente: o paciente precisa
+     * aceitá-la de novo (ou outra). Na pendente não muda nada.
+     */
+    public void voltarParaReaceite(MotivoReaceite motivo) {
+        if (status != StatusProposta.ACEITA) {
+            return;
+        }
+        liberarVaga();
+        status = StatusProposta.PENDENTE;
+        motivoReaceite = motivo;
+    }
+
+    public void liberarVaga() {
+        if (vaga != null) {
+            vaga.liberarVaga();
+            vaga = null;
+        }
     }
 
     public boolean ehDoUsuario(Long usuarioId) {

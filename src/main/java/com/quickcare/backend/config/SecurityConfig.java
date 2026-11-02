@@ -39,8 +39,9 @@ public class SecurityConfig {
                             new ApiError(Instant.now(), HttpStatus.UNAUTHORIZED.value(), "Sessão expirada. Entre novamente."));
                 }))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/solicitacoes/**", "/propostas/**", "/perfil/**", "/perfis/**", "/auth/me",
-                                "/auth/perfil-ativo", "/admin/**", "/validacao/**").authenticated()
+                        .requestMatchers("/solicitacoes/**", "/propostas/**", "/perfil/**", "/perfis/**",
+                                "/profissionais/**", "/pacientes/**", "/auth/me", "/auth/perfil-ativo",
+                                "/admin/**", "/validacao/**").authenticated()
                         .anyRequest().permitAll());
 
         return http.build();

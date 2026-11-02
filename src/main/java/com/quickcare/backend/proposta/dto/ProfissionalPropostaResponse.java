@@ -11,15 +11,17 @@ import java.util.List;
 public record ProfissionalPropostaResponse(
         Long id,
         String nome,
+        String avatarUrl,
         CategoriaProfissional categoria,
         String categoriaRotulo,
         List<EspecialidadeResponse> especialidades
 ) {
 
-    public static ProfissionalPropostaResponse de(Profissional profissional) {
+    public static ProfissionalPropostaResponse de(Profissional profissional, String avatarUrl) {
         return new ProfissionalPropostaResponse(
                 profissional.getId(),
                 profissional.getUsuario().getNome(),
+                avatarUrl,
                 profissional.getCategoria(),
                 profissional.getCategoria().getRotulo(),
                 profissional.getEspecialidades().stream()

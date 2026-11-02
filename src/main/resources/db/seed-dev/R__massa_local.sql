@@ -7,6 +7,8 @@
 -- Login do profissional: profissional@quickcare.dev / Senha@123
 -- Login do admin:        admin@quickcare.dev / Senha@123
 -- Paciente e profissional (alternância de perfil): ambos@quickcare.dev / Senha@123
+-- Propostas de exemplo: profissional@ (pendente) e ambos@ (aceita) na solicitação presencial do paciente@;
+--   nutricionista@quickcare.dev (pendente) na online do paciente@; maria@quickcare.dev em andamento com o profissional@.
 --
 -- Cadastros aguardando validação (mesma senha), com CPFs do ambiente de
 -- demonstração da Serpro para testar a pré-validação do admin:
@@ -266,3 +268,290 @@ FROM documentos d
 JOIN donos dn ON dn.paciente_id IS NOT DISTINCT FROM d.paciente_id
              AND dn.profissional_id IS NOT DISTINCT FROM d.profissional_id
              AND dn.tipo_documento = d.tipo_documento;
+
+-- ---------------------------------------------------------------------------
+-- Propostas na solicitação presencial do paciente de teste
+-- ---------------------------------------------------------------------------
+-- profissional@ (enfermeiro): pendente — vê o perfil do paciente sem a saúde.
+-- ambos@ (cuidadora): aceita na vaga de cuidador — vê também saúde e contatos.
+WITH presencial AS (
+    SELECT s.id
+    FROM solicitacao s
+    JOIN paciente pa ON pa.id = s.paciente_id
+    JOIN usuario u ON u.id = pa.usuario_id
+    WHERE u.email = 'paciente@quickcare.dev' AND s.modalidade = 'PRESENCIAL'
+    ORDER BY s.id
+    LIMIT 1
+),
+propostas (email, status, valor, abordagem) AS (
+    VALUES ('profissional@quickcare.dev', 'PENDENTE', 180.00,
+            'Curativos diários com troca de cobertura e registro da evolução da ferida.'),
+           ('ambos@quickcare.dev', 'ACEITA', 150.00,
+            'Acompanhamento durante o dia, com apoio na alimentação, higiene e medicação.')
+)
+INSERT INTO proposta (solicitacao_id, profissional_id, solicitacao_profissional_id, valor, abordagem, prazo, status)
+SELECT presencial.id, pr.id,
+       CASE WHEN p.status = 'ACEITA'
+            THEN (SELECT sp.id FROM solicitacao_profissional sp
+                  WHERE sp.solicitacao_id = presencial.id AND sp.categoria = 'CUIDADOR')
+       END,
+       p.valor, p.abordagem, CURRENT_DATE + 10, p.status
+FROM presencial
+CROSS JOIN propostas p
+JOIN usuario u ON u.email = p.email
+JOIN profissional pr ON pr.usuario_id = u.id
+WHERE NOT EXISTS (
+    SELECT 1 FROM proposta x
+    WHERE x.solicitacao_id = presencial.id AND x.profissional_id = pr.id AND x.status <> 'CANCELADA'
+);
+
+-- A vaga de cuidador fica ocupada pela proposta aceita, e a solicitação passa a receber propostas.
+UPDATE solicitacao_profissional sp
+SET vagas_preenchidas = 1
+FROM proposta p
+WHERE p.solicitacao_profissional_id = sp.id AND p.status = 'ACEITA' AND sp.vagas_preenchidas = 0;
+
+UPDATE solicitacao s
+SET status = 'RECEBENDO_PROPOSTAS'
+WHERE s.status = 'ABERTA' AND EXISTS (SELECT 1 FROM proposta p WHERE p.solicitacao_id = s.id AND p.status <> 'CANCELADA');
+
+-- ---------------------------------------------------------------------------
+-- Perfis para conferir (telas de perfil de paciente e de profissional)
+-- ---------------------------------------------------------------------------
+-- paciente@: dados de saúde completos e contatos de emergência.
+UPDATE paciente p
+SET condicoes_saude = 'Hipertensão controlada',
+    medicamentos_em_uso = 'Losartana 50 mg, 1x ao dia'
+FROM usuario u
+WHERE u.id = p.usuario_id AND u.email = 'paciente@quickcare.dev' AND p.condicoes_saude IS NULL;
+
+INSERT INTO paciente_contato_emergencia (paciente_id, nome, telefone)
+SELECT p.id, c.nome, c.telefone
+FROM paciente p
+JOIN usuario u ON u.id = p.usuario_id
+CROSS JOIN (VALUES ('Lúcia Teste (filha)', '11988887777'), ('Pedro Teste (irmão)', '11977776655')) AS c (nome, telefone)
+WHERE u.email = 'paciente@quickcare.dev'
+  AND NOT EXISTS (SELECT 1 FROM paciente_contato_emergencia x WHERE x.paciente_id = p.id);
+
+-- nutricionista@: só online, com proposta pendente na solicitação online do paciente@.
+INSERT INTO usuario (nome, email, senha_hash, cpf, telefone,
+                     documento_identidade_tipo, documento_identidade_numero, documento_identidade_uf)
+VALUES ('Carla Mendes', 'nutricionista@quickcare.dev',
+        '$2a$10$ZgmQejKpnZ53yyHq49/Ey.D/MF1qIcHNerLZC7U1L2sh.ZS6xV3aq', -- BCrypt de "Senha@123"
+        '71460238001', '19966665544', 'RG', '246781312', 'SP')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO profissional (usuario_id, status_validacao, categoria, registro_profissional, registro_profissional_uf,
+                          data_nascimento, genero, confirmacao_informacoes_verdadeiras, consentimento_lgpd,
+                          possui_seguro_responsabilidade_civil, modalidade_atendimento,
+                          cep, logradouro, numero, bairro, cidade, uf)
+SELECT id, 'APROVADO', 'OUTRO', 'CRN-3 54321', 'SP', DATE '1991-09-15', 'FEMININO', TRUE, TRUE, TRUE, 'REMOTO',
+       '13010001', 'Rua Barão de Jaguara', '700', 'Centro', 'Campinas', 'SP'
+FROM usuario
+WHERE email = 'nutricionista@quickcare.dev'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO profissional_especialidade (profissional_id, especialidade_id)
+SELECT p.id, e.id
+FROM profissional p
+JOIN usuario u ON u.id = p.usuario_id
+JOIN especialidade e ON e.nome = 'Nutrição'
+WHERE u.email = 'nutricionista@quickcare.dev'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO proposta (solicitacao_id, profissional_id, valor, abordagem, prazo, status)
+SELECT s.id, pr.id, 120.00,
+       'Avaliação inicial por vídeo e plano alimentar com retorno quinzenal pelos próximos três meses.',
+       CURRENT_DATE + 20, 'PENDENTE'
+FROM solicitacao s
+JOIN paciente pa ON pa.id = s.paciente_id
+JOIN usuario up ON up.id = pa.usuario_id AND up.email = 'paciente@quickcare.dev'
+JOIN usuario un ON un.email = 'nutricionista@quickcare.dev'
+JOIN profissional pr ON pr.usuario_id = un.id
+WHERE s.modalidade = 'ONLINE'
+  AND NOT EXISTS (SELECT 1 FROM proposta x WHERE x.solicitacao_id = s.id AND x.profissional_id = pr.id);
+
+UPDATE solicitacao s
+SET status = 'RECEBENDO_PROPOSTAS'
+WHERE s.status = 'ABERTA' AND EXISTS (SELECT 1 FROM proposta p WHERE p.solicitacao_id = s.id AND p.status <> 'CANCELADA');
+
+-- maria@: paciente com saúde e contatos, solicitação presencial em andamento com
+-- a proposta do profissional@ aceita — ele vê os dados de saúde dela.
+INSERT INTO usuario (nome, email, senha_hash, cpf, telefone,
+                     documento_identidade_tipo, documento_identidade_numero, documento_identidade_uf)
+VALUES ('Maria Oliveira', 'maria@quickcare.dev',
+        '$2a$10$ZgmQejKpnZ53yyHq49/Ey.D/MF1qIcHNerLZC7U1L2sh.ZS6xV3aq', -- BCrypt de "Senha@123"
+        '38522147698', '11955553322', 'RG', '246781312', 'SP')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO paciente (usuario_id, status_validacao, data_nascimento, genero, confirmacao_informacoes_verdadeiras,
+                      consentimento_lgpd, alergias, condicoes_saude, medicamentos_em_uso,
+                      cep, logradouro, numero, complemento, bairro, cidade, uf)
+SELECT id, 'APROVADO', DATE '1948-03-08', 'FEMININO', TRUE, TRUE,
+       'Penicilina', 'Diabetes tipo 2; ferida no pé direito em cicatrização', 'Metformina 850 mg, 2x ao dia',
+       '01311200', 'Rua Haddock Lobo', '300', 'Apto 41', 'Cerqueira César', 'São Paulo', 'SP'
+FROM usuario
+WHERE email = 'maria@quickcare.dev'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO paciente_contato_emergencia (paciente_id, nome, telefone)
+SELECT p.id, 'Ricardo Oliveira (filho)', '11944441234'
+FROM paciente p
+JOIN usuario u ON u.id = p.usuario_id
+WHERE u.email = 'maria@quickcare.dev'
+  AND NOT EXISTS (SELECT 1 FROM paciente_contato_emergencia x WHERE x.paciente_id = p.id);
+
+WITH maria AS (
+    SELECT p.id
+    FROM paciente p
+    JOIN usuario u ON u.id = p.usuario_id
+    WHERE u.email = 'maria@quickcare.dev'
+      AND NOT EXISTS (SELECT 1 FROM solicitacao s WHERE s.paciente_id = p.id)
+),
+nova AS (
+    INSERT INTO solicitacao (paciente_id, descricao, modalidade, cep, logradouro, numero, complemento, bairro,
+                             cidade, uf, latitude, longitude, prazo_desejado, status)
+    SELECT id, 'Curativo diário da ferida no pé, com acompanhamento da glicemia.', 'PRESENCIAL',
+           '01311200', 'Rua Haddock Lobo', '300', 'Apto 41', 'Cerqueira César', 'São Paulo', 'SP',
+           -23.558000, -46.660000, CURRENT_DATE + 7, 'EM_ANDAMENTO'
+    FROM maria
+    RETURNING id
+),
+linha AS (
+    INSERT INTO solicitacao_profissional (solicitacao_id, categoria, quantidade, vagas_preenchidas)
+    SELECT id, 'ENFERMEIRO', 1, 1 FROM nova
+    RETURNING id, solicitacao_id
+),
+especialidade_da_linha AS (
+    INSERT INTO solicitacao_profissional_especialidade (solicitacao_profissional_id, especialidade_id)
+    SELECT linha.id, e.id FROM linha JOIN especialidade e ON e.nome = 'Curativos'
+)
+INSERT INTO proposta (solicitacao_id, profissional_id, solicitacao_profissional_id, valor, abordagem, prazo, status)
+SELECT linha.solicitacao_id, pr.id, linha.id, 200.00,
+       'Curativo diário com avaliação da ferida e orientação sobre o controle da glicemia.',
+       CURRENT_DATE + 7, 'ACEITA'
+FROM linha
+JOIN usuario u ON u.email = 'profissional@quickcare.dev'
+JOIN profissional pr ON pr.usuario_id = u.id;
+
+-- Contatos de emergência dos profissionais de teste: a Maria (atendimento em
+-- andamento com o profissional@) vê os dele no perfil.
+INSERT INTO profissional_contato_emergencia (profissional_id, nome, telefone)
+SELECT p.id, c.nome, c.telefone
+FROM profissional p
+JOIN usuario u ON u.id = p.usuario_id
+JOIN (VALUES ('profissional@quickcare.dev', 'Marcos Teste (cônjuge)', '11933334444'),
+             ('ambos@quickcare.dev', 'Bruno Duplo (irmão)', '11922223333')) AS c (email, nome, telefone)
+  ON c.email = u.email
+WHERE NOT EXISTS (SELECT 1 FROM profissional_contato_emergencia x WHERE x.profissional_id = p.id);
+
+-- ---------------------------------------------------------------------------
+-- Mais solicitações e propostas para a ambos@ (paciente e cuidadora), para
+-- testar os filtros de Minhas solicitações, Histórico e Minhas propostas.
+-- ---------------------------------------------------------------------------
+-- Cria a solicitação (uma linha de profissional) se o paciente ainda não tem
+-- uma com a mesma descrição; devolve o id de qualquer forma.
+CREATE OR REPLACE FUNCTION pg_temp.seed_solicitacao(
+    p_email TEXT, p_descricao TEXT, p_modalidade TEXT, p_categoria TEXT, p_especialidade TEXT,
+    p_status TEXT, p_prazo_dias INT, p_dias_atras INT
+) RETURNS BIGINT AS $$
+DECLARE
+    v_paciente paciente%ROWTYPE;
+    v_id BIGINT;
+    v_linha BIGINT;
+BEGIN
+    SELECT pa.* INTO v_paciente FROM paciente pa JOIN usuario u ON u.id = pa.usuario_id WHERE u.email = p_email;
+    SELECT id INTO v_id FROM solicitacao WHERE paciente_id = v_paciente.id AND descricao = p_descricao;
+    IF v_id IS NOT NULL THEN
+        RETURN v_id;
+    END IF;
+
+    INSERT INTO solicitacao (paciente_id, descricao, modalidade, cep, logradouro, numero, complemento, bairro, cidade,
+                             uf, latitude, longitude, prazo_desejado, status, criado_em, atualizado_em)
+    VALUES (v_paciente.id, p_descricao, p_modalidade,
+            CASE WHEN p_modalidade = 'PRESENCIAL' THEN v_paciente.cep END,
+            CASE WHEN p_modalidade = 'PRESENCIAL' THEN v_paciente.logradouro END,
+            CASE WHEN p_modalidade = 'PRESENCIAL' THEN v_paciente.numero END,
+            CASE WHEN p_modalidade = 'PRESENCIAL' THEN v_paciente.complemento END,
+            CASE WHEN p_modalidade = 'PRESENCIAL' THEN v_paciente.bairro END,
+            CASE WHEN p_modalidade = 'PRESENCIAL' THEN v_paciente.cidade END,
+            CASE WHEN p_modalidade = 'PRESENCIAL' THEN v_paciente.uf END,
+            CASE WHEN p_modalidade = 'PRESENCIAL' THEN -23.560000 END,
+            CASE WHEN p_modalidade = 'PRESENCIAL' THEN -46.656000 END,
+            CURRENT_DATE + p_prazo_dias, p_status, now() - make_interval(days => p_dias_atras), now())
+    RETURNING id INTO v_id;
+
+    INSERT INTO solicitacao_profissional (solicitacao_id, categoria, quantidade) VALUES (v_id, p_categoria, 1)
+    RETURNING id INTO v_linha;
+    INSERT INTO solicitacao_profissional_especialidade (solicitacao_profissional_id, especialidade_id)
+    SELECT v_linha, e.id FROM especialidade e WHERE e.nome = p_especialidade;
+    RETURN v_id;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Cria a proposta se o profissional ainda não tem uma nessa solicitação; a
+-- aceita ocupa a vaga da linha.
+CREATE OR REPLACE FUNCTION pg_temp.seed_proposta(
+    p_solicitacao BIGINT, p_email TEXT, p_valor NUMERIC, p_abordagem TEXT, p_status TEXT, p_dias_atras INT
+) RETURNS VOID AS $$
+DECLARE
+    v_profissional BIGINT;
+    v_linha BIGINT;
+BEGIN
+    SELECT pr.id INTO v_profissional FROM profissional pr JOIN usuario u ON u.id = pr.usuario_id WHERE u.email = p_email;
+    IF EXISTS (SELECT 1 FROM proposta WHERE solicitacao_id = p_solicitacao AND profissional_id = v_profissional) THEN
+        RETURN;
+    END IF;
+
+    IF p_status = 'ACEITA' THEN
+        SELECT id INTO v_linha FROM solicitacao_profissional WHERE solicitacao_id = p_solicitacao LIMIT 1;
+        UPDATE solicitacao_profissional SET vagas_preenchidas = vagas_preenchidas + 1 WHERE id = v_linha;
+    END IF;
+
+    INSERT INTO proposta (solicitacao_id, profissional_id, solicitacao_profissional_id, valor, abordagem, prazo, status,
+                          criado_em, atualizado_em)
+    VALUES (p_solicitacao, v_profissional, v_linha, p_valor, p_abordagem, CURRENT_DATE + 10, p_status,
+            now() - make_interval(days => p_dias_atras), now());
+END;
+$$ LANGUAGE plpgsql;
+
+-- ambos@ como paciente: ativas e encerradas, com propostas de outros profissionais.
+SELECT pg_temp.seed_proposta(pg_temp.seed_solicitacao('ambos@quickcare.dev',
+           'Acompanhamento nutricional para controle do colesterol.', 'ONLINE', 'OUTRO', 'Nutrição',
+           'RECEBENDO_PROPOSTAS', 20, 2),
+       'nutricionista@quickcare.dev', 110.00, 'Consulta por vídeo com plano alimentar e retorno mensal.', 'PENDENTE', 1);
+SELECT pg_temp.seed_proposta(pg_temp.seed_solicitacao('ambos@quickcare.dev',
+           'Curativo pós-cirúrgico no joelho, três vezes por semana.', 'PRESENCIAL', 'ENFERMEIRO', 'Curativos',
+           'RECEBENDO_PROPOSTAS', 10, 4),
+       'profissional@quickcare.dev', 160.00, 'Curativo com técnica estéril e acompanhamento da cicatrização.', 'PENDENTE', 3);
+SELECT pg_temp.seed_solicitacao('ambos@quickcare.dev',
+       'Sondagem vesical para a minha mãe, uma vez por semana.', 'PRESENCIAL', 'ENFERMEIRO', 'Sondagem',
+       'ABERTA', 15, 1);
+SELECT pg_temp.seed_proposta(pg_temp.seed_solicitacao('ambos@quickcare.dev',
+           'Curativo de uma queimadura leve na mão.', 'PRESENCIAL', 'ENFERMEIRO', 'Curativos',
+           'CONCLUIDA', -20, 40),
+       'profissional@quickcare.dev', 140.00, 'Curativos diários até a cicatrização completa.', 'ACEITA', 38);
+SELECT pg_temp.seed_solicitacao('ambos@quickcare.dev',
+       'Avaliação nutricional para ganho de massa.', 'ONLINE', 'OUTRO', 'Nutrição',
+       'CANCELADA', -5, 25);
+
+-- ambos@ como cuidadora: abertas para ela, pendente, aceita e encerradas.
+SELECT pg_temp.seed_solicitacao('maria@quickcare.dev',
+       'Cuidadora para acompanhar minha mãe nas tardes de semana.', 'PRESENCIAL', 'CUIDADOR', 'Cuidador de Idosos',
+       'ABERTA', 12, 1);
+SELECT pg_temp.seed_proposta(pg_temp.seed_solicitacao('maria@quickcare.dev',
+           'Acompanhante para consultas médicas e exames.', 'PRESENCIAL', 'CUIDADOR', 'Cuidador de Idosos',
+           'RECEBENDO_PROPOSTAS', 9, 3),
+       'ambos@quickcare.dev', 90.00, 'Acompanho nas consultas, ajudo com documentos e oriento sobre as receitas.', 'PENDENTE', 2);
+SELECT pg_temp.seed_proposta(pg_temp.seed_solicitacao('maria@quickcare.dev',
+           'Cuidadora para os fins de semana, das 8h às 18h.', 'PRESENCIAL', 'CUIDADOR', 'Cuidador de Idosos',
+           'EM_ANDAMENTO', 5, 8),
+       'ambos@quickcare.dev', 180.00, 'Cuidado nos fins de semana: alimentação, higiene, medicação e companhia.', 'ACEITA', 7);
+SELECT pg_temp.seed_proposta(pg_temp.seed_solicitacao('paciente@quickcare.dev',
+           'Cuidadora para o pós-operatório do meu pai por duas semanas.', 'PRESENCIAL', 'CUIDADOR', 'Cuidador de Idosos',
+           'CONCLUIDA', -10, 30),
+       'ambos@quickcare.dev', 1500.00, 'Acompanhamento integral no pós-operatório, com relatório diário.', 'ACEITA', 29);
+SELECT pg_temp.seed_proposta(pg_temp.seed_solicitacao('paciente@quickcare.dev',
+           'Cuidadora noturna por um mês.', 'PRESENCIAL', 'CUIDADOR', 'Cuidador de Idosos',
+           'CANCELADA', -2, 20),
+       'ambos@quickcare.dev', 2400.00, 'Plantão noturno de 12h, cinco noites por semana.', 'RECUSADA', 19);
