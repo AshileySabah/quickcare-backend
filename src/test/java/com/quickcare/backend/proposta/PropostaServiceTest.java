@@ -1,5 +1,6 @@
 package com.quickcare.backend.proposta;
 
+import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
 import com.quickcare.backend.especialidade.CategoriaProfissional;
 import com.quickcare.backend.especialidade.Especialidade;
 import com.quickcare.backend.geolocalizacao.Coordenadas;
@@ -64,6 +65,8 @@ class PropostaServiceTest {
     private SolicitacaoRepository solicitacaoRepository;
     @Mock
     private ProfissionalRepository profissionalRepository;
+    @Mock
+    private ArmazenamentoDocumentoService armazenamentoDocumentoService;
 
     @InjectMocks
     private PropostaService service;
@@ -115,7 +118,9 @@ class PropostaServiceTest {
         assertThat(response.status()).isEqualTo(StatusProposta.PENDENTE);
         assertThat(response.abordagem()).isEqualTo("Curativos diários com relatório semanal de evolução.");
         assertThat(response.profissional().nome()).isEqualTo("Profissional 20");
-        assertThat(response.solicitacao().pacienteNome()).isEqualTo("Paciente Teste");
+        // Pendente: o profissional ainda não sabe quem é o paciente.
+        assertThat(response.solicitacao().pacienteNome()).isNull();
+        assertThat(response.solicitacao().pacienteId()).isNull();
         assertThat(solicitacao.getStatus()).isEqualTo(StatusSolicitacao.RECEBENDO_PROPOSTAS);
     }
 
@@ -197,11 +202,25 @@ class PropostaServiceTest {
     void naoEnviaSegundaPropostaAtiva() {
         mockProfissional(profissional);
         when(solicitacaoRepository.findById(50L)).thenReturn(Optional.of(solicitacao));
-        when(propostaRepository.existsBySolicitacaoIdAndProfissionalIdAndStatusNot(50L, 20L, StatusProposta.CANCELADA))
+        when(propostaRepository.existsBySolicitacaoIdAndProfissionalIdAndStatusIn(50L, 20L, StatusProposta.ATIVAS))
                 .thenReturn(true);
 
         assertThatThrownBy(() -> service.enviar(USUARIO_PROFISSIONAL_ID, 50L, REQUEST))
                 .isInstanceOf(PropostaJaEnviadaException.class);
+    }
+
+    @Test
+    void enviaNovaPropostaDepoisDeRecusadaOuCancelada() {
+        mockProfissional(profissional);
+        when(solicitacaoRepository.findById(50L)).thenReturn(Optional.of(solicitacao));
+        when(propostaRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        PropostaResponse response = service.enviar(USUARIO_PROFISSIONAL_ID, 50L, REQUEST);
+
+        // Só as ativas bloqueiam: recusada e cancelada não entram na checagem.
+        assertThat(StatusProposta.ATIVAS).doesNotContain(StatusProposta.RECUSADA, StatusProposta.CANCELADA);
+        verify(propostaRepository).existsBySolicitacaoIdAndProfissionalIdAndStatusIn(50L, 20L, StatusProposta.ATIVAS);
+        assertThat(response.status()).isEqualTo(StatusProposta.PENDENTE);
     }
 
     @Test
@@ -296,6 +315,7 @@ class PropostaServiceTest {
         PropostaResponse response = service.aceitar(USUARIO_PACIENTE_ID, 100L);
 
         assertThat(response.status()).isEqualTo(StatusProposta.ACEITA);
+        assertThat(response.solicitacao().pacienteNome()).isEqualTo("Paciente Teste");
         assertThat(concorrente.getStatus()).isEqualTo(StatusProposta.RECUSADA);
         assertThat(solicitacao.getStatus()).isEqualTo(StatusSolicitacao.EM_ANDAMENTO);
     }
@@ -354,6 +374,85 @@ class PropostaServiceTest {
         assertThat(semVaga.getStatus()).isEqualTo(StatusProposta.RECUSADA);
         assertThat(aindaCabe.getStatus()).isEqualTo(StatusProposta.PENDENTE);
         assertThat(solicitacao.getStatus()).isEqualTo(StatusSolicitacao.RECEBENDO_PROPOSTAS);
+    }
+
+    @Test
+    void editarPropostaAceitaLiberaAVagaEVoltaAAguardarOAceite() {
+        solicitacao.setStatus(StatusSolicitacao.EM_ANDAMENTO);
+        SolicitacaoProfissional linha = solicitacao.getProfissionais().iterator().next();
+        linha.setVagasPreenchidas(1);
+        Proposta aceita = proposta(100L, profissional, StatusProposta.ACEITA);
+        aceita.setVaga(linha);
+        mockProfissional(profissional);
+        when(propostaRepository.findById(100L)).thenReturn(Optional.of(aceita));
+        when(propostaRepository.saveAndFlush(aceita)).thenReturn(aceita);
+
+        PropostaResponse response = service.atualizar(USUARIO_PROFISSIONAL_ID, 100L, REQUEST);
+
+        assertThat(response.status()).isEqualTo(StatusProposta.PENDENTE);
+        assertThat(response.motivoReaceite()).isEqualTo(MotivoReaceite.PROPOSTA_ALTERADA);
+        assertThat(linha.getVagasPreenchidas()).isZero();
+        assertThat(solicitacao.getStatus()).isEqualTo(StatusSolicitacao.RECEBENDO_PROPOSTAS);
+    }
+
+    @Test
+    void cancelarPropostaAceitaReabreAVaga() {
+        solicitacao.setStatus(StatusSolicitacao.EM_ANDAMENTO);
+        SolicitacaoProfissional linha = solicitacao.getProfissionais().iterator().next();
+        linha.setVagasPreenchidas(1);
+        Proposta aceita = proposta(100L, profissional, StatusProposta.ACEITA);
+        aceita.setVaga(linha);
+        mockProfissional(profissional);
+        when(propostaRepository.findById(100L)).thenReturn(Optional.of(aceita));
+
+        PropostaResponse response = service.cancelar(USUARIO_PROFISSIONAL_ID, 100L);
+
+        assertThat(response.status()).isEqualTo(StatusProposta.CANCELADA);
+        assertThat(linha.getVagasPreenchidas()).isZero();
+        assertThat(aceita.getVaga()).isNull();
+        assertThat(solicitacao.getStatus()).isNotEqualTo(StatusSolicitacao.EM_ANDAMENTO);
+    }
+
+    @Test
+    void naoAlteraPropostaDeSolicitacaoEncerrada() {
+        solicitacao.setStatus(StatusSolicitacao.CONCLUIDA);
+        mockProfissional(profissional);
+        when(propostaRepository.findById(100L)).thenReturn(Optional.of(proposta(100L, profissional, StatusProposta.ACEITA)));
+
+        assertThatThrownBy(() -> service.atualizar(USUARIO_PROFISSIONAL_ID, 100L, REQUEST))
+                .isInstanceOf(TransicaoStatusInvalidaException.class)
+                .hasMessage("Esta proposta não pode mais ser editada.");
+    }
+
+    @Test
+    void pacienteRecusaPropostaPendenteEASolicitacaoVoltaAAbertaSemOutrasPropostas() {
+        solicitacao.setStatus(StatusSolicitacao.RECEBENDO_PROPOSTAS);
+        Proposta proposta = proposta(100L, profissional, StatusProposta.PENDENTE);
+        when(propostaRepository.findById(100L)).thenReturn(Optional.of(proposta));
+        when(propostaRepository.existsBySolicitacaoIdAndStatus(50L, StatusProposta.PENDENTE)).thenReturn(false);
+
+        PropostaResponse response = service.recusar(USUARIO_PACIENTE_ID, 100L);
+
+        assertThat(response.status()).isEqualTo(StatusProposta.RECUSADA);
+        assertThat(solicitacao.getStatus()).isEqualTo(StatusSolicitacao.ABERTA);
+    }
+
+    @Test
+    void naoRecusaPropostaQueJaFoiRespondida() {
+        solicitacao.setStatus(StatusSolicitacao.RECEBENDO_PROPOSTAS);
+        when(propostaRepository.findById(100L)).thenReturn(Optional.of(proposta(100L, profissional, StatusProposta.ACEITA)));
+
+        assertThatThrownBy(() -> service.recusar(USUARIO_PACIENTE_ID, 100L))
+                .isInstanceOf(TransicaoStatusInvalidaException.class)
+                .hasMessage("Esta proposta não pode mais ser recusada.");
+    }
+
+    @Test
+    void soODonoDaSolicitacaoRecusa() {
+        when(propostaRepository.findById(100L)).thenReturn(Optional.of(proposta(100L, profissional, StatusProposta.PENDENTE)));
+
+        assertThatThrownBy(() -> service.recusar(USUARIO_PROFISSIONAL_ID, 100L))
+                .isInstanceOf(PropostaNaoEncontradaException.class);
     }
 
     @Test

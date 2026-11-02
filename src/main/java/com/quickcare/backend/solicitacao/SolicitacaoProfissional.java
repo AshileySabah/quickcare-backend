@@ -75,6 +75,13 @@ public class SolicitacaoProfissional {
         return vagasPreenchidas < quantidade;
     }
 
+    public void liberarVaga() {
+        if (vagasPreenchidas == 0) {
+            throw new IllegalStateException("Linha sem vagas preenchidas.");
+        }
+        vagasPreenchidas--;
+    }
+
     public void preencherVaga() {
         if (!temVaga()) {
             throw new IllegalStateException("Linha sem vagas.");

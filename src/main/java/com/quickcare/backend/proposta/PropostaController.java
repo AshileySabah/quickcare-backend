@@ -20,7 +20,7 @@ import java.util.List;
 /**
  * CRUD de propostas do profissional. Envio e listagem por solicitação ficam
  * sob {@code /solicitacoes/{id}/propostas}; a exclusão é lógica via
- * {@code /cancelar}, e o paciente responde com {@code /aceitar}.
+ * {@code /cancelar}, e o paciente responde com {@code /aceitar} ou {@code /recusar}.
  */
 @RestController
 @RequiredArgsConstructor
@@ -67,6 +67,11 @@ public class PropostaController {
     @PatchMapping("/propostas/{id}/cancelar")
     public PropostaResponse cancelar(@AuthenticationPrincipal Long usuarioId, @PathVariable Long id) {
         return propostaService.cancelar(usuarioId, id);
+    }
+
+    @PatchMapping("/propostas/{id}/recusar")
+    public PropostaResponse recusar(@AuthenticationPrincipal Long usuarioId, @PathVariable Long id) {
+        return propostaService.recusar(usuarioId, id);
     }
 
     @PatchMapping("/propostas/{id}/aceitar")

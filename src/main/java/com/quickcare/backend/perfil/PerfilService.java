@@ -131,10 +131,10 @@ public class PerfilService {
                 usuario.getNome(),
                 usuario.getEmail(),
                 usuario.getTelefone(),
-                avatarUrl(usuario),
+                armazenamentoDocumentoService.urlDoAvatar(usuario),
                 paciente.getDataNascimento(),
                 paciente.getGenero(),
-                paraResponse(paciente.getContatosEmergencia()),
+                ContatoEmergenciaResponse.de(paciente.getContatosEmergencia()),
                 paciente.getAlergias(),
                 paciente.getCondicoesSaude(),
                 paciente.getMedicamentosEmUso(),
@@ -154,10 +154,10 @@ public class PerfilService {
                 usuario.getNome(),
                 usuario.getEmail(),
                 usuario.getTelefone(),
-                avatarUrl(usuario),
+                armazenamentoDocumentoService.urlDoAvatar(usuario),
                 profissional.getDataNascimento(),
                 profissional.getGenero(),
-                paraResponse(profissional.getContatosEmergencia()),
+                ContatoEmergenciaResponse.de(profissional.getContatosEmergencia()),
                 profissional.isPossuiSeguroResponsabilidadeCivil(),
                 profissional.getModalidadeAtendimento(),
                 profissional.getRaioAtendimentoKm(),
@@ -171,16 +171,6 @@ public class PerfilService {
         );
     }
 
-    private List<ContatoEmergenciaResponse> paraResponse(List<ContatoEmergencia> contatos) {
-        return contatos.stream()
-                .map(contato -> new ContatoEmergenciaResponse(contato.getNome(), contato.getTelefone()))
-                .toList();
-    }
 
-    private String avatarUrl(Usuario usuario) {
-        return usuario.getAvatarStorageKey() != null
-                ? armazenamentoDocumentoService.gerarUrlAssinada(usuario.getAvatarStorageKey())
-                : null;
-    }
 
 }

@@ -11,6 +11,8 @@ import com.quickcare.backend.paciente.Paciente;
 import com.quickcare.backend.paciente.PacienteRepository;
 import com.quickcare.backend.profissional.Profissional;
 import com.quickcare.backend.profissional.ProfissionalRepository;
+import com.quickcare.backend.proposta.MotivoReaceite;
+import com.quickcare.backend.proposta.Proposta;
 import com.quickcare.backend.proposta.PropostaRepository;
 import com.quickcare.backend.proposta.PropostaRepository.ContagemPropostas;
 import com.quickcare.backend.proposta.StatusProposta;
@@ -78,7 +80,8 @@ public class SolicitacaoService {
      * Solicitações que ainda recebem propostas, numa modalidade que o
      * profissional atende, e que pedem ao menos um profissional da categoria
      * dele com todas as especialidades da linha entre as suas. As que já têm
-     * proposta dele (não cancelada) saem daqui e ficam em "Minhas propostas".
+     * proposta ativa dele saem daqui e ficam em "Minhas propostas"; com a
+     * proposta recusada ou cancelada, voltam (ele pode enviar outra).
      */
     @Transactional(readOnly = true)
     public List<SolicitacaoResponse> listarDisponiveis(Long usuarioId) {
@@ -103,7 +106,7 @@ public class SolicitacaoService {
                 StatusSolicitacao.RECEBENDO_PROPOSTAS_STATUS);
 
         Set<Long> comProposta = propostaRepository.findSolicitacaoIdsComPropostaDoProfissional(
-                profissional.getId(), StatusProposta.CANCELADA);
+                profissional.getId(), StatusProposta.ATIVAS);
 
         // A distância até o endereço presencial é conferida na entidade. Quem
         // também é paciente não vê as próprias solicitações.
@@ -146,10 +149,13 @@ public class SolicitacaoService {
         if (!solicitacao.getStatus().podeSerEditada()) {
             throw new TransicaoStatusInvalidaException("Esta solicitação não pode mais ser editada.");
         }
-        // Editar substitui as linhas pedidas, o que apagaria as vagas já ocupadas.
-        if (solicitacao.temVagaPreenchida()) {
-            throw new TransicaoStatusInvalidaException(
-                    "Esta solicitação já tem propostas aceitas e não pode mais ser editada.");
+
+        // Editar substitui as linhas pedidas: as propostas aceitas saem das
+        // vagas e voltam a aguardar o aceite do paciente na versão nova.
+        List<Proposta> aceitas = propostaRepository.findBySolicitacaoIdAndStatus(id, StatusProposta.ACEITA);
+        aceitas.forEach(proposta -> proposta.voltarParaReaceite(MotivoReaceite.SOLICITACAO_ALTERADA));
+        if (!aceitas.isEmpty()) {
+            solicitacao.setStatus(StatusSolicitacao.RECEBENDO_PROPOSTAS);
         }
 
         aplicarDados(solicitacao, request);

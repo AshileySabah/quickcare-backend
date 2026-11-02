@@ -1,5 +1,6 @@
 package com.quickcare.backend.proposta;
 
+import com.quickcare.backend.solicitacao.StatusSolicitacao;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -21,18 +22,32 @@ public interface PropostaRepository extends JpaRepository<Proposta, Long> {
 
     boolean existsBySolicitacaoIdAndProfissionalIdAndStatusNot(Long solicitacaoId, Long profissionalId, StatusProposta status);
 
+    boolean existsBySolicitacaoIdAndProfissionalIdAndStatusIn(
+            Long solicitacaoId, Long profissionalId, Collection<StatusProposta> status);
+
     boolean existsBySolicitacaoIdAndStatus(Long solicitacaoId, StatusProposta status);
 
-    /** Solicitações em que o profissional tem proposta com status diferente do informado (o cancelado). */
+    /** O profissional tem proposta com o status informado em alguma solicitação do paciente. */
+    boolean existsByProfissionalIdAndSolicitacaoPacienteIdAndStatus(
+            Long profissionalId, Long pacienteId, StatusProposta status);
+
+    /** Proposta do profissional aceita numa solicitação do paciente ainda em curso. */
+    boolean existsByProfissionalIdAndSolicitacaoPacienteIdAndStatusAndSolicitacaoStatusIn(
+            Long profissionalId, Long pacienteId, StatusProposta status, Collection<StatusSolicitacao> statusSolicitacao);
+
+    long countByProfissionalIdAndStatusAndSolicitacaoStatus(
+            Long profissionalId, StatusProposta status, StatusSolicitacao statusSolicitacao);
+
+    /** Solicitações em que o profissional tem proposta com um destes status. */
     @Query("""
             select distinct p.solicitacao.id
             from Proposta p
             where p.profissional.id = :profissionalId
-              and p.status <> :ignorado
+              and p.status in :status
             """)
     Set<Long> findSolicitacaoIdsComPropostaDoProfissional(
             @Param("profissionalId") Long profissionalId,
-            @Param("ignorado") StatusProposta ignorado);
+            @Param("status") Collection<StatusProposta> status);
 
     List<Proposta> findBySolicitacaoIdAndStatus(Long solicitacaoId, StatusProposta status);
 
