@@ -9,7 +9,6 @@ public enum ModalidadeSolicitacao {
     PRESENCIAL,
     ONLINE;
 
-    /** Modalidades de solicitação que um profissional com esta forma de atendimento pode atender. */
     public static Set<ModalidadeSolicitacao> atendidasPor(ModalidadeAtendimento modalidadeAtendimento) {
         return switch (modalidadeAtendimento) {
             case PRESENCIAL -> EnumSet.of(PRESENCIAL);

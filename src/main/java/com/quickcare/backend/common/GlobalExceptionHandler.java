@@ -121,7 +121,6 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.NOT_FOUND, ex.getMessage());
     }
 
-    /** O job (ou o outro lado) mexeu no mesmo registro ao mesmo tempo. */
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
     public ResponseEntity<ApiError> handleConflitoDeVersao() {
         return build(HttpStatus.CONFLICT, "Este atendimento acabou de mudar. Recarregue a página e tente de novo.");

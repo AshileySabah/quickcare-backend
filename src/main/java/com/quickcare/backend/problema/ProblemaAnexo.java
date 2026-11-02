@@ -21,7 +21,6 @@ import lombok.Setter;
 
 import java.time.Instant;
 
-/** Prova (imagem ou PDF) que um dos lados anexou ao relato ou à contestação. */
 @Entity
 @Table(name = "problema_anexo")
 @Getter

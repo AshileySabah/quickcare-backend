@@ -9,11 +9,6 @@ import com.quickcare.backend.solicitacao.dto.ProfissionalSolicitadoResponse;
 import java.time.LocalDate;
 import java.util.List;
 
-/**
- * O que o profissional vê da solicitação na lista das suas propostas. Quem é o
- * paciente (id, nome e foto) só vem depois que a proposta é aceita; antes
- * disso esses campos nem aparecem no JSON.
- */
 public record SolicitacaoResumoResponse(
         Long id,
         @JsonInclude(JsonInclude.Include.NON_NULL) Long pacienteId,

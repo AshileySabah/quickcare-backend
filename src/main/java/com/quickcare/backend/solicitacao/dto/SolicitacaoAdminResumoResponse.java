@@ -10,7 +10,6 @@ import com.quickcare.backend.solicitacao.StatusSolicitacao;
 import java.time.Instant;
 import java.time.LocalDate;
 
-/** Uma linha da lista de solicitações do admin. */
 public record SolicitacaoAdminResumoResponse(
         Long id,
         StatusSolicitacao status,

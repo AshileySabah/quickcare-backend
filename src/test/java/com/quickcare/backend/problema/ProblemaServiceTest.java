@@ -52,10 +52,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/**
- * "Não foi realizado": relato com anexos, 7 dias para confirmar ou contestar,
- * sem resposta vale o relato (ainda contestável), e a decisão do admin.
- */
 @ExtendWith(MockitoExtension.class)
 class ProblemaServiceTest {
 
@@ -91,7 +87,6 @@ class ProblemaServiceTest {
         Proposta proposta = Proposta.builder().id(100L).solicitacao(solicitacao)
                 .profissional(Profissional.builder().id(20L).usuario(usuarioProfissional).build())
                 .status(StatusProposta.ACEITA).build();
-        // Terminou ontem: ainda dentro das 72h para relatar.
         atendimento = Atendimento.builder().id(900L).proposta(proposta).solicitacao(solicitacao)
                 .status(StatusAtendimento.FINALIZADO)
                 .inicio(AGORA.minus(Duration.ofHours(30))).termino(AGORA.minus(Duration.ofHours(24)))

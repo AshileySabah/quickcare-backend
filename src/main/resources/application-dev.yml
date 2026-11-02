@@ -17,7 +17,6 @@ spring:
           starttls:
             enable: true
   flyway:
-    # db/seed-dev: massa de dados local (paciente de teste etc.), só no perfil dev.
     locations: classpath:db/migration,classpath:db/seed-dev
 
 supabase:

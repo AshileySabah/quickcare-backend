@@ -8,10 +8,6 @@ import com.quickcare.backend.usuario.Usuario;
 import java.time.Instant;
 import java.time.LocalDate;
 
-/**
- * Paciente ou profissional sob validação — permite tratar os dois perfis da
- * mesma forma nas regras de etapas. Exatamente um dos dois é não nulo.
- */
 public record CadastroAvaliado(Paciente paciente, Profissional profissional) {
 
     public static CadastroAvaliado de(Paciente paciente) {

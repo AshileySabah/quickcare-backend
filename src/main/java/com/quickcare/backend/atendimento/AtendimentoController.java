@@ -12,10 +12,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/**
- * Ações sobre o atendimento de uma proposta aceita. Ele vem dentro da
- * proposta ({@code atendimento}); aqui só as mudanças.
- */
 @RestController
 @RequestMapping("/atendimentos/{id}")
 @RequiredArgsConstructor
@@ -23,13 +19,11 @@ public class AtendimentoController {
 
     private final AtendimentoService atendimentoService;
 
-    /** O profissional aceita a nova versão da solicitação editada pelo paciente. */
     @PatchMapping("/reaceitar")
     public AtendimentoResponse reaceitar(@AuthenticationPrincipal Long usuarioId, @PathVariable Long id) {
         return atendimentoService.reaceitar(usuarioId, id);
     }
 
-    /** O profissional recusa a nova versão, sem penalidade. */
     @PatchMapping("/recusar-reaceite")
     public AtendimentoResponse recusarReaceite(@AuthenticationPrincipal Long usuarioId, @PathVariable Long id) {
         return atendimentoService.recusarReaceite(usuarioId, id);

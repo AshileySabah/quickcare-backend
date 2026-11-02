@@ -21,11 +21,6 @@ import lombok.NoArgsConstructor;
 
 import java.time.Instant;
 
-/**
- * O perfil não cria solicitação (paciente) nem envia proposta (profissional)
- * até {@code fim}; o resto segue (editar, aceitar, atender). O admin pode
- * remover antes, com justificativa.
- */
 @Entity
 @Table(name = "bloqueio")
 @Getter
@@ -46,7 +41,6 @@ public class Bloqueio {
     @Column(nullable = false, length = 20)
     private TipoPerfil perfil;
 
-    /** 1º bloqueio = 7 dias, 2º = 14, 3º = 21...; volta a 1 depois de 60 dias sem ocorrência. */
     @Column(nullable = false)
     private int nivel;
 
@@ -66,13 +60,15 @@ public class Bloqueio {
     @Column(name = "justificativa_remocao", length = 1000)
     private String justificativaRemocao;
 
-    /**
-     * Anularam uma das ocorrências que o causaram e as que sobraram não chegam
-     * ao limite: deixa de valer e conta como se não tivesse existido (não zera
-     * o contador nem entra no nível do próximo).
-     */
     @Column(nullable = false)
     private boolean desfeito;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "criado_por_usuario_id")
+    private Usuario criadoPor;
+
+    @Column(length = 1000)
+    private String justificativa;
 
     @Column(name = "criado_em", nullable = false, updatable = false)
     private Instant criadoEm;
@@ -84,11 +80,14 @@ public class Bloqueio {
         }
     }
 
+    public boolean aplicadoPeloAdmin() {
+        return criadoPor != null;
+    }
+
     public boolean ativoEm(Instant agora) {
         return removidoEm == null && !agora.isBefore(inicio) && agora.isBefore(fim);
     }
 
-    /** Quando deixou de valer: no fim previsto ou na remoção pelo admin. */
     public Instant terminoEfetivo() {
         return removidoEm != null && removidoEm.isBefore(fim) ? removidoEm : fim;
     }

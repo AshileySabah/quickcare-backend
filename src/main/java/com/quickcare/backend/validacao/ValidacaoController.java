@@ -14,7 +14,6 @@ import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-/** Andamento da validação do próprio cadastro. `perfil` na URL: "paciente" ou "profissional". */
 @RestController
 @RequestMapping("/validacao")
 @RequiredArgsConstructor

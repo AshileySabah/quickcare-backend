@@ -8,7 +8,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Perfil de outro usuário; o próprio perfil, para editar, fica em {@code /perfil}. */
 @RestController
 @RequiredArgsConstructor
 public class PerfilPublicoController {

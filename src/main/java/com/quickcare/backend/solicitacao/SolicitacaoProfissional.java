@@ -24,10 +24,6 @@ import lombok.Setter;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
-/**
- * Quantos profissionais de uma categoria a solicitação pede e quais
- * especialidades cada um deles precisa atender — todas, não qualquer uma.
- */
 @Entity
 @Table(name = "solicitacao_profissional")
 @Getter
@@ -61,30 +57,21 @@ public class SolicitacaoProfissional {
     @Column(nullable = false)
     private int quantidade;
 
-    /** Propostas aceitas para esta linha; nunca passa de {@code quantidade}. */
     @Column(name = "vagas_preenchidas", nullable = false)
     private int vagasPreenchidas;
 
-    /**
-     * Das preenchidas, as de profissionais que ainda não reaceitaram a
-     * solicitação editada: contam como ocupadas, mas o paciente pode pôr outro
-     * profissional no lugar.
-     */
     @Column(name = "vagas_reservadas", nullable = false)
     private int vagasReservadas;
 
-    /** O profissional atende esta linha se for da categoria e cobrir todas as especialidades. */
     public boolean atendidaPor(CategoriaProfissional categoriaProfissional, Set<Long> especialidadeIdsDoProfissional) {
         return categoria == categoriaProfissional
                 && especialidades.stream().allMatch(especialidade -> especialidadeIdsDoProfissional.contains(especialidade.getId()));
     }
 
-    /** Vaga livre, sem ninguém. */
     public boolean temVaga() {
         return vagasPreenchidas < quantidade;
     }
 
-    /** Recebe proposta: há vaga livre ou reservada (que um novo profissional pode tomar). */
     public boolean aceitaPropostas() {
         return temVaga() || vagasReservadas > 0;
     }
@@ -96,7 +83,6 @@ public class SolicitacaoProfissional {
         vagasPreenchidas--;
     }
 
-    /** Uma vaga preenchida passa a aguardar o reaceite do profissional. */
     public void reservarVaga() {
         if (vagasReservadas >= vagasPreenchidas) {
             throw new IllegalStateException("Linha sem vaga preenchida para reservar.");
@@ -104,7 +90,6 @@ public class SolicitacaoProfissional {
         vagasReservadas++;
     }
 
-    /** O profissional reaceitou: a vaga volta a ser só dele. */
     public void confirmarReserva() {
         if (vagasReservadas == 0) {
             throw new IllegalStateException("Linha sem vagas reservadas.");
@@ -112,7 +97,6 @@ public class SolicitacaoProfissional {
         vagasReservadas--;
     }
 
-    /** O profissional saiu (recusou, foi substituído, o prazo venceu): a vaga fica livre. */
     public void liberarVagaReservada() {
         confirmarReserva();
         liberarVaga();

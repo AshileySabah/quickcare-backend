@@ -6,10 +6,6 @@ import com.quickcare.backend.validacao.TipoEtapaValidacao;
 import java.time.Instant;
 import java.util.List;
 
-/**
- * Etapa atual de um tipo, com as avaliações anteriores (reprovadas e depois
- * reenviadas) em `historico`, da mais recente para a mais antiga.
- */
 public record EtapaValidacaoResponse(
         Long id,
         TipoEtapaValidacao tipo,

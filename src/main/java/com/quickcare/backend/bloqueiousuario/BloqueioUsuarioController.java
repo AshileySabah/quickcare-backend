@@ -17,11 +17,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
-/**
- * Bloqueio entre paciente e profissional. O paciente bloqueia em
- * {@code /profissionais/{id}}; o profissional, em {@code /pacientes/{id}}. A
- * prévia diz o que acaba entre os dois, para o modal avisar antes.
- */
 @RestController
 @RequestMapping("/bloqueios")
 @RequiredArgsConstructor

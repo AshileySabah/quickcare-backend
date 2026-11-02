@@ -7,11 +7,6 @@ import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-/**
- * Muda os atendimentos no horário (início, término, conclusão) e manda os
- * lembretes. Também roda ao subir, para recuperar o que venceu enquanto o
- * servidor dormia.
- */
 @Component
 @RequiredArgsConstructor
 class AtendimentoJob {

@@ -18,7 +18,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 
-/** A fila de relatos e disputas do admin. */
 @Service
 @RequiredArgsConstructor
 public class AdminDisputaService {
@@ -30,7 +29,6 @@ public class AdminDisputaService {
     private final ArmazenamentoDocumentoService armazenamento;
     private final AcessoAdmin acessoAdmin;
 
-    /** Sem filtro, todos; as em disputa primeiro, das mais antigas para as mais novas. */
     @Transactional(readOnly = true)
     public List<DisputaResumoResponse> listar(Long adminUsuarioId, Collection<StatusProblema> status) {
         acessoAdmin.exigir(adminUsuarioId);

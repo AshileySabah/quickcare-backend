@@ -36,11 +36,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 
-/**
- * "Não foi realizado": um lado relata (com até 3 anexos), o outro confirma ou
- * contesta em 7 dias; sem resposta, vale o relato e quem não compareceu leva
- * ocorrência. Contestado (inclusive depois do prazo), o admin decide.
- */
 @Slf4j
 @Service
 public class ProblemaService {
@@ -77,8 +72,6 @@ public class ProblemaService {
         this.transacao = new TransactionTemplate(transactionManager);
         this.transacao.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
-
-    // =================================================== as partes do atendimento
 
     @Transactional
     public AtendimentoResponse relatar(Long usuarioId, Long atendimentoId, RelatoRequest request, List<MultipartFile> anexos) {
@@ -117,7 +110,6 @@ public class ProblemaService {
         return responder(atendimento);
     }
 
-    /** Antes ou depois do prazo de 7 dias: vira disputa e o admin decide. */
     @Transactional
     public AtendimentoResponse contestar(Long usuarioId, Long atendimentoId, ContestacaoRequest request,
                                          List<MultipartFile> anexos) {
@@ -134,7 +126,6 @@ public class ProblemaService {
         return responder(atendimento);
     }
 
-    /** URL temporária de um anexo, para as partes do atendimento. */
     @Transactional(readOnly = true)
     public String urlDoAnexo(Long usuarioId, Long atendimentoId, Long anexoId) {
         Atendimento atendimento = atendimentoRepository.findWithPartesById(atendimentoId)
@@ -143,9 +134,6 @@ public class ProblemaService {
         return urlDoAnexo(problemaDo(atendimento), anexoId);
     }
 
-    // ============================================================= prazo
-
-    /** Relatos sem resposta em 7 dias passam a valer (job a cada minuto). */
     public void processarVencidos() {
         Instant agora = Instant.now(clock);
         for (Long id : problemaRepository.findIdsComPrazoVencido(agora)) {
@@ -169,12 +157,6 @@ public class ProblemaService {
         notificador.problemaSemResposta(problema);
     }
 
-    // ============================================================= admin
-
-    /**
-     * O admin decide se aconteceu e quem leva ocorrência; as ocorrências que o
-     * relato tinha gerado são anuladas e trocadas pelas da decisão.
-     */
     @Transactional
     public ProblemaAtendimento decidir(Long adminUsuarioId, Long problemaId, DecisaoDisputaRequest request) {
         Usuario admin = acessoAdmin.exigir(adminUsuarioId);
@@ -220,9 +202,6 @@ public class ProblemaService {
                 .orElseThrow(() -> new RecursoNaoEncontradoException("Anexo não encontrado."));
     }
 
-    // ============================================================= apoio
-
-    /** Vale o relato: não realizado e, se alguém faltou, ocorrência para ele. */
     private void encerrarComoNaoRealizado(ProblemaAtendimento problema, Instant agora) {
         Atendimento atendimento = problema.getAtendimento();
         LadoAtendimento ausente = problema.ausente();

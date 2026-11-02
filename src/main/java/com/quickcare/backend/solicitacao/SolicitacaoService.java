@@ -90,13 +90,6 @@ public class SolicitacaoService {
         return responder(solicitacaoRepository.findByPacienteIdOrderByCriadoEmDesc(paciente.getId()));
     }
 
-    /**
-     * Solicitações que ainda recebem propostas, numa modalidade que o
-     * profissional atende, e que pedem ao menos um profissional da categoria
-     * dele com todas as especialidades da linha entre as suas. As que já têm
-     * proposta ativa dele saem daqui e ficam em "Minhas propostas"; com a
-     * proposta recusada ou cancelada, voltam (ele pode enviar outra).
-     */
     @Transactional(readOnly = true)
     public List<SolicitacaoResponse> listarDisponiveis(Long usuarioId) {
         atendimentoService.processarVencidos();
@@ -124,9 +117,6 @@ public class SolicitacaoService {
                 profissional.getId(), StatusProposta.ATIVAS);
         Set<Long> pacientesBloqueados = bloqueioUsuarioRepository.findPacienteIdsBloqueadosCom(profissional.getId());
 
-        // A distância até o endereço presencial é conferida na entidade. Quem
-        // também é paciente não vê as próprias solicitações, nem as de quem
-        // está bloqueado com ele (não importa quem bloqueou).
         return responder(candidatas.stream()
                 .filter(solicitacao -> !solicitacao.ehDoUsuario(usuarioId))
                 .filter(solicitacao -> !pacientesBloqueados.contains(solicitacao.getPaciente().getId()))
@@ -135,12 +125,6 @@ public class SolicitacaoService {
                 .toList());
     }
 
-    /**
-     * Visível para o paciente dono, para profissionais compatíveis e para quem
-     * já enviou proposta (mesmo depois de a solicitação sair de "recebendo
-     * propostas"). Para os demais responde "não encontrada", sem revelar que a
-     * solicitação existe.
-     */
     @Transactional(readOnly = true)
     public SolicitacaoResponse buscar(Long usuarioId, Long id) {
         atendimentoService.processarVencidos();
@@ -148,8 +132,6 @@ public class SolicitacaoService {
                 .orElseThrow(SolicitacaoNaoEncontradaException::new);
 
         boolean ehDono = solicitacao.ehDoUsuario(usuarioId);
-        // Bloqueado com o paciente, só continua vendo a solicitação em que já
-        // tinha proposta (o histórico fica).
         boolean ehProfissionalEnvolvido = profissionalRepository.findByUsuarioId(usuarioId)
                 .map(profissional -> propostaRepository.existsBySolicitacaoIdAndProfissionalIdAndStatusNot(
                                 id, profissional.getId(), StatusProposta.CANCELADA)
@@ -172,9 +154,6 @@ public class SolicitacaoService {
             throw new TransicaoStatusInvalidaException("Esta solicitação não pode mais ser editada.");
         }
 
-        // Editar substitui as linhas pedidas. Os aceitos que ainda vão atender
-        // reservam vaga na versão nova e reaceitam ou recusam; enquanto isso a
-        // solicitação volta a receber propostas.
         atendimentoService.prepararEdicao(solicitacao);
         List<Proposta> pendentes = propostaRepository.findBySolicitacaoIdAndStatus(id, StatusProposta.PENDENTE);
 
@@ -187,7 +166,6 @@ public class SolicitacaoService {
         return response;
     }
 
-    /** Pendentes são recusadas e os atendimentos que ainda iam acontecer, cancelados. */
     @Transactional
     public SolicitacaoResponse cancelar(Long usuarioId, Long id) {
         Solicitacao solicitacao = buscarDoPaciente(usuarioId, id);
@@ -219,7 +197,6 @@ public class SolicitacaoService {
         return responder(List.of(solicitacao)).get(0);
     }
 
-    /** Uma única consulta de contagem de propostas para a lista toda. */
     private List<SolicitacaoResponse> responder(List<Solicitacao> solicitacoes) {
         if (solicitacoes.isEmpty()) {
             return List.of();
@@ -250,7 +227,6 @@ public class SolicitacaoService {
         aplicarEndereco(solicitacao, request);
     }
 
-    /** Valida todas as linhas antes de substituir as atuais (orphanRemoval apaga as antigas). */
     private void aplicarProfissionais(Solicitacao solicitacao, List<ProfissionalSolicitadoRequest> pedidos) {
         Set<Long> todosIds = pedidos.stream()
                 .flatMap(pedido -> pedido.especialidadeIds().stream())
@@ -290,7 +266,6 @@ public class SolicitacaoService {
         solicitacao.getProfissionais().addAll(novas);
     }
 
-    /** Online não guarda endereço, mesmo que o front envie um. */
     private void aplicarEndereco(Solicitacao solicitacao, SolicitacaoRequest request) {
         boolean presencial = request.modalidade() == ModalidadeSolicitacao.PRESENCIAL;
         EnderecoSolicitacaoRequest endereco = presencial ? request.endereco() : null;

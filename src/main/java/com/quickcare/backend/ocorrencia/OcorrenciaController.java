@@ -14,7 +14,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-/** As ocorrências do próprio perfil, o bloqueio atual (aviso na home) e o recurso ao admin. */
 @RestController
 @RequestMapping("/ocorrencias")
 @RequiredArgsConstructor

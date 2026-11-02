@@ -10,10 +10,6 @@ import com.quickcare.backend.usuario.Usuario;
 
 import java.time.Instant;
 
-/**
- * Uma ocorrência; os autores só vão para o admin. {@code jaGerouBloqueio}: ela
- * entrou num bloqueio que já terminou, então não conta mais.
- */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record OcorrenciaResponse(
         Long id,
@@ -53,7 +49,6 @@ public record OcorrenciaResponse(
         }
     }
 
-    /** {@code corte}: o último bloqueio que já terminou (sem os desfeitos), ou nulo. */
     public static OcorrenciaResponse paraOPerfil(Ocorrencia ocorrencia, Bloqueio corte) {
         return new OcorrenciaResponse(ocorrencia.getId(), ocorrencia.getMotivo(), ocorrencia.getCriadoEm(),
                 ocorrencia.getSolicitacao() == null ? null : ocorrencia.getSolicitacao().getId(),

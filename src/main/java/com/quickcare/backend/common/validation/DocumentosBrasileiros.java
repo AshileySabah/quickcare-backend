@@ -1,10 +1,5 @@
 package com.quickcare.backend.common.validation;
 
-/**
- * Validação por algoritmo (formato + dígitos verificadores) dos documentos
- * brasileiros. Só diz se o número "faz sentido" — se ele de fato existe é
- * conferido pelo admin, com ajuda opcional de APIs de terceiros.
- */
 public final class DocumentosBrasileiros {
 
     private DocumentosBrasileiros() {
@@ -30,7 +25,6 @@ public final class DocumentosBrasileiros {
         return digitos[12] == digitoCnpj(digitos, pesos1) && digitos[13] == digitoCnpj(digitos, pesos2);
     }
 
-    /** Algoritmo do Denatran para os 11 dígitos da CNH (número do registro). */
     public static boolean cnhValida(String cnh) {
         if (cnh == null || !cnh.matches("\\d{11}") || todosDigitosIguais(cnh)) {
             return false;
@@ -59,11 +53,6 @@ public final class DocumentosBrasileiros {
         return digitos[9] == dv1 && digitos[10] == dv2;
     }
 
-    /**
-     * Cada estado emite o RG com seu próprio padrão. Só o de SP tem dígito
-     * verificador público (8 dígitos + DV, que pode ser X); nos demais só dá
-     * para conferir tamanho e caracteres.
-     */
     public static boolean rgValido(String rg, String uf) {
         if (rg == null) {
             return false;

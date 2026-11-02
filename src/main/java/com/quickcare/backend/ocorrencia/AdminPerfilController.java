@@ -20,7 +20,6 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.Map;
 
-/** Ocorrências, recursos e bloqueios dos perfis, no admin. */
 @RestController
 @RequestMapping("/admin")
 @RequiredArgsConstructor
@@ -57,6 +56,16 @@ public class AdminPerfilController {
         return adminPerfilService.lancarOcorrencia(usuarioId, perfil, id, request.justificativa());
     }
 
+    @PostMapping("/perfis/{perfil}/{id}/bloqueios")
+    public PerfilAdminDetalheResponse aplicarBloqueio(
+            @AuthenticationPrincipal Long usuarioId,
+            @PathVariable TipoPerfil perfil,
+            @PathVariable Long id,
+            @Valid @RequestBody JustificativaRequest request
+    ) {
+        return adminPerfilService.aplicarBloqueio(usuarioId, perfil, id, request.justificativa());
+    }
+
     @PatchMapping("/ocorrencias/{id}/anular")
     public PerfilAdminDetalheResponse anularOcorrencia(
             @AuthenticationPrincipal Long usuarioId,
@@ -84,7 +93,6 @@ public class AdminPerfilController {
         return adminPerfilService.decidirRecurso(usuarioId, id, request.anular(), request.justificativa());
     }
 
-    /** Para o contador no menu do admin. */
     @GetMapping("/recursos/em-aberto")
     public Map<String, Long> recursosEmAberto(@AuthenticationPrincipal Long usuarioId) {
         return Map.of("total", adminPerfilService.contarRecursosEmAnalise(usuarioId));

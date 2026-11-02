@@ -5,7 +5,6 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
-/** "Não foi realizado": por quê e o que aconteceu (os anexos vão em outra parte do multipart). */
 public record RelatoRequest(
         @NotNull(message = "Informe o que aconteceu.") MotivoProblema motivo,
         @NotBlank(message = "Descreva o que aconteceu.")

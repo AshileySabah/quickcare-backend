@@ -12,12 +12,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-/**
- * Garante que exista um admin no ambiente, já que não há cadastro público de
- * administrador. Idempotente: roda a cada subida e só cria o que falta. Se o
- * e-mail já pertence a um usuário, apenas adiciona o perfil de admin — a senha
- * dele nunca é sobrescrita.
- */
 @Slf4j
 @Component
 @RequiredArgsConstructor

@@ -21,7 +21,6 @@ import lombok.NoArgsConstructor;
 
 import java.time.Instant;
 
-/** O usuário discorda de uma ocorrência e explica; o admin mantém ou anula, com justificativa. */
 @Entity
 @Table(name = "recurso_ocorrencia")
 @Getter

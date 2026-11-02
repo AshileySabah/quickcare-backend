@@ -20,7 +20,6 @@ import lombok.NoArgsConstructor;
 
 import java.time.Instant;
 
-/** Auditoria: o que um admin fez, em quê e por quê. */
 @Entity
 @Table(name = "acao_admin")
 @Getter
@@ -29,13 +28,13 @@ import java.time.Instant;
 @Builder
 public class AcaoAdmin {
 
-    /** Em que tipo de registro a ação foi feita ({@code alvoId} é o id dele). */
     public enum Alvo {
         OCORRENCIA,
         BLOQUEIO,
         PROBLEMA,
         SOLICITACAO,
-        /** Lançamento de ocorrência: o alvo é o usuário (no perfil do detalhe). */
+        PROPOSTA,
+        BLOQUEIO_USUARIO,
         USUARIO
     }
 

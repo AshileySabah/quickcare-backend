@@ -11,6 +11,7 @@ import com.quickcare.backend.ocorrencia.RegrasBloqueio;
 import com.quickcare.backend.problema.DecisaoProblema;
 import com.quickcare.backend.problema.MotivoProblema;
 import com.quickcare.backend.problema.ProblemaAtendimento;
+import com.quickcare.backend.proposta.AcaoAdminProposta;
 import com.quickcare.backend.proposta.Proposta;
 import com.quickcare.backend.solicitacao.AcaoAdminSolicitacao;
 import com.quickcare.backend.solicitacao.Solicitacao;
@@ -31,26 +32,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/**
- * Os textos de cada notificação, a partir do evento de domínio. O paciente só
- * é identificado ao profissional como "o paciente" (o nome aparece na tela
- * depois do aceite); o profissional sempre aparece pelo nome. O link leva à
- * tela e diz qual item dela destacar.
- */
 @Component
 @RequiredArgsConstructor
 public class Notificador {
 
     private static final int TAMANHO_MAXIMO_MENSAGEM = 500;
-    /** Mesmo nome que o front lê (HIGHLIGHT_PARAM). */
     private static final String PARAMETRO_DESTAQUE = "destaque";
     private static final ZoneId FUSO = ZoneId.of("America/Sao_Paulo");
     private static final DateTimeFormatter DIA = DateTimeFormatter.ofPattern("dd/MM");
     private static final DateTimeFormatter HORA = DateTimeFormatter.ofPattern("HH:mm");
 
     private final NotificacaoService notificacaoService;
-
-    // ------------------------------------------------------ para o paciente
 
     public void propostaRecebida(Proposta proposta) {
         paraPaciente(proposta, Destaque.PROPOSTA, TipoNotificacao.PROPOSTA_RECEBIDA, "Nova proposta",
@@ -76,29 +68,20 @@ public class Notificador {
         paraPaciente(proposta, Destaque.SOLICITACAO, TipoNotificacao.PROPOSTA_CANCELADA, "Proposta cancelada", mensagem);
     }
 
-    // -------------------------------------------------- para o profissional
-
     public void propostaAceita(Proposta proposta) {
         paraProfissional(proposta, Destaque.PROPOSTA, TipoNotificacao.PROPOSTA_ACEITA, "Proposta aceita",
                 "O paciente aceitou a sua proposta para " + servico(proposta) + ".");
     }
 
-    /** Automática: as vagas que ele atenderia foram preenchidas por outras propostas. */
     public void propostaRecusada(Proposta proposta, boolean automatica) {
         String mensagem = automatica
                 ? "A sua proposta para " + servico(proposta) + " foi recusada: as vagas foram preenchidas por outros profissionais."
                 : "O paciente recusou a sua proposta para " + servico(proposta)
                         + ". Enquanto a solicitação receber propostas, você pode reenviar.";
-        // Recusada pelo paciente, a tela mostra o formulário de reenvio (com a
-        // proposta anterior); recusada porque as vagas lotaram, só a solicitação.
         paraProfissional(proposta, automatica ? Destaque.SOLICITACAO : Destaque.PROPOSTA,
                 TipoNotificacao.PROPOSTA_RECUSADA, "Proposta recusada", mensagem);
     }
 
-    /**
-     * As que estavam aceitas voltaram a aguardar o aceite (sino + e-mail, pois
-     * pedem resposta); as pendentes só precisam ser conferidas (só sino).
-     */
     public void solicitacaoAlterada(Collection<Proposta> aguardandoReaceite, Collection<Proposta> pendentes) {
         aguardandoReaceite.forEach(proposta -> paraProfissional(proposta, Destaque.PROPOSTA, TipoNotificacao.PROPOSTA_AGUARDA_REACEITE,
                 "Solicitação alterada: reaceite ou recuse",
@@ -116,8 +99,6 @@ public class Notificador {
                 "O paciente cancelou a solicitação de " + servico(proposta) + "."));
     }
 
-    // ---------------------------------------------------------- atendimento
-
     public void reaceiteRespondido(Proposta proposta, boolean reaceitou) {
         if (reaceitou) {
             paraPaciente(proposta, Destaque.PROPOSTA, TipoNotificacao.REACEITE_ACEITO, "Profissional reaceitou",
@@ -129,7 +110,6 @@ public class Notificador {
         }
     }
 
-    /** O paciente pôs outro profissional na vaga que aguardava o reaceite dele. */
     public void substituido(Proposta proposta) {
         paraProfissional(proposta, Destaque.SOLICITACAO, TipoNotificacao.ATENDIMENTO_SUBSTITUIDO, "Vaga preenchida por outro profissional",
                 "Enquanto aguardava o seu reaceite, o paciente escolheu outro profissional para a vaga de "
@@ -167,7 +147,6 @@ public class Notificador {
         }
     }
 
-    /** Avisa quem pediu a remarcação; {@code pedidaPor} é esse lado. */
     public void remarcacaoRespondida(Atendimento atendimento, LadoAtendimento pedidaPor, boolean aceita) {
         Proposta proposta = atendimento.getProposta();
         String quemRespondeu = pedidaPor == LadoAtendimento.PACIENTE ? nomeDoProfissional(proposta) : "O paciente";
@@ -186,7 +165,6 @@ public class Notificador {
         }
     }
 
-    /** Avisa o outro lado de quem cancelou. */
     public void atendimentoCancelado(Atendimento atendimento, LadoAtendimento canceladoPor) {
         Proposta proposta = atendimento.getProposta();
         String quando = periodo(atendimento.getInicio(), atendimento.getTermino());
@@ -206,7 +184,6 @@ public class Notificador {
         INICIO
     }
 
-    /** Para os dois lados, no sino e por e-mail. */
     public void lembrete(Atendimento atendimento, Lembrete lembrete) {
         Proposta proposta = atendimento.getProposta();
         String hora = HORA.format(atendimento.getInicio().atZone(FUSO));
@@ -222,7 +199,6 @@ public class Notificador {
         paraProfissional(proposta, Destaque.PROPOSTA, TipoNotificacao.LEMBRETE_ATENDIMENTO, titulo, mensagem, true);
     }
 
-    /** No término; o pedido de avaliação entra aqui na branch 5. */
     public void atendimentoFinalizado(Atendimento atendimento) {
         Proposta proposta = atendimento.getProposta();
         String mensagem = "O atendimento de " + servico(proposta) + " terminou.";
@@ -232,9 +208,6 @@ public class Notificador {
                 mensagem + " Em breve você poderá avaliar o paciente.", true);
     }
 
-    // ------------------------------------------------- problema e disputa
-
-    /** Para quem precisa responder (confirmar ou contestar). */
     public void problemaRelatado(ProblemaAtendimento problema) {
         Proposta proposta = problema.getAtendimento().getProposta();
         String quem = nomeDoLado(proposta, problema.getRelatadoPor());
@@ -285,8 +258,6 @@ public class Notificador {
                 "Disputa decidida", mensagem, true);
     }
 
-    // --------------------------------------------- ocorrências e bloqueio
-
     public void ocorrenciaRegistrada(Ocorrencia ocorrencia, int contando) {
         notificacaoService.notificar(ocorrencia.getUsuario(), ocorrencia.getPerfil(), TipoNotificacao.OCORRENCIA_REGISTRADA,
                 "Você recebeu uma ocorrência",
@@ -305,11 +276,14 @@ public class Notificador {
 
     public void bloqueioAplicado(Bloqueio bloqueio) {
         String acao = bloqueio.getPerfil() == TipoPerfil.PACIENTE ? "criar solicitações" : "enviar propostas";
+        String motivo = bloqueio.aplicadoPeloAdmin()
+                ? "Um administrador bloqueou o seu perfil: " + comPontoFinal(bloqueio.getJustificativa()) + " Você"
+                : "Você chegou a " + RegrasBloqueio.LIMITE + " ocorrências em " + RegrasBloqueio.JANELA_CONTAGEM.toDays()
+                        + " dias e";
         notificacaoService.notificar(bloqueio.getUsuario(), bloqueio.getPerfil(), TipoNotificacao.BLOQUEIO_APLICADO,
                 "Perfil bloqueado temporariamente",
-                "Você chegou a " + RegrasBloqueio.LIMITE + " ocorrências em " + RegrasBloqueio.JANELA_CONTAGEM.toDays()
-                        + " dias e não poderá " + acao + " até " + quando(bloqueio.getFim())
-                        + ". O que já está em andamento continua normalmente.",
+                limitar(motivo + " não poderá " + acao + " até " + quando(bloqueio.getFim())
+                        + ". O que já está em andamento continua normalmente."),
                 ocorrenciasDo(bloqueio.getPerfil()), true);
     }
 
@@ -340,12 +314,6 @@ public class Notificador {
                 ocorrenciasDo(ocorrencia.getPerfil()), true);
     }
 
-    // ------------------------------------------------ bloqueio entre usuários
-
-    /**
-     * Quem bloqueou encerrou a proposta pendente do outro. O aviso é neutro: o
-     * bloqueado não fica sabendo do bloqueio, só que a proposta saiu.
-     */
     public void propostaEncerradaPorBloqueio(Proposta proposta, LadoAtendimento quemBloqueou) {
         if (quemBloqueou == LadoAtendimento.PACIENTE) {
             paraProfissional(proposta, Destaque.SOLICITACAO, TipoNotificacao.PROPOSTA_RECUSADA, "Proposta recusada",
@@ -355,9 +323,19 @@ public class Notificador {
         }
     }
 
-    // ------------------------------------------------------------- admin
+    public void vinculoEncerrado(Proposta proposta, boolean estavaAceita) {
+        if (estavaAceita) {
+            paraPaciente(proposta, Destaque.SOLICITACAO, TipoNotificacao.ATENDIMENTO_CANCELADO, "Atendimento cancelado",
+                    "O atendimento de " + servico(proposta) + " com " + nomeDoProfissional(proposta)
+                            + " foi cancelado, sem penalidade para você. A vaga voltou a receber propostas.", true);
+            paraProfissional(proposta, Destaque.SOLICITACAO, TipoNotificacao.ATENDIMENTO_CANCELADO, "Atendimento cancelado",
+                    "O atendimento de " + servico(proposta) + " foi cancelado, sem penalidade para você.", true);
+        } else {
+            paraProfissional(proposta, Destaque.SOLICITACAO, TipoNotificacao.PROPOSTA_RECUSADA, "Proposta encerrada",
+                    "A sua proposta para " + servico(proposta) + " foi encerrada.");
+        }
+    }
 
-    /** O admin reabriu, concluiu ou cancelou a solicitação; avisa o paciente e os profissionais afetados. */
     public void solicitacaoAlteradaPeloAdmin(Solicitacao solicitacao, AcaoAdminSolicitacao acao,
                                              Collection<Proposta> afetadas, String justificativa) {
         String motivo = " Justificativa: " + comPontoFinal(justificativa);
@@ -373,7 +351,21 @@ public class Notificador {
                         + ": a sua proposta ou atendimento foi encerrado, sem penalidade para você." + motivo, true));
     }
 
-    // ------------------------------------------------------------ validação
+    public void propostaAlteradaPeloAdmin(Proposta proposta, AcaoAdminProposta acao, String justificativa) {
+        String titulo = "Proposta " + acao.getParticipio() + " pelo administrador";
+        String motivo = " Justificativa: " + comPontoFinal(justificativa);
+        String efeito = switch (acao) {
+            case RECUSAR -> " Não há penalidade para ninguém.";
+            case CANCELAR -> " O atendimento foi cancelado, sem penalidade para ninguém.";
+            case REATIVAR -> " Ela voltou a aguardar a resposta do paciente.";
+        };
+        paraPaciente(proposta, Destaque.PROPOSTA, TipoNotificacao.PROPOSTA_ALTERADA_ADMIN, titulo,
+                "Um administrador " + acao.getVerbo() + " a proposta de " + nomeDoProfissional(proposta) + " para "
+                        + servico(proposta) + "." + efeito + motivo, true);
+        paraProfissional(proposta, Destaque.PROPOSTA, TipoNotificacao.PROPOSTA_ALTERADA_ADMIN, titulo,
+                "Um administrador " + acao.getVerbo() + " a sua proposta para " + servico(proposta) + "." + efeito + motivo,
+                true);
+    }
 
     public void cadastroAprovado(Usuario usuario, TipoPerfil perfil) {
         String mensagem = perfil == TipoPerfil.PACIENTE
@@ -391,9 +383,6 @@ public class Notificador {
                 validacaoDo(perfil), true);
     }
 
-    // ---------------------------------------------------------------- apoio
-
-    /** O item que a tela destaca ao abrir a notificação ({@code ?destaque=} no link). */
     private enum Destaque {
         PROPOSTA,
         SOLICITACAO
@@ -423,7 +412,6 @@ public class Notificador {
         }
     }
 
-    /** O paciente aparece como "O paciente"; o profissional, pelo nome. */
     private static String nomeDoLado(Proposta proposta, LadoAtendimento lado) {
         return lado == LadoAtendimento.PACIENTE ? "O paciente" : nomeDoProfissional(proposta);
     }
@@ -436,7 +424,6 @@ public class Notificador {
             MotivoOcorrencia.DECISAO_DISPUTA, "Um administrador decidiu uma disputa contra você.",
             MotivoOcorrencia.MANUAL, "Um administrador registrou uma ocorrência no seu perfil.");
 
-    /** O quadro de ocorrências fica na home de cada perfil. */
     private static String ocorrenciasDo(TipoPerfil perfil) {
         return inicioDo(perfil) + "?" + PARAMETRO_DESTAQUE + "=ocorrencias";
     }
@@ -447,7 +434,6 @@ public class Notificador {
                 limitar(mensagem), linkDaSolicitacao("/professional", proposta, destaque), comEmail);
     }
 
-    /** "05/11, das 08:00 às 18:00" ou, em dias diferentes, "de 05/11 às 08:00 até 07/11 às 18:00". */
     static String periodo(Instant inicio, Instant termino) {
         ZonedDateTime de = inicio.atZone(FUSO);
         ZonedDateTime ate = termino.atZone(FUSO);
@@ -457,7 +443,6 @@ public class Notificador {
         return "de " + DIA.format(de) + " às " + HORA.format(de) + " até " + DIA.format(ate) + " às " + HORA.format(ate);
     }
 
-    /** "hoje às 14:00", "amanhã às 14:00" ou "em 05/11 às 14:00". */
     private static String quando(Instant instante) {
         ZonedDateTime momento = instante.atZone(FUSO);
         LocalDate hoje = LocalDate.now(FUSO);
@@ -481,7 +466,6 @@ public class Notificador {
         return perfil == TipoPerfil.PACIENTE ? "/patient" : "/professional";
     }
 
-    /** Onde fica a caixa da validação: na home do paciente; para o profissional, na tela de espera. */
     private static String validacaoDo(TipoPerfil perfil) {
         String tela = perfil == TipoPerfil.PACIENTE ? "/patient" : "/professional/aguardando-validacao";
         return tela + "?" + PARAMETRO_DESTAQUE + "=validacao";
@@ -491,7 +475,6 @@ public class Notificador {
         return proposta.getProfissional().getUsuario().getNome();
     }
 
-    /** As especialidades pedidas, ex.: "Curativos e Sondagem". */
     public static String servico(Proposta proposta) {
         return servico(proposta.getSolicitacao());
     }

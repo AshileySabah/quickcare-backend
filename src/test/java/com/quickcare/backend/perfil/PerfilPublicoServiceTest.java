@@ -86,8 +86,6 @@ class PerfilPublicoServiceTest {
                 .build();
     }
 
-    // Profissional
-
     @Test
     void mostraOProfissionalAprovadoSemDadosDeContato() {
         when(profissionalRepository.findById(PROFISSIONAL_ID)).thenReturn(Optional.of(profissional));
@@ -135,8 +133,6 @@ class PerfilPublicoServiceTest {
         assertThatThrownBy(() -> service.buscarProfissional(USUARIO_PACIENTE_ID, PROFISSIONAL_ID))
                 .isInstanceOf(PerfilNaoEncontradoException.class);
     }
-
-    // Paciente
 
     @Test
     void semPropostaAceitaNaoVeOPerfilDoPaciente() {
@@ -190,7 +186,6 @@ class PerfilPublicoServiceTest {
         when(pacienteRepository.findById(PACIENTE_ID)).thenReturn(Optional.of(paciente));
     }
 
-    /** Contatos de emergência: só com um atendimento entre os dois acontecendo agora. */
     private void mockAtendimentoEmAndamento(boolean resultado) {
         lenient().when(atendimentoRepository.existsByPropostaProfissionalIdAndSolicitacaoPacienteIdAndStatusIn(
                 PROFISSIONAL_ID, PACIENTE_ID, Set.of(StatusAtendimento.EM_ANDAMENTO))).thenReturn(resultado);

@@ -108,7 +108,6 @@ class NotificadorTest {
         ArgumentCaptor<String> link = ArgumentCaptor.forClass(String.class);
         verify(notificacaoService, times(2)).notificar(eq(usuarioProfissional), eq(TipoPerfil.PROFISSIONAL),
                 eq(TipoNotificacao.PROPOSTA_RECUSADA), anyString(), anyString(), link.capture(), eq(false));
-        // Recusada pelo paciente: o card de reenvio. Pelas vagas lotadas: a solicitação.
         assertThat(link.getAllValues()).containsExactly(
                 "/professional/solicitacoes/50?destaque=proposta-100",
                 "/professional/solicitacoes/50?destaque=solicitacao-50");

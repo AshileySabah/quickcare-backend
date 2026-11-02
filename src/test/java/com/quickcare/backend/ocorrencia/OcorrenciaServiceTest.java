@@ -117,7 +117,6 @@ class OcorrenciaServiceTest {
     @Test
     void aTerceiraBloqueiaMesmoQuandoOBancoArredondaOHorarioParaCima() {
         validas.addAll(List.of(AGORA.minus(Duration.ofDays(30)), AGORA.minus(Duration.ofDays(3))));
-        // O Postgres guarda microssegundos arredondando: a recém-criada volta um instante "no futuro".
         doAnswer(invocation -> {
             Ocorrencia ocorrencia = invocation.getArgument(0);
             validas.add(ocorrencia.getCriadoEm().plusNanos(500));
@@ -172,7 +171,6 @@ class OcorrenciaServiceTest {
 
     @Test
     void recursoAceitoQueTiraDoLimiteDesfazOBloqueioEOContadorVolta() {
-        // 3 ocorrências bloquearam hoje; o recurso de uma é aceito: sobram 2.
         Ocorrencia recorrida = Ocorrencia.builder().id(3L).usuario(usuario).perfil(TipoPerfil.PROFISSIONAL)
                 .motivo(MotivoOcorrencia.MANUAL).criadoEm(AGORA.minus(Duration.ofHours(2))).build();
         RecursoOcorrencia recurso = RecursoOcorrencia.builder().id(10L).ocorrencia(recorrida)
@@ -189,16 +187,38 @@ class OcorrenciaServiceTest {
         assertThat(bloqueio.isDesfeito()).isTrue();
         assertThat(bloqueio.ativoEm(AGORA)).isFalse();
         verify(notificador).bloqueioDesfeito(bloqueio);
-        // Desfeito não zera o contador: as 2 que sobraram contam.
         assertThat(service.contando(7L, TipoPerfil.PROFISSIONAL)).isEqualTo(2);
         service.exigirSemBloqueio(7L, TipoPerfil.PROFISSIONAL);
+    }
+
+    @Test
+    void adminAplicaBloqueioNoProximoNivelEAnularOcorrenciaNaoODesfaz() {
+        Bloqueio anterior = Bloqueio.builder().id(4L).usuario(usuario).perfil(TipoPerfil.PROFISSIONAL).nivel(1)
+                .inicio(AGORA.minus(Duration.ofDays(20))).fim(AGORA.minus(Duration.ofDays(13))).build();
+        validas.add(AGORA.minus(Duration.ofDays(10)));
+        when(bloqueioRepository.findFirstByUsuarioIdAndPerfilAndDesfeitoFalseOrderByInicioDesc(7L, TipoPerfil.PROFISSIONAL))
+                .thenReturn(Optional.of(anterior));
+
+        Bloqueio aplicado = service.aplicarBloqueio(admin, usuario, TipoPerfil.PROFISSIONAL, "Comportamento inadequado relatado.");
+
+        assertThat(aplicado.getNivel()).isEqualTo(2);
+        assertThat(aplicado.getFim()).isEqualTo(aplicado.getInicio().plus(Duration.ofDays(14)));
+        assertThat(aplicado.aplicadoPeloAdmin()).isTrue();
+        verify(notificador).bloqueioAplicado(aplicado);
+
+        when(bloqueioRepository.findFirstByUsuarioIdAndPerfilAndDesfeitoFalseOrderByInicioDesc(7L, TipoPerfil.PROFISSIONAL))
+                .thenReturn(Optional.of(aplicado));
+        assertThatThrownBy(() -> service.exigirSemBloqueio(7L, TipoPerfil.PROFISSIONAL))
+                .isInstanceOf(PerfilNaoAutorizadoException.class);
+        assertThat(aplicado.isDesfeito()).isFalse();
+        assertThatThrownBy(() -> service.aplicarBloqueio(admin, usuario, TipoPerfil.PROFISSIONAL, "De novo"))
+                .isInstanceOf(TransicaoStatusInvalidaException.class);
     }
 
     @Test
     void anularUmaQueNaoFazFaltaMantemOBloqueio() {
         Ocorrencia extra = Ocorrencia.builder().id(4L).usuario(usuario).perfil(TipoPerfil.PROFISSIONAL)
                 .motivo(MotivoOcorrencia.MANUAL).criadoEm(AGORA.minus(Duration.ofDays(2))).build();
-        // 4 antes do bloqueio; anulando uma, sobram 3: ele se sustenta.
         validas.addAll(List.of(AGORA.minus(Duration.ofDays(30)), AGORA.minus(Duration.ofDays(20)),
                 AGORA.minus(Duration.ofDays(3))));
         Bloqueio bloqueio = Bloqueio.builder().id(5L).usuario(usuario).perfil(TipoPerfil.PROFISSIONAL).nivel(1)

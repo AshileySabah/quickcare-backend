@@ -10,7 +10,6 @@ import com.quickcare.backend.problema.StatusProblema;
 
 import java.time.Instant;
 
-/** Uma linha da fila de disputas do admin. */
 public record DisputaResumoResponse(
         Long id,
         StatusProblema status,

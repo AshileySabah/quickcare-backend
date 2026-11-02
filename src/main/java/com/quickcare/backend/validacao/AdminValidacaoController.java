@@ -19,7 +19,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
-/** Fila de validação cadastral do admin. `perfil` na URL: "pacientes" ou "profissionais". */
 @RestController
 @RequestMapping("/admin/validacoes")
 @RequiredArgsConstructor
@@ -28,7 +27,6 @@ public class AdminValidacaoController {
     private final ValidacaoService validacaoService;
     private final PreValidacaoService preValidacaoService;
 
-    /** Sem `status`, lista todos os cadastros do perfil. */
     @GetMapping("/{perfil}")
     public List<ValidacaoResumoResponse> listar(
             @AuthenticationPrincipal Long usuarioId,

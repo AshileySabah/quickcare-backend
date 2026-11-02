@@ -9,7 +9,6 @@ import com.quickcare.backend.atendimento.TipoEventoAtendimento;
 import java.time.Instant;
 import java.util.List;
 
-/** Tudo o que o admin precisa para decidir: as duas versões, as provas e o histórico do atendimento. */
 public record DisputaDetalheResponse(
         DisputaResumoResponse resumo,
         StatusAtendimento statusAtendimento,

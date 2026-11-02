@@ -30,16 +30,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.stream.Stream;
 
-/**
- * Perfis no admin: quem tem ocorrências, recurso a decidir ou está bloqueado,
- * e as ações de lançar/anular ocorrência, decidir recurso e remover bloqueio
- * (sempre com justificativa).
- */
 @Service
 @RequiredArgsConstructor
 public class AdminPerfilService {
 
-    /** Filtro da lista. */
     public enum Situacao {
         TODOS,
         COM_OCORRENCIAS,
@@ -57,7 +51,6 @@ public class AdminPerfilService {
     private final AcessoAdmin acessoAdmin;
     private final Clock clock;
 
-    /** Sem {@code perfil}, os dois. Os bloqueados e com mais ocorrências aparecem primeiro. */
     @Transactional(readOnly = true)
     public List<PerfilAdminResumoResponse> listar(Long adminUsuarioId, TipoPerfil perfil, String busca, Situacao situacao) {
         acessoAdmin.exigir(adminUsuarioId);
@@ -106,6 +99,16 @@ public class AdminPerfilService {
     }
 
     @Transactional
+    public PerfilAdminDetalheResponse aplicarBloqueio(Long adminUsuarioId, TipoPerfil perfil, Long usuarioId, String justificativa) {
+        Usuario admin = acessoAdmin.exigir(adminUsuarioId);
+        Linha linha = carregar(perfil, usuarioId);
+        Bloqueio bloqueio = ocorrenciaService.aplicarBloqueio(admin, linha.usuario(), perfil, justificativa);
+        acessoAdmin.registrar(admin, TipoAcaoAdmin.BLOQUEIO_APLICADO, AcaoAdmin.Alvo.BLOQUEIO, bloqueio.getId(),
+                "Nível " + bloqueio.getNivel(), justificativa);
+        return detalhe(linha);
+    }
+
+    @Transactional
     public PerfilAdminDetalheResponse removerBloqueio(Long adminUsuarioId, Long bloqueioId, String justificativa) {
         Usuario admin = acessoAdmin.exigir(adminUsuarioId);
         Bloqueio bloqueio = ocorrenciaService.removerBloqueio(admin, bloqueioId, justificativa);
@@ -129,8 +132,6 @@ public class AdminPerfilService {
         acessoAdmin.exigir(adminUsuarioId);
         return ocorrenciaService.recursosEmAnalise();
     }
-
-    // ============================================================= apoio
 
     private record Linha(Usuario usuario, TipoPerfil perfil, StatusValidacao statusValidacao, boolean banido) {
 

@@ -39,7 +39,6 @@ public class Notificacao {
     @JoinColumn(name = "usuario_id", nullable = false)
     private Usuario usuario;
 
-    /** Perfil do usuário a que a notificação se refere. */
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private TipoPerfil perfil;
@@ -54,7 +53,6 @@ public class Notificacao {
     @Column(nullable = false, length = 500)
     private String mensagem;
 
-    /** Rota do front para onde a notificação leva. */
     @Column(length = 255)
     private String link;
 

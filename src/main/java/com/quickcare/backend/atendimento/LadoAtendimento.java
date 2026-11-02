@@ -1,6 +1,5 @@
 package com.quickcare.backend.atendimento;
 
-/** Quem fez algo no atendimento; SISTEMA para o que acontece sozinho (prazo vencido). */
 public enum LadoAtendimento {
     PACIENTE,
     PROFISSIONAL,

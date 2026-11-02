@@ -19,7 +19,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
-/** "Não foi realizado" no atendimento: relatar, confirmar ou contestar. */
 @RestController
 @RequestMapping("/atendimentos/{id}/problema")
 @RequiredArgsConstructor

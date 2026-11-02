@@ -50,11 +50,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/**
- * As regras combinadas para o atendimento (branch 4a): aceite ocupa vaga,
- * edição do paciente pede reaceite (vaga reservada, aberta a propostas), troca
- * do aceito, remarcação, cancelamento com a regra das 48h e as mudanças no horário.
- */
 @ExtendWith(MockitoExtension.class)
 class AtendimentoServiceTest {
 
@@ -104,7 +99,6 @@ class AtendimentoServiceTest {
                 .build();
         solicitacao.getProfissionais().add(linha);
 
-        // Os repositórios refletem as listas do cenário.
         lenient().when(propostaRepository.findBySolicitacaoIdAndStatus(eq(50L), eq(StatusProposta.PENDENTE)))
                 .thenAnswer(invocation -> pendentes.stream().filter(p -> p.getStatus() == StatusProposta.PENDENTE).toList());
         lenient().when(propostaRepository.existsBySolicitacaoIdAndStatus(eq(50L), eq(StatusProposta.PENDENTE)))
@@ -128,8 +122,6 @@ class AtendimentoServiceTest {
         lenient().when(atendimentoRepository.findWithPartesById(anyLong())).thenAnswer(invocation ->
                 atendimentos.stream().filter(a -> a.getId().equals(invocation.getArgument(0))).findFirst());
     }
-
-    // ------------------------------------------------------------- aceite
 
     @Test
     void aceitarOcupaAVagaAgendaERecusaQuemNaoCabeMais() {
@@ -157,8 +149,6 @@ class AtendimentoServiceTest {
                 .hasMessageContaining("já passou");
     }
 
-    // ------------------------------------------- paciente edita a solicitação
-
     @Test
     void edicaoReservaAVagaPedeReaceiteEVoltaAReceberPropostas() {
         Atendimento atendimento = agendado(profissional(20L, USUARIO_PROFISSIONAL_ID), dias(5));
@@ -170,7 +160,6 @@ class AtendimentoServiceTest {
         assertThat(atendimento.getReaceiteSolicitadoEm()).isEqualTo(AGORA);
         assertThat(linha.getVagasPreenchidas()).isEqualTo(1);
         assertThat(linha.getVagasReservadas()).isEqualTo(1);
-        // A vaga reservada aceita propostas: o paciente pode escolher outro enquanto o aceito não responde.
         assertThat(solicitacao.getStatus()).isEqualTo(StatusSolicitacao.RECEBENDO_PROPOSTAS);
         assertThat(solicitacao.atendidaPor(profissional(30L, 7L))).isTrue();
     }
@@ -203,7 +192,6 @@ class AtendimentoServiceTest {
         assertThat(atendimento.getMotivoCancelamento()).isEqualTo(MotivoCancelamento.REACEITE_RECUSADO);
         assertThat(linha.getVagasPreenchidas()).isZero();
         assertThat(linha.getVagasReservadas()).isZero();
-        // Edição com mais de 48h de antecedência: ninguém leva ocorrência.
         verify(ocorrenciaService, never()).registrar(any(), any(), any(), any());
     }
 
@@ -236,7 +224,6 @@ class AtendimentoServiceTest {
         assertThat(linha.getVagasPreenchidas()).isEqualTo(1);
         assertThat(linha.getVagasReservadas()).isZero();
         verify(notificador).substituido(antigo.getProposta());
-        // Mais de 48h antes: o paciente não é penalizado pela troca.
         verify(ocorrenciaService, never()).registrar(any(), any(), any(), any());
     }
 
@@ -267,8 +254,6 @@ class AtendimentoServiceTest {
         verify(notificador).semReaceite(atendimento);
     }
 
-    // ---------------------------------------------------------- remarcação
-
     @Test
     void pacienteRemarcaEOProfissionalAceita() {
         Atendimento atendimento = agendado(profissional(20L, USUARIO_PROFISSIONAL_ID), dias(5));
@@ -280,7 +265,6 @@ class AtendimentoServiceTest {
         assertThat(atendimento.getInicio()).isEqualTo(AGORA.plus(dias(5)));
         verify(notificador).remarcacaoSolicitada(atendimento);
 
-        // Quem pediu não responde a própria remarcação.
         assertThatThrownBy(() -> service.responderRemarcacao(USUARIO_PACIENTE_ID, atendimento.getId(), true))
                 .isInstanceOf(TransicaoStatusInvalidaException.class);
 
@@ -320,8 +304,6 @@ class AtendimentoServiceTest {
         assertThat(atendimento.getRemarcacaoTermino()).isEqualTo(AGORA.plus(Duration.ofHours(3)));
     }
 
-    // ------------------------------------------------------- cancelamento
-
     @Test
     void cancelarNas48hDepoisDoAceiteNaoGeraOcorrencia() {
         Atendimento atendimento = agendado(profissional(20L, USUARIO_PROFISSIONAL_ID), dias(10));
@@ -349,8 +331,6 @@ class AtendimentoServiceTest {
                 MotivoOcorrencia.CANCELAMENTO_ATENDIMENTO, atendimento);
     }
 
-    // -------------------------------------------- bloqueio entre usuários
-
     @Test
     void pacienteQueBloqueiaRecusaOVigenteEAPendenteComUmaOcorrenciaSo() {
         Profissional profissional = profissional(20L, USUARIO_PROFISSIONAL_ID);
@@ -371,7 +351,6 @@ class AtendimentoServiceTest {
         assertThat(primeiro.getProposta().getStatus()).isEqualTo(StatusProposta.RECUSADA);
         assertThat(pendente.getStatus()).isEqualTo(StatusProposta.RECUSADA);
         assertThat(linha.getVagasPreenchidas()).isZero();
-        // Os dois contariam pela regra das 48h; o bloqueio gera uma só.
         verify(ocorrenciaService).registrar(usuarioPaciente, TipoPerfil.PACIENTE,
                 MotivoOcorrencia.CANCELAMENTO_ATENDIMENTO, primeiro);
         verify(notificador).atendimentoCancelado(primeiro, LadoAtendimento.PACIENTE);
@@ -392,7 +371,36 @@ class AtendimentoServiceTest {
         verify(notificador).atendimentoCancelado(atendimento, LadoAtendimento.PROFISSIONAL);
     }
 
-    // ------------------------------------------------ mudanças no horário
+    @Test
+    void bloqueioPeloAdminEncerraSemOcorrenciaEAvisaOsDoisDeFormaNeutra() {
+        Profissional profissional = profissional(20L, USUARIO_PROFISSIONAL_ID);
+        Atendimento atendimento = agendado(profissional, dias(10));
+        relogio.avancar(dias(3));
+        when(atendimentoRepository.findByPropostaProfissionalIdAndSolicitacaoPacienteIdAndStatusIn(
+                20L, 10L, StatusAtendimento.ATIVOS)).thenReturn(List.of(atendimento));
+
+        service.encerrarPorBloqueio(10L, 20L, LadoAtendimento.SISTEMA);
+
+        assertThat(atendimento.getStatus()).isEqualTo(StatusAtendimento.CANCELADO);
+        assertThat(atendimento.getMotivoCancelamento()).isEqualTo(MotivoCancelamento.ADMIN);
+        assertThat(linha.getVagasPreenchidas()).isZero();
+        verify(ocorrenciaService, never()).registrar(any(), any(), any(), any());
+        verify(notificador).vinculoEncerrado(atendimento.getProposta(), true);
+    }
+
+    @Test
+    void adminCancelaPropostaAceitaSemOcorrenciaEAVagaReabre() {
+        Atendimento atendimento = agendado(profissional(20L, USUARIO_PROFISSIONAL_ID), dias(10));
+        when(atendimentoRepository.findFirstByPropostaIdAndStatusIn(atendimento.getProposta().getId(), StatusAtendimento.ATIVOS))
+                .thenReturn(Optional.of(atendimento));
+
+        service.cancelarPeloAdmin(atendimento.getProposta());
+
+        assertThat(atendimento.getStatus()).isEqualTo(StatusAtendimento.CANCELADO);
+        assertThat(atendimento.getProposta().getStatus()).isEqualTo(StatusProposta.CANCELADA);
+        assertThat(linha.getVagasPreenchidas()).isZero();
+        verify(ocorrenciaService, never()).registrar(any(), any(), any(), any());
+    }
 
     @Test
     void comecaETerminaSozinhoEConcluiASolicitacao() {
@@ -441,8 +449,6 @@ class AtendimentoServiceTest {
         assertThat(atendimento.getLembrete24hEm()).isNotNull();
     }
 
-    // ------------------------------------------- problema e admin (4b)
-
     @Test
     void naoRealizadoAntesDoTerminoReabreAVaga() {
         Atendimento atendimento = agendado(profissional(20L, USUARIO_PROFISSIONAL_ID), Duration.ofHours(-1));
@@ -468,7 +474,6 @@ class AtendimentoServiceTest {
         assertThat(atendimento.getStatus()).isEqualTo(StatusAtendimento.NAO_REALIZADO);
         assertThat(linha.getVagasPreenchidas()).isEqualTo(1);
         assertThat(atendimento.getProposta().getStatus()).isEqualTo(StatusProposta.ACEITA);
-        // Nada mais vai acontecer e as vagas estão preenchidas: a solicitação encerra.
         assertThat(solicitacao.getStatus()).isEqualTo(StatusSolicitacao.CONCLUIDA);
     }
 
@@ -497,8 +502,6 @@ class AtendimentoServiceTest {
         verify(ocorrenciaService, never()).registrar(any(), any(), any(), any());
     }
 
-    // ---------------------------------------------------------------- apoio
-
     private Duration dias(int quantidade) {
         return Duration.ofDays(quantidade);
     }
@@ -514,7 +517,6 @@ class AtendimentoServiceTest {
                 .build();
     }
 
-    /** Proposta pendente com início daqui a {@code antecedencia} e 8h de duração. */
     private Proposta pendente(Long id, Profissional profissional, Duration antecedencia) {
         Proposta proposta = Proposta.builder()
                 .id(id)
@@ -528,11 +530,9 @@ class AtendimentoServiceTest {
         return proposta;
     }
 
-    /** Aceita agora (o relógio do teste), com início daqui a {@code antecedencia}. */
     private Atendimento agendado(Profissional profissional, Duration antecedencia) {
         Proposta proposta = pendente(100L + pendentes.size() * 10L, profissional, antecedencia);
         if (antecedencia.isNegative()) {
-            // Já começou: aceita no passado, sem passar pela validação de início futuro.
             linha.preencherVaga();
             proposta.setVaga(linha);
             proposta.setStatus(StatusProposta.ACEITA);
@@ -544,7 +544,6 @@ class AtendimentoServiceTest {
         return service.aceitarProposta(proposta);
     }
 
-    /** O que o SolicitacaoService faz ao salvar a edição (mesma linha pedida). */
     private void editarSolicitacao() {
         when(propostaRepository.findBySolicitacaoIdAndStatus(50L, StatusProposta.ACEITA))
                 .thenReturn(atendimentos.stream().map(Atendimento::getProposta).toList());
@@ -567,7 +566,6 @@ class AtendimentoServiceTest {
         when(atendimentoRepository.findIdsComTransicaoVencida(any(), any(), any())).thenReturn(List.of(atendimento.getId()));
     }
 
-    /** Relógio que o teste avança. */
     private static final class RelogioDeTeste extends Clock {
         private Instant agora;
 

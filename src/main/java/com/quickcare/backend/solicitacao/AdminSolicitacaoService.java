@@ -36,12 +36,6 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-/**
- * Solicitações no admin: busca, detalhe e troca de status (reabrir, concluir
- * ou cancelar), com justificativa. Encerrar derruba os atendimentos que ainda
- * iam acontecer sem ocorrência para ninguém; os com problema em aberto
- * seguem pela fila de disputas.
- */
 @Service
 @RequiredArgsConstructor
 public class AdminSolicitacaoService {
@@ -55,7 +49,6 @@ public class AdminSolicitacaoService {
     private final Notificador notificador;
     private final Clock clock;
 
-    /** {@code busca}: nome ou e-mail do paciente, ou o número da solicitação. */
     @Transactional(readOnly = true)
     public List<SolicitacaoAdminResumoResponse> listar(Long adminUsuarioId, Collection<StatusSolicitacao> status, String busca) {
         acessoAdmin.exigir(adminUsuarioId);
@@ -102,7 +95,6 @@ public class AdminSolicitacaoService {
         return detalhe(solicitacao);
     }
 
-    /** Reabrir só o que foi encerrado; concluir e cancelar, o que ainda não está nesse status. */
     static List<AcaoAdminSolicitacao> acoesPermitidas(StatusSolicitacao status) {
         return Stream.of(AcaoAdminSolicitacao.values())
                 .filter(acao -> switch (acao) {
@@ -128,7 +120,6 @@ public class AdminSolicitacaoService {
     private SolicitacaoAdminDetalheResponse detalhe(Solicitacao solicitacao) {
         Instant agora = Instant.now(clock);
         List<Proposta> propostas = propostaRepository.findBySolicitacaoIdOrderByCriadoEmAsc(solicitacao.getId());
-        // O atendimento mais recente de cada proposta (uma proposta reaceita pode ter tido outros antes).
         Map<Long, Atendimento> atendimentos = propostas.isEmpty() ? Map.of()
                 : atendimentoRepository.findByPropostaIdInOrderByIdAsc(propostas.stream().map(Proposta::getId).toList())
                         .stream().collect(Collectors.toMap(atendimento -> atendimento.getProposta().getId(),

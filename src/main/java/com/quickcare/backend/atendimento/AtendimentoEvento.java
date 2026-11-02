@@ -20,7 +20,6 @@ import lombok.NoArgsConstructor;
 
 import java.time.Instant;
 
-/** Registro de auditoria: o que aconteceu, quem fez e o período que valia depois disso. */
 @Entity
 @Table(name = "atendimento_evento")
 @Getter
@@ -41,7 +40,6 @@ public class AtendimentoEvento {
     @Column(nullable = false, length = 40)
     private TipoEventoAtendimento tipo;
 
-    /** Nulo quando foi o sistema (início, término, prazo vencido). */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "autor_usuario_id")
     private Usuario autor;

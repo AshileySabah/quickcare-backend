@@ -37,11 +37,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
 
-/**
- * Validação cadastral manual: o admin aprova ou reprova cada etapa com
- * justificativa (e anexo opcional); o status do cadastro é derivado das etapas.
- * Quem foi reprovado corrige os dados da etapa e reenvia o documento.
- */
 @Service
 @RequiredArgsConstructor
 public class ValidacaoService {
@@ -56,15 +51,11 @@ public class ValidacaoService {
     private final ValidacaoResponses responses;
     private final Notificador notificador;
 
-    // ---------------------------------------------------------------- cadastro
-
-    /** Abre a etapa de identidade do paciente recém-cadastrado. */
     public void iniciar(Paciente paciente, Map<TipoDocumento, Documento> documentos) {
         CadastroAvaliado cadastro = CadastroAvaliado.de(paciente);
         etapaRepository.save(cadastro.novaEtapaPendente(TipoEtapaValidacao.IDENTIDADE, documentos.get(TipoDocumento.VALIDACAO_CPF)));
     }
 
-    /** Abre as etapas que se aplicam ao profissional recém-cadastrado. */
     public void iniciar(Profissional profissional, Map<TipoDocumento, Documento> documentos) {
         CadastroAvaliado cadastro = CadastroAvaliado.de(profissional);
         etapasAplicaveis(profissional).forEach(tipo ->
@@ -80,8 +71,6 @@ public class ValidacaoService {
                 })
                 .toList();
     }
-
-    // ------------------------------------------------------------------- admin
 
     @Transactional(readOnly = true)
     public List<ValidacaoResumoResponse> listar(Long adminUsuarioId, PerfilValidado perfil, StatusValidacao status) {
@@ -145,19 +134,12 @@ public class ValidacaoService {
         return responses.detalhe(cadastro, todas, true);
     }
 
-    // --------------------------------------------------------- próprio usuário
-
     @Transactional(readOnly = true)
     public ValidacaoDetalheResponse minhaValidacao(Long usuarioId, PerfilValidado perfil) {
         CadastroAvaliado cadastro = carregarDoUsuario(usuarioId, perfil);
         return responses.detalhe(cadastro, etapas(cadastro), false);
     }
 
-    /**
-     * Corrige os dados de uma etapa reprovada e envia um novo documento, abrindo
-     * uma nova avaliação pendente. Trocar nome ou CPF reabre a identidade também
-     * no outro perfil do mesmo usuário, já que esses dados são compartilhados.
-     */
     @Transactional
     public ValidacaoDetalheResponse reenviar(
             Long usuarioId,
@@ -251,7 +233,6 @@ public class ValidacaoService {
                 : pacienteRepository.findByUsuarioId(usuarioId).map(CadastroAvaliado::de);
     }
 
-    /** A identidade do outro perfil volta a pendente, conferida contra o novo documento. */
     private void reabrirIdentidade(CadastroAvaliado cadastro, Documento documento) {
         List<EtapaValidacao> todas = etapas(cadastro);
         EtapaValidacao atual = EtapasAtuais.de(todas).get(TipoEtapaValidacao.IDENTIDADE);
@@ -277,8 +258,6 @@ public class ValidacaoService {
         );
     }
 
-    // ------------------------------------------------------------------ apoio
-
     void exigirAdministrador(Long usuarioId) {
         if (!administradorRepository.existsByUsuarioId(usuarioId)) {
             throw new PerfilNaoAutorizadoException("Acesso restrito a administradores.");
@@ -291,7 +270,6 @@ public class ValidacaoService {
                 : profissionalRepository.findById(id).map(CadastroAvaliado::de).orElseThrow(CadastroNaoEncontradoException::new);
     }
 
-    /** Lista mutável, em ordem de criação. */
     List<EtapaValidacao> etapas(CadastroAvaliado cadastro) {
         List<EtapaValidacao> etapas = cadastro.perfil() == PerfilValidado.PACIENTE
                 ? etapaRepository.findByPacienteIdOrderByCriadoEmAscIdAsc(cadastro.id())
@@ -307,7 +285,6 @@ public class ValidacaoService {
                 "Você não possui um perfil de " + (perfil == PerfilValidado.PACIENTE ? "paciente" : "profissional") + " ativo."));
     }
 
-    /** Cada etapa reprovada avisa (com a justificativa); a aprovação, só quando o cadastro todo passa. */
     private void avisarDecisao(CadastroAvaliado cadastro, EtapaValidacao etapa, StatusValidacao anterior) {
         TipoPerfil perfil = cadastro.perfil() == PerfilValidado.PACIENTE ? TipoPerfil.PACIENTE : TipoPerfil.PROFISSIONAL;
 

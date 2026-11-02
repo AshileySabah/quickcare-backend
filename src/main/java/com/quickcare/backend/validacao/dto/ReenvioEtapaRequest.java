@@ -6,10 +6,6 @@ import com.quickcare.backend.usuario.TipoDocumentoIdentidade;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
-/**
- * Dados corrigidos de uma etapa reprovada. Só os campos da etapa reenviada são
- * lidos: identidade (nome, CPF, RG/CNH), CNPJ ou registro profissional.
- */
 public record ReenvioEtapaRequest(
         @Size(max = 150) String nome,
         @Cpf @Pattern(regexp = "\\d{11}") String cpf,

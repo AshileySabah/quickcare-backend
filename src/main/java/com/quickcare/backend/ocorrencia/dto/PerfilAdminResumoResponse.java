@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.quickcare.backend.usuario.TipoPerfil;
 import com.quickcare.backend.validacao.StatusValidacao;
 
-/** Uma linha da lista de perfis do admin, com a situação de ocorrências e recursos. */
 public record PerfilAdminResumoResponse(
         Long usuarioId,
         TipoPerfil perfil,

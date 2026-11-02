@@ -88,7 +88,6 @@ public class Solicitacao {
     @Column(length = 2)
     private String uf;
 
-    /** Só no presencial; null se a geocodificação não encontrou o endereço. */
     private BigDecimal latitude;
 
     private BigDecimal longitude;
@@ -120,30 +119,18 @@ public class Solicitacao {
         atualizadoEm = Instant.now();
     }
 
-    /**
-     * O profissional é compatível se atende a modalidade, alcança o endereço
-     * (no presencial) e pode ocupar uma vaga ainda aberta. A consulta
-     * {@link SolicitacaoRepository#findDisponiveisPara} faz o pré-filtro no
-     * banco; a distância é conferida aqui.
-     */
     public boolean atendidaPor(Profissional profissional) {
         return ModalidadeSolicitacao.atendidasPor(profissional.getModalidadeAtendimento()).contains(modalidade)
                 && dentroDoRaioDe(profissional)
                 && linhasQueRecebem(profissional).findAny().isPresent();
     }
 
-    /**
-     * Linha com vaga aberta que o profissional pode ocupar. Entre várias, a mais
-     * específica (mais especialidades exigidas), para não gastar com ele uma
-     * vaga que um profissional menos especializado também preencheria.
-     */
     public Optional<SolicitacaoProfissional> vagaDisponivelPara(Profissional profissional) {
         return linhasDoProfissional(profissional)
                 .filter(SolicitacaoProfissional::temVaga)
                 .max(Comparator.comparingInt(pedido -> pedido.getEspecialidades().size()));
     }
 
-    /** Linhas do profissional com vaga livre ou reservada: ele pode enviar proposta e ser aceito nelas. */
     public Stream<SolicitacaoProfissional> linhasQueRecebem(Profissional profissional) {
         return linhasDoProfissional(profissional).filter(SolicitacaoProfissional::aceitaPropostas);
     }
@@ -160,16 +147,10 @@ public class Solicitacao {
         return profissionais.stream().noneMatch(SolicitacaoProfissional::temVaga);
     }
 
-    /** Todas preenchidas e nenhuma aguardando reaceite: não recebe mais propostas. */
     public boolean completa() {
         return profissionais.stream().noneMatch(SolicitacaoProfissional::aceitaPropostas);
     }
 
-    /**
-     * Depois de mexer nas vagas: completa, em andamento; com alguém aceito ou
-     * proposta pendente, recebendo propostas; sem nada, aberta. Encerrada
-     * (concluída ou cancelada) não muda.
-     */
     public void recalcularStatus(boolean temPropostaPendente) {
         if (!StatusSolicitacao.EM_CURSO.contains(status)) {
             return;
@@ -187,11 +168,6 @@ public class Solicitacao {
         return profissionais.stream().anyMatch(pedido -> pedido.getVagasPreenchidas() > 0);
     }
 
-    /**
-     * Online não tem distância. No presencial, compara as coordenadas com o raio
-     * do profissional; se um dos lados não pôde ser geocodificado (ou não há
-     * raio), aceita quando é a mesma cidade.
-     */
     private boolean dentroDoRaioDe(Profissional profissional) {
         if (modalidade != ModalidadeSolicitacao.PRESENCIAL) {
             return true;
@@ -208,7 +184,6 @@ public class Solicitacao {
         return mesmoTexto(uf, profissional.getUf()) && mesmoTexto(cidade, profissional.getCidade());
     }
 
-    /** Ignora maiúsculas, acentos e espaços nas pontas ("São Paulo" = "sao paulo"). */
     private static boolean mesmoTexto(String a, String b) {
         return a != null && b != null && normalizar(a).equals(normalizar(b));
     }

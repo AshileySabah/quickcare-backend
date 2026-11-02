@@ -11,7 +11,6 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 
-/** A solicitação no admin, com as propostas, os atendimentos e o que pode ser feito com o status. */
 public record SolicitacaoAdminDetalheResponse(
         SolicitacaoAdminResumoResponse resumo,
         SolicitacaoResponse solicitacao,

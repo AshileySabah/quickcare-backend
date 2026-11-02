@@ -25,7 +25,6 @@ public interface OcorrenciaRepository extends JpaRepository<Ocorrencia, Long> {
 
     List<Ocorrencia> findByProblemaIdAndAnuladaEmIsNull(Long problemaId);
 
-    /** Válidas desde {@code desde}, de todo mundo, para a lista do admin. */
     @Query("""
             select o from Ocorrencia o
             where o.anuladaEm is null and o.criadoEm > :desde

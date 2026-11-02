@@ -1,6 +1,5 @@
 package com.quickcare.backend.atendimento;
 
-/** Auditoria do atendimento: cada mudança gera um evento com o período vigente. */
 public enum TipoEventoAtendimento {
     AGENDADO,
     REACEITE_SOLICITADO,

@@ -20,10 +20,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
-/**
- * Criação do outro perfil por quem já está logado. Responde com a sessão
- * atualizada (já com o perfil novo como ativo), como o {@code /auth/me}.
- */
 @RestController
 @RequestMapping("/perfis")
 @RequiredArgsConstructor

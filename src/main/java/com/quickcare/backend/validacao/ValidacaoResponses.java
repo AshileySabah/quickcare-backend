@@ -26,10 +26,6 @@ class ValidacaoResponses {
 
     private final ArmazenamentoDocumentoService armazenamentoDocumentoService;
 
-    /**
-     * @param exibirAvaliador o nome do admin só aparece para o próprio admin;
-     *                        o usuário avaliado vê apenas a decisão.
-     */
     ValidacaoDetalheResponse detalhe(CadastroAvaliado cadastro, List<EtapaValidacao> todasEtapas, boolean exibirAvaliador) {
         return new ValidacaoDetalheResponse(
                 cadastro.id(),

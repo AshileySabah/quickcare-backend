@@ -14,10 +14,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.List;
 
-/**
- * Grava as notificações de cada perfil e as entrega em tempo real. Os textos
- * de cada evento ficam no {@link Notificador}.
- */
 @Service
 @RequiredArgsConstructor
 public class NotificacaoService {
@@ -28,7 +24,6 @@ public class NotificacaoService {
     private final NotificacaoRepository notificacaoRepository;
     private final ApplicationEventPublisher eventPublisher;
 
-    /** Participa da transação de quem chama: se ela for desfeita, a notificação também é. */
     @Transactional
     public void notificar(
             Usuario usuario,

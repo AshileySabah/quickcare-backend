@@ -12,7 +12,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.function.Function;
 
-/** O relato de "não foi realizado" com a resposta e a decisão, como as partes (e o admin) veem. */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record ProblemaResponse(
         Long id,
@@ -30,7 +29,6 @@ public record ProblemaResponse(
         List<Anexo> anexos
 ) {
 
-    /** {@code url} só vai preenchida para o admin; as partes pedem uma URL temporária por anexo. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Anexo(Long id, LadoAtendimento lado, String nomeArquivo, String contentType, String url) {
     }

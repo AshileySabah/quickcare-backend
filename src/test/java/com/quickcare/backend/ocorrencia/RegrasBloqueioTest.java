@@ -8,7 +8,6 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** 3 ocorrências em 90 dias bloqueiam por 7 dias × nível; o nível volta a 1 depois de 60 dias sem ocorrência. */
 class RegrasBloqueioTest {
 
     private static final Instant AGORA = Instant.parse("2026-11-02T12:00:00Z");
@@ -42,7 +41,6 @@ class RegrasBloqueioTest {
 
     @Test
     void sessentaDiasSemOcorrenciaVoltamONivelA1() {
-        // Bloqueio de nível 2 terminou há 84 dias; a primeira ocorrência depois veio 64 dias após o fim.
         Bloqueio anterior = bloqueio(2, diasAtras(98));
         List<Instant> validas = List.of(diasAtras(20), diasAtras(10), AGORA);
 
@@ -68,7 +66,6 @@ class RegrasBloqueioTest {
 
     @Test
     void asQueCausaramOBloqueioContamEnquantoEleDuraEZeramNoFim() {
-        // Bloqueio de 7 dias começou há 2 dias, pelas 3 ocorrências; uma nova veio durante ele.
         Bloqueio valendo = bloqueio(1, diasAtras(2));
         List<Instant> validas = List.of(diasAtras(30), diasAtras(10), diasAtras(2), diasAtras(1));
 
@@ -76,7 +73,6 @@ class RegrasBloqueioTest {
         assertThat(corteDuranteOBloqueio).isNull();
         assertThat(RegrasBloqueio.contando(validas, corteDuranteOBloqueio, AGORA)).hasSize(4);
 
-        // Terminado o bloqueio, só a que veio durante ele continua contando.
         Instant depoisDoFim = valendo.getFim().plusSeconds(60);
         Bloqueio corteDepois = RegrasBloqueio.corte(valendo, null, depoisDoFim);
         assertThat(corteDepois).isSameAs(valendo);

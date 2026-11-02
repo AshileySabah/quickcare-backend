@@ -16,7 +16,6 @@ public interface AtendimentoRepository extends JpaRepository<Atendimento, Long> 
             "solicitacao", "solicitacao.paciente", "solicitacao.paciente.usuario"})
     Optional<Atendimento> findWithPartesById(Long id);
 
-    /** Todos os atendimentos (inclusive os encerrados) destas propostas, para as respostas da API. */
     List<Atendimento> findByPropostaIdInOrderByIdAsc(Collection<Long> propostaIds);
 
     Optional<Atendimento> findFirstByPropostaIdAndStatusIn(Long propostaId, Collection<StatusAtendimento> status);
@@ -28,7 +27,6 @@ public interface AtendimentoRepository extends JpaRepository<Atendimento, Long> 
 
     boolean existsBySolicitacaoIdAndStatusIn(Long solicitacaoId, Collection<StatusAtendimento> status);
 
-    /** O profissional tem atendimento num destes status com o paciente. */
     boolean existsByPropostaProfissionalIdAndSolicitacaoPacienteIdAndStatusIn(
             Long profissionalId, Long pacienteId, Collection<StatusAtendimento> status);
 
@@ -39,7 +37,6 @@ public interface AtendimentoRepository extends JpaRepository<Atendimento, Long> 
 
     long countByPropostaProfissionalIdAndStatusIn(Long profissionalId, Collection<StatusAtendimento> status);
 
-    /** Os que já passaram do horário em que o status muda (o job e a leitura processam). */
     @Query("""
             select a.id from Atendimento a
             where (a.status in :antesDoInicio and a.inicio <= :agora)
@@ -51,7 +48,6 @@ public interface AtendimentoRepository extends JpaRepository<Atendimento, Long> 
             @Param("agora") Instant agora,
             @Param("limiteConclusao") Instant limiteConclusao);
 
-    /** Agendados que entraram numa janela de lembrete ainda não enviada. */
     @Query("""
             select a.id from Atendimento a
             where a.status = com.quickcare.backend.atendimento.StatusAtendimento.AGENDADO

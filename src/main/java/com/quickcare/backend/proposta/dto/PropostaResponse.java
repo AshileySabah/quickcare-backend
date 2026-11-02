@@ -22,13 +22,11 @@ public record PropostaResponse(
         Instant termino,
         StatusProposta status,
         @JsonInclude(JsonInclude.Include.NON_NULL) MotivoReaceite motivoReaceite,
-        /** O atendimento mais recente da proposta (o ativo, ou o último encerrado); nulo se nunca foi aceita. */
         @JsonInclude(JsonInclude.Include.NON_NULL) AtendimentoResponse atendimento,
         Instant criadoEm,
         Instant atualizadoEm
 ) {
 
-    /** {@code avatarDe}: URL da foto de cada lado (paciente e profissional), nula para quem não tem. */
     public static PropostaResponse de(
             Proposta proposta, Atendimento atendimento, Instant agora, Function<Usuario, String> avatarDe) {
         boolean aceita = proposta.getStatus() == StatusProposta.ACEITA;

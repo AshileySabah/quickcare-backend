@@ -24,13 +24,10 @@ public record SolicitacaoResponse(
         Instant criadoEm,
         Instant atualizadoEm,
         long totalPropostas,
-        /** Algum atendimento já começou: a solicitação não pode ser editada (remarca ou cancela o atendimento). */
         boolean atendimentoEmAndamento,
-        /** Início do próximo atendimento que ainda não começou, para o aviso de edição em cima da hora. */
         @JsonInclude(JsonInclude.Include.NON_NULL) Instant proximoAtendimentoInicio
 ) {
 
-    /** {@code totalPropostas}: propostas não canceladas recebidas; {@code ativos}: atendimentos ativos dela. */
     public static SolicitacaoResponse de(Solicitacao solicitacao, long totalPropostas, List<Atendimento> ativos) {
         EnderecoSolicitacaoResponse endereco = solicitacao.getModalidade() == ModalidadeSolicitacao.PRESENCIAL
                 ? new EnderecoSolicitacaoResponse(

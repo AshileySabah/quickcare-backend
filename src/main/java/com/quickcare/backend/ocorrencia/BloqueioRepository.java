@@ -12,10 +12,8 @@ import java.util.Optional;
 
 public interface BloqueioRepository extends JpaRepository<Bloqueio, Long> {
 
-    /** O último que valeu (os desfeitos não contam: é como se não tivessem existido). */
     Optional<Bloqueio> findFirstByUsuarioIdAndPerfilAndDesfeitoFalseOrderByInicioDesc(Long usuarioId, TipoPerfil perfil);
 
-    /** O que valeu antes de {@code inicio} (o ponto de onde o bloqueio de {@code inicio} contou). */
     Optional<Bloqueio> findFirstByUsuarioIdAndPerfilAndDesfeitoFalseAndInicioBeforeOrderByInicioDesc(
             Long usuarioId, TipoPerfil perfil, Instant inicio);
 

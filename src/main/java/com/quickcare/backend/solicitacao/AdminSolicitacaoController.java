@@ -23,7 +23,6 @@ public class AdminSolicitacaoController {
 
     private final AdminSolicitacaoService adminSolicitacaoService;
 
-    /** {@code status} pode repetir; sem ele, todos. */
     @GetMapping
     public List<SolicitacaoAdminResumoResponse> listar(
             @AuthenticationPrincipal Long usuarioId,

@@ -284,7 +284,6 @@ class SolicitacaoServiceTest {
         assertThat(salva.getValue().getLongitude()).isEqualByComparingTo("-46.652400");
     }
 
-    /** Os aceitos não voltam para o paciente: reservam vaga e o profissional reaceita ou recusa. */
     @Test
     void editarComAceitosPedeReaceiteAosProfissionais() {
         Solicitacao solicitacao = mockSolicitacaoDoPaciente(StatusSolicitacao.EM_ANDAMENTO);
@@ -491,7 +490,6 @@ class SolicitacaoServiceTest {
         return solicitacao(StatusSolicitacao.ABERTA, CategoriaProfissional.ENFERMEIRO, curativos, sondagem);
     }
 
-    /** Solicitação online de outro usuário que pede 1 profissional com as especialidades informadas. */
     private Solicitacao solicitacao(StatusSolicitacao status, CategoriaProfissional categoria, Especialidade... especialidades) {
         Solicitacao solicitacao = Solicitacao.builder()
                 .id(50L)

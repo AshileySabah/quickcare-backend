@@ -2,7 +2,7 @@ package com.quickcare.backend.bloqueiousuario;
 
 import com.quickcare.backend.paciente.Paciente;
 import com.quickcare.backend.profissional.Profissional;
-import com.quickcare.backend.usuario.TipoPerfil;
+import com.quickcare.backend.usuario.Usuario;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -22,11 +22,6 @@ import lombok.NoArgsConstructor;
 
 import java.time.Instant;
 
-/**
- * Um paciente e um profissional que não se veem mais: o profissional não vê
- * as solicitações dele nem envia propostas, não importa quem bloqueou. Só
- * quem bloqueou ({@code bloqueadoPor}) desfaz.
- */
 @Entity
 @Table(name = "bloqueio_usuario")
 @Getter
@@ -49,7 +44,14 @@ public class BloqueioUsuario {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "bloqueado_por", nullable = false, length = 20)
-    private TipoPerfil bloqueadoPor;
+    private AutorBloqueio bloqueadoPor;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "criado_por_usuario_id")
+    private Usuario criadoPor;
+
+    @Column(length = 1000)
+    private String justificativa;
 
     @Column(name = "criado_em", nullable = false, updatable = false)
     private Instant criadoEm;

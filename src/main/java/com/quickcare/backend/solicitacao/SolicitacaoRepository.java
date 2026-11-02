@@ -15,12 +15,6 @@ public interface SolicitacaoRepository extends JpaRepository<Solicitacao, Long> 
     @EntityGraph(attributePaths = {"profissionais", "profissionais.especialidades"})
     List<Solicitacao> findByPacienteIdOrderByCriadoEmDesc(Long pacienteId);
 
-    /**
-     * Pré-filtro no banco: solicitações nos status e modalidades informados com
-     * ao menos uma linha com vaga aberta que o profissional atende (mesma
-     * categoria e todas as especialidades da linha entre as dele). O raio de
-     * atendimento é conferido depois, em {@link Solicitacao#atendidaPor}.
-     */
     @EntityGraph(attributePaths = {"profissionais", "profissionais.especialidades"})
     @Query("""
             select s from Solicitacao s
@@ -47,7 +41,6 @@ public interface SolicitacaoRepository extends JpaRepository<Solicitacao, Long> 
     @EntityGraph(attributePaths = {"profissionais", "profissionais.especialidades"})
     Optional<Solicitacao> findByIdAndPacienteId(Long id, Long pacienteId);
 
-    /** Todas, para a lista do admin (filtrada em memória). */
     @EntityGraph(attributePaths = {"paciente", "paciente.usuario"})
     List<Solicitacao> findAllByOrderByCriadoEmDesc();
 

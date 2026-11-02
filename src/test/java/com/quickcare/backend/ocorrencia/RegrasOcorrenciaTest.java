@@ -31,7 +31,6 @@ class RegrasOcorrenciaTest {
     void aceiteFeitoComMenosDe48hParaOInicioNaoConta() {
         Atendimento emCimaDaHora = aceitoAntesDoInicio(Duration.ofHours(30));
 
-        // Mesmo bem depois do aceite (já em andamento), quem aceitou em cima da hora não é punido.
         assertThat(RegrasOcorrencia.cancelamentoConta(emCimaDaHora, INICIO.plus(Duration.ofHours(30)))).isFalse();
     }
 

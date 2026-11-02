@@ -25,11 +25,6 @@ import lombok.NoArgsConstructor;
 
 import java.time.Instant;
 
-/**
- * Uma falta que conta contra o perfil (3 em 90 dias bloqueiam). O admin pode
- * lançar uma manualmente ou anular, sempre com justificativa; anulada, deixa
- * de contar. O usuário pode recorrer uma vez ({@link RecursoOcorrencia}).
- */
 @Entity
 @Table(name = "ocorrencia")
 @Getter
@@ -54,7 +49,6 @@ public class Ocorrencia {
     @Column(nullable = false, length = 40)
     private MotivoOcorrencia motivo;
 
-    /** Nula na lançada manualmente pelo admin. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "solicitacao_id")
     private Solicitacao solicitacao;
@@ -67,7 +61,6 @@ public class Ocorrencia {
     @JoinColumn(name = "problema_id")
     private ProblemaAtendimento problema;
 
-    /** Do admin, quando foi ele quem lançou. */
     @Column(length = 1000)
     private String justificativa;
 
@@ -102,7 +95,6 @@ public class Ocorrencia {
         return anuladaEm != null;
     }
 
-    /** Uma vez só, enquanto vale e se o motivo admite ({@link MotivoOcorrencia#recorrivel}). */
     public boolean podeRecorrer() {
         return !anulada() && recurso == null && motivo.recorrivel();
     }

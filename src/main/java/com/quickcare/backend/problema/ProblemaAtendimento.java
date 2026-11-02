@@ -33,11 +33,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Um lado disse que o atendimento não foi realizado. O outro confirma ou
- * contesta em até 7 dias; sem resposta, vale o relato. Contestado (mesmo
- * depois dos 7 dias), vira disputa e o admin decide.
- */
 @Entity
 @Table(name = "problema_atendimento")
 @Getter
@@ -144,12 +139,10 @@ public class ProblemaAtendimento {
                 .build();
     }
 
-    /** Quem responde (confirma ou contesta) é o outro lado. */
     public LadoAtendimento ladoQueResponde() {
         return relatadoPor.outro();
     }
 
-    /** Quem não compareceu, segundo o relato; nulo se foi combinado. */
     public LadoAtendimento ausente() {
         return motivo == MotivoProblema.OUTRO_NAO_COMPARECEU ? relatadoPor.outro() : null;
     }

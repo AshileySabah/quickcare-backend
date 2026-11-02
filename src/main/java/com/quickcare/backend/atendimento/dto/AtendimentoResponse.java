@@ -11,11 +11,6 @@ import com.quickcare.backend.problema.dto.ProblemaResponse;
 
 import java.time.Instant;
 
-/**
- * O atendimento como os dois lados veem. {@code cancelamentoContaOcorrencia}
- * e {@code alteracaoTardia} deixam o front avisar antes de cancelar ou editar;
- * {@code podeRelatarProblema}, mostrar "Não foi realizado".
- */
 public record AtendimentoResponse(
         Long id,
         StatusAtendimento status,
@@ -31,7 +26,6 @@ public record AtendimentoResponse(
         @JsonInclude(JsonInclude.Include.NON_NULL) ProblemaResponse problema
 ) {
 
-    /** Período proposto por um lado, à espera da resposta do outro. */
     public record Remarcacao(Instant inicio, Instant termino, LadoAtendimento solicitadaPor, Instant solicitadaEm) {
     }
 

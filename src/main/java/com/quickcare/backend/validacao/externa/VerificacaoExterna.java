@@ -2,10 +2,6 @@ package com.quickcare.backend.validacao.externa;
 
 import java.util.List;
 
-/**
- * Resultado da conferência de um dado (CPF, CNPJ, RG...). `motivos` explica o
- * parecer; `observacoes` traz informações auxiliares que não pesam nele.
- */
 public record VerificacaoExterna(
         String campo,
         String provedor,

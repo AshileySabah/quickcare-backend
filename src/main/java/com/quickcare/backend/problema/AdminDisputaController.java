@@ -17,7 +17,6 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.Map;
 
-/** Relatos de "não foi realizado" e disputas, para o admin decidir. */
 @RestController
 @RequestMapping("/admin/disputas")
 @RequiredArgsConstructor
@@ -25,7 +24,6 @@ public class AdminDisputaController {
 
     private final AdminDisputaService adminDisputaService;
 
-    /** {@code status} pode repetir; sem ele, todos. */
     @GetMapping
     public List<DisputaResumoResponse> listar(
             @AuthenticationPrincipal Long usuarioId,
@@ -34,7 +32,6 @@ public class AdminDisputaController {
         return adminDisputaService.listar(usuarioId, status);
     }
 
-    /** Para o contador no menu do admin. */
     @GetMapping("/em-aberto")
     public Map<String, Long> emAberto(@AuthenticationPrincipal Long usuarioId) {
         return Map.of("total", adminDisputaService.contarEmDisputa(usuarioId));

@@ -18,10 +18,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
-/**
- * CRUD de solicitações. A exclusão é lógica via {@code /cancelar}, para que o
- * histórico do paciente e as propostas vinculadas não se percam.
- */
 @RestController
 @RequestMapping("/solicitacoes")
 @RequiredArgsConstructor

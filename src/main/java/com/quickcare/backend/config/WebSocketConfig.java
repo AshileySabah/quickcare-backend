@@ -14,12 +14,6 @@ import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBr
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
 
-/**
- * STOMP sobre WebSocket em {@code /ws}. O handshake passa pelo filtro JWT (o
- * cookie vai junto), então o usuário da sessão é o id do usuário logado e o
- * back entrega em {@code /user/queue/...} só para ele. O cliente só assina as
- * próprias filas; não há destino para ele enviar mensagens.
- */
 @Configuration
 @EnableWebSocketMessageBroker
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
@@ -38,7 +32,6 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         heartbeat.setThreadNamePrefix("ws-heartbeat-");
         heartbeat.initialize();
 
-        // O heartbeat mantém a conexão viva atrás do proxy do Render.
         registry.enableSimpleBroker("/queue")
                 .setHeartbeatValue(new long[] {HEARTBEAT_MS, HEARTBEAT_MS})
                 .setTaskScheduler(heartbeat);

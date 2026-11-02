@@ -28,12 +28,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 
-/**
- * O paciente bloqueia um profissional (qualquer aprovado: pelo perfil, vindo
- * de uma proposta ou da consulta pública); o profissional bloqueia um paciente
- * com quem já teve atendimento. Vale nos dois sentidos e encerra o que estava
- * vigente entre eles ({@link AtendimentoService#encerrarPorBloqueio}).
- */
 @Service
 @RequiredArgsConstructor
 public class BloqueioUsuarioService {
@@ -47,8 +41,6 @@ public class BloqueioUsuarioService {
     private final ArmazenamentoDocumentoService armazenamentoDocumentoService;
     private final Clock clock;
 
-    // ================================================ paciente → profissional
-
     @Transactional(readOnly = true)
     public PreviaBloqueioResponse previaDoProfissional(Long usuarioId, Long profissionalId) {
         Paciente paciente = pacienteAtivo(usuarioId);
@@ -60,10 +52,8 @@ public class BloqueioUsuarioService {
     public BloqueioUsuarioResponse bloquearProfissional(Long usuarioId, Long profissionalId) {
         Paciente paciente = pacienteAtivo(usuarioId);
         Profissional profissional = profissionalBloqueavel(usuarioId, profissionalId);
-        return doProfissional(bloquear(paciente, profissional, TipoPerfil.PACIENTE));
+        return doProfissional(bloquear(paciente, profissional, AutorBloqueio.PACIENTE));
     }
-
-    // ================================================ profissional → paciente
 
     @Transactional(readOnly = true)
     public PreviaBloqueioResponse previaDoPaciente(Long usuarioId, Long pacienteId) {
@@ -76,40 +66,35 @@ public class BloqueioUsuarioService {
     public BloqueioUsuarioResponse bloquearPaciente(Long usuarioId, Long pacienteId) {
         Profissional profissional = profissionalAtivo(usuarioId);
         Paciente paciente = pacienteBloqueavel(profissional, pacienteId);
-        return doPaciente(bloquear(paciente, profissional, TipoPerfil.PROFISSIONAL));
+        return doPaciente(bloquear(paciente, profissional, AutorBloqueio.PROFISSIONAL));
     }
 
-    // ===================================================== lista e desbloqueio
-
-    /** Quem eu bloqueei com este perfil, mais recentes primeiro. */
     @Transactional(readOnly = true)
     public List<BloqueioUsuarioResponse> listar(Long usuarioId, TipoPerfil perfil) {
         if (perfil == TipoPerfil.PACIENTE) {
             return pacienteRepository.findByUsuarioId(usuarioId)
                     .map(paciente -> bloqueioRepository.findByPacienteIdAndBloqueadoPorOrderByCriadoEmDesc(
-                            paciente.getId(), TipoPerfil.PACIENTE).stream().map(this::doProfissional).toList())
+                            paciente.getId(), AutorBloqueio.PACIENTE).stream().map(this::doProfissional).toList())
                     .orElse(List.of());
         }
         return profissionalRepository.findByUsuarioId(usuarioId)
                 .map(profissional -> bloqueioRepository.findByProfissionalIdAndBloqueadoPorOrderByCriadoEmDesc(
-                        profissional.getId(), TipoPerfil.PROFISSIONAL).stream().map(this::doPaciente).toList())
+                        profissional.getId(), AutorBloqueio.PROFISSIONAL).stream().map(this::doPaciente).toList())
                 .orElse(List.of());
     }
 
-    /** Só quem bloqueou desfaz. O que foi encerrado no bloqueio não volta. */
     @Transactional
     public void desbloquear(Long usuarioId, Long id) {
         BloqueioUsuario bloqueio = bloqueioRepository.findById(id)
-                .filter(encontrado -> (encontrado.getBloqueadoPor() == TipoPerfil.PACIENTE
+                .filter(encontrado -> encontrado.getBloqueadoPor() != AutorBloqueio.ADMIN)
+                .filter(encontrado -> (encontrado.getBloqueadoPor() == AutorBloqueio.PACIENTE
                         ? encontrado.getPaciente().getUsuario()
                         : encontrado.getProfissional().getUsuario()).getId().equals(usuarioId))
                 .orElseThrow(() -> new RecursoNaoEncontradoException("Bloqueio não encontrado."));
         bloqueioRepository.delete(bloqueio);
     }
 
-    // ================================================================= apoio
-
-    private BloqueioUsuario bloquear(Paciente paciente, Profissional profissional, TipoPerfil quemBloqueia) {
+    private BloqueioUsuario bloquear(Paciente paciente, Profissional profissional, AutorBloqueio quemBloqueia) {
         if (bloqueioRepository.findByPacienteIdAndProfissionalIdAndBloqueadoPor(
                 paciente.getId(), profissional.getId(), quemBloqueia).isPresent()) {
             throw new TransicaoStatusInvalidaException("Você já bloqueou esta pessoa.");
@@ -145,7 +130,6 @@ public class BloqueioUsuarioService {
                 .orElseThrow(() -> new PerfilNaoAutorizadoException("Apenas profissionais podem bloquear pacientes."));
     }
 
-    /** O mesmo profissional que o paciente vê no perfil público; nunca o próprio usuário. */
     private Profissional profissionalBloqueavel(Long usuarioId, Long profissionalId) {
         return profissionalRepository.findById(profissionalId)
                 .filter(profissional -> profissional.getStatusValidacao() == StatusValidacao.APROVADO)
@@ -153,7 +137,6 @@ public class BloqueioUsuarioService {
                 .orElseThrow(() -> new RecursoNaoEncontradoException("Profissional não encontrado."));
     }
 
-    /** Só o paciente com quem já teve atendimento (é quando o profissional passa a vê-lo). */
     private Paciente pacienteBloqueavel(Profissional profissional, Long pacienteId) {
         if (!atendimentoRepository.existsByPropostaProfissionalIdAndSolicitacaoPacienteIdAndStatusIn(
                 profissional.getId(), pacienteId, Set.of(StatusAtendimento.values()))) {
@@ -163,8 +146,8 @@ public class BloqueioUsuarioService {
                 .orElseThrow(() -> new RecursoNaoEncontradoException("Paciente não encontrado."));
     }
 
-    private static LadoAtendimento lado(TipoPerfil perfil) {
-        return perfil == TipoPerfil.PACIENTE ? LadoAtendimento.PACIENTE : LadoAtendimento.PROFISSIONAL;
+    private static LadoAtendimento lado(AutorBloqueio autor) {
+        return autor == AutorBloqueio.PACIENTE ? LadoAtendimento.PACIENTE : LadoAtendimento.PROFISSIONAL;
     }
 
     private BloqueioUsuarioResponse doProfissional(BloqueioUsuario bloqueio) {

@@ -29,7 +29,6 @@ public class KeepAliveJob {
         this(properties.url(), builder.requestFactory(comTimeout()), jdbcTemplate);
     }
 
-    /** Nos testes o builder já chega com o request factory do MockRestServiceServer. */
     KeepAliveJob(String url, RestClient.Builder builderConfigurado, JdbcTemplate jdbcTemplate) {
         boolean configurado = url != null && !url.isBlank();
         this.client = configurado ? builderConfigurado.baseUrl(url).build() : null;
@@ -40,11 +39,6 @@ public class KeepAliveJob {
         }
     }
 
-    /**
-     * O Render hiberna após 15 min sem tráfego externo: precisa ser a URL
-     * pública, que passa pelo proxy dele. fixedRate para o intervalo não
-     * crescer com a duração da requisição.
-     */
     @Scheduled(initialDelayString = "PT1M", fixedRateString = "PT14M")
     public void pingarServico() {
         if (client == null) {
@@ -59,7 +53,6 @@ public class KeepAliveJob {
         }
     }
 
-    /** O Supabase pausa o projeto após 7 dias sem uso. */
     @Scheduled(cron = "0 0 3 * * *", zone = "America/Sao_Paulo")
     public void consultarBanco() {
         try {

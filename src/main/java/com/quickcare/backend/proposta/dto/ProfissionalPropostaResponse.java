@@ -7,7 +7,6 @@ import com.quickcare.backend.profissional.Profissional;
 import java.util.Comparator;
 import java.util.List;
 
-/** O que o paciente vê de quem enviou a proposta. */
 public record ProfissionalPropostaResponse(
         Long id,
         String nome,

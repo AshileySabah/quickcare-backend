@@ -5,7 +5,6 @@ import com.quickcare.backend.usuario.Usuario;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-/** Porta de entrada das ações do admin: confere o acesso e registra a auditoria. */
 @Component
 @RequiredArgsConstructor
 public class AcessoAdmin {
@@ -13,7 +12,6 @@ public class AcessoAdmin {
     private final AdministradorRepository administradorRepository;
     private final AcaoAdminRepository acaoAdminRepository;
 
-    /** O usuário do admin logado; recusa quem não é admin. */
     public Usuario exigir(Long usuarioId) {
         return administradorRepository.findByUsuarioId(usuarioId)
                 .map(Administrador::getUsuario)

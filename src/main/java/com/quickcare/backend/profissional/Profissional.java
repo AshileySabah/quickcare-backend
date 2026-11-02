@@ -152,7 +152,6 @@ public class Profissional {
         return new EnderecoGeocodificavel(cep, logradouro, numero, cidade, uf);
     }
 
-    /** null limpa as coordenadas antigas quando o novo endereço não foi encontrado. */
     public void definirCoordenadas(Coordenadas coordenadas) {
         latitude = coordenadas == null ? null : coordenadas.latitude();
         longitude = coordenadas == null ? null : coordenadas.longitude();

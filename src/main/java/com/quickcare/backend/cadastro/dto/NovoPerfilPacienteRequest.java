@@ -11,10 +11,6 @@ import jakarta.validation.constraints.Pattern;
 import java.time.LocalDate;
 import java.util.List;
 
-/**
- * Só os dados do perfil de paciente. Usado por quem já tem conta e cria o
- * perfil logado: nome, e-mail, senha, CPF e identidade já estão no usuário.
- */
 public record NovoPerfilPacienteRequest(
         @NotNull @Past LocalDate dataNascimento,
         @NotNull Genero genero,

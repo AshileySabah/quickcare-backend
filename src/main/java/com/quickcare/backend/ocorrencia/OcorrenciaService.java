@@ -22,11 +22,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * Registra as ocorrências e aplica o bloqueio quando chegam ao limite
- * ({@link RegrasBloqueio}). O admin lança, anula e remove bloqueio por aqui;
- * o usuário recorre de uma ocorrência e o admin mantém ou anula.
- */
 @Service
 @RequiredArgsConstructor
 public class OcorrenciaService {
@@ -41,7 +36,6 @@ public class OcorrenciaService {
     private final Notificador notificador;
     private final Clock clock;
 
-    /** Participa da transação de quem desistiu. */
     @Transactional
     public void registrar(Usuario usuario, TipoPerfil perfil, MotivoOcorrencia motivo, Atendimento atendimento) {
         registrar(usuario, perfil, motivo, atendimento, null);
@@ -66,7 +60,6 @@ public class OcorrenciaService {
                 .criadoEm(agora()));
     }
 
-    /** O admin lança uma ocorrência sem atendimento, com justificativa (conta como as outras). */
     @Transactional
     public Ocorrencia lancarManual(Usuario admin, Usuario usuario, TipoPerfil perfil, String justificativa) {
         return salvarEAvaliar(Ocorrencia.builder()
@@ -78,7 +71,6 @@ public class OcorrenciaService {
                 .criadoEm(agora()));
     }
 
-    /** Se o bloqueio atual dependia dela (sem ela não chega ao limite), ele é desfeito. */
     @Transactional
     public Ocorrencia anular(Usuario admin, Long ocorrenciaId, String justificativa) {
         Ocorrencia ocorrencia = ocorrenciaRepository.findById(ocorrenciaId)
@@ -96,7 +88,6 @@ public class OcorrenciaService {
         return ocorrencia;
     }
 
-    /** Uma vez por ocorrência, enquanto ela vale; o admin decide em {@link #decidirRecurso}. */
     @Transactional
     public ResumoOcorrenciasResponse recorrer(Long usuarioId, TipoPerfil perfil, Long ocorrenciaId, String texto) {
         Ocorrencia ocorrencia = ocorrenciaRepository.findById(ocorrenciaId)
@@ -117,7 +108,6 @@ public class OcorrenciaService {
         return resumo(usuarioId, perfil);
     }
 
-    /** Aceito, anula a ocorrência; se o bloqueio atual dependia dela, ele é desfeito. */
     @Transactional
     public RecursoOcorrencia decidirRecurso(Usuario admin, Long recursoId, boolean anular, String justificativa) {
         RecursoOcorrencia recurso = recursoRepository.findById(recursoId)
@@ -143,12 +133,33 @@ public class OcorrenciaService {
         return recursoRepository.countByStatus(RecursoOcorrencia.Status.EM_ANALISE);
     }
 
-    /** A decisão da disputa substitui as ocorrências que o relato tinha gerado. */
     @Transactional
     public void anularDoProblema(Usuario admin, ProblemaAtendimento problema, String justificativa) {
         Instant agora = Instant.now(clock);
         ocorrenciaRepository.findByProblemaIdAndAnuladaEmIsNull(problema.getId())
                 .forEach(ocorrencia -> ocorrencia.anular(admin, justificativa, agora));
+    }
+
+    @Transactional
+    public Bloqueio aplicarBloqueio(Usuario admin, Usuario usuario, TipoPerfil perfil, String justificativa) {
+        Instant agora = agora();
+        if (bloqueioAtivo(usuario.getId(), perfil).isPresent()) {
+            throw new TransicaoStatusInvalidaException("Este perfil já está bloqueado.");
+        }
+        Bloqueio ultimo = bloqueioRepository.findFirstByUsuarioIdAndPerfilAndDesfeitoFalseOrderByInicioDesc(usuario.getId(), perfil)
+                .orElse(null);
+        int nivel = RegrasBloqueio.proximoNivel(ocorrenciaRepository.findMomentosValidos(usuario.getId(), perfil), ultimo);
+        Bloqueio bloqueio = bloqueioRepository.save(Bloqueio.builder()
+                .usuario(usuario)
+                .perfil(perfil)
+                .nivel(nivel)
+                .inicio(agora)
+                .fim(agora.plus(RegrasBloqueio.duracao(nivel)))
+                .criadoPor(admin)
+                .justificativa(justificativa.trim())
+                .build());
+        notificador.bloqueioAplicado(bloqueio);
+        return bloqueio;
     }
 
     @Transactional
@@ -171,12 +182,6 @@ public class OcorrenciaService {
                 .filter(bloqueio -> bloqueio.ativoEm(agora));
     }
 
-    /**
-     * O bloqueio atual, acertando antes o que estiver devido: desfaz o que não
-     * se sustenta mais (anularam ocorrência dele) e aplica o do perfil que já
-     * chegou ao limite sem ter sido bloqueado (um registro que escapou da
-     * avaliação).
-     */
     @Transactional
     public Optional<Bloqueio> bloqueioVigente(Long usuarioId, TipoPerfil perfil) {
         Instant agora = agora();
@@ -187,7 +192,7 @@ public class OcorrenciaService {
     }
 
     private void desfazerBloqueioSemMotivo(Long usuarioId, TipoPerfil perfil, Instant agora) {
-        bloqueioAtivo(usuarioId, perfil).ifPresent(bloqueio -> {
+        bloqueioAtivo(usuarioId, perfil).filter(bloqueio -> !bloqueio.aplicadoPeloAdmin()).ifPresent(bloqueio -> {
             Bloqueio anterior = bloqueioRepository
                     .findFirstByUsuarioIdAndPerfilAndDesfeitoFalseAndInicioBeforeOrderByInicioDesc(
                             usuarioId, perfil, bloqueio.getInicio())
@@ -199,7 +204,6 @@ public class OcorrenciaService {
         });
     }
 
-    /** Bloqueado não cria solicitação nem envia proposta; o que já existe segue normalmente. */
     @Transactional
     public void exigirSemBloqueio(Long usuarioId, TipoPerfil perfil) {
         bloqueioVigente(usuarioId, perfil).ifPresent(bloqueio -> {
@@ -209,7 +213,6 @@ public class OcorrenciaService {
         });
     }
 
-    /** As que contam agora para o próximo bloqueio. */
     @Transactional(readOnly = true)
     public int contando(Long usuarioId, TipoPerfil perfil) {
         Instant agora = Instant.now(clock);
@@ -217,7 +220,6 @@ public class OcorrenciaService {
                 corte(usuarioId, perfil, agora), agora).size();
     }
 
-    /** O último bloqueio que já terminou (as que entraram nele não contam mais), ou nulo. */
     @Transactional(readOnly = true)
     public Bloqueio corte(Long usuarioId, TipoPerfil perfil, Instant agora) {
         Bloqueio ultimo = bloqueioRepository.findFirstByUsuarioIdAndPerfilAndDesfeitoFalseOrderByInicioDesc(usuarioId, perfil)
@@ -228,7 +230,6 @@ public class OcorrenciaService {
         return RegrasBloqueio.corte(ultimo, anterior, agora);
     }
 
-    /** O que o próprio perfil vê: quantas contam, o limite, o bloqueio atual e o histórico. */
     @Transactional
     public ResumoOcorrenciasResponse resumo(Long usuarioId, TipoPerfil perfil) {
         Bloqueio bloqueio = bloqueioVigente(usuarioId, perfil).orElse(null);
@@ -265,7 +266,6 @@ public class OcorrenciaService {
         });
     }
 
-    /** Na precisão do banco (microssegundos), para o que é gravado bater com o que volta. */
     private Instant agora() {
         return Instant.now(clock).truncatedTo(ChronoUnit.MICROS);
     }

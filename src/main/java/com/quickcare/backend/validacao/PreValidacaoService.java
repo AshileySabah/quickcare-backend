@@ -19,10 +19,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.stream.Collectors;
 
-/**
- * Consulta APIs de terceiros para ajudar o admin numa etapa. Só roda quando o
- * admin pede; o resultado não é salvo e nunca decide a etapa sozinho.
- */
 @Service
 @RequiredArgsConstructor
 public class PreValidacaoService {

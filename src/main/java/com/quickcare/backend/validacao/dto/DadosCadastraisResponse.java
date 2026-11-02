@@ -7,7 +7,6 @@ import com.quickcare.backend.usuario.TipoDocumentoIdentidade;
 import java.time.LocalDate;
 import java.util.List;
 
-/** Dados conferidos nas etapas. Campos de profissional ficam nulos para paciente. */
 public record DadosCadastraisResponse(
         String nome,
         String email,

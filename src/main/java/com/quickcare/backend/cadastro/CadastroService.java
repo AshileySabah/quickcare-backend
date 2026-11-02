@@ -104,11 +104,6 @@ public class CadastroService {
         return criarProfissional(usuario, request.perfil(), documentosValidados);
     }
 
-    /**
-     * Quem já está logado cria o outro perfil sem refazer a conta. O perfil novo
-     * passa pela validação completa, inclusive a identidade, mesmo que ela já
-     * tenha sido aprovada no outro perfil.
-     */
     @Transactional
     public CadastroResponse criarPerfilPaciente(
             Long usuarioId,
@@ -144,7 +139,6 @@ public class CadastroService {
         return usuarioRepository.findById(usuarioId).orElseThrow(TokenInvalidoException::new);
     }
 
-    /** O perfil recém-criado passa a ser o ativo, para a pessoa já cair nele. */
     private CadastroResponse criarPaciente(Usuario usuario, NovoPerfilPacienteRequest request,
                                            List<DocumentoParaSalvar> documentosValidados) {
         if (pacienteRepository.existsByUsuarioId(usuario.getId())) {
@@ -283,12 +277,6 @@ public class CadastroService {
     private record DocumentoParaSalvar(TipoDocumento tipo, MultipartFile arquivo) {
     }
 
-    /**
-     * Documento e tipo chegam como duas listas paralelas (multipart não tem um jeito
-     * nativo de amarrar um arquivo a um campo companheiro), então a ordem de envio no
-     * front precisa bater com a ordem aqui — cada índice i de `documentos` corresponde
-     * ao tipo em `tiposDocumento[i]`.
-     */
     private List<DocumentoParaSalvar> validarDocumentos(List<MultipartFile> documentos, List<TipoDocumento> tiposDocumento) {
         List<MultipartFile> arquivos = documentos == null ? Collections.emptyList() : documentos;
         List<TipoDocumento> tipos = tiposDocumento == null ? Collections.emptyList() : tiposDocumento;
@@ -318,7 +306,6 @@ public class CadastroService {
                 .toList();
     }
 
-    /** Devolve o último documento salvo de cada tipo, que é o conferido na etapa correspondente. */
     private Map<TipoDocumento, Documento> salvarDocumentos(List<DocumentoParaSalvar> documentos, Paciente paciente, Profissional profissional) {
         Map<TipoDocumento, Documento> salvos = new EnumMap<>(TipoDocumento.class);
         for (DocumentoParaSalvar documento : documentos) {
@@ -343,10 +330,6 @@ public class CadastroService {
         );
     }
 
-    /**
-     * Quem já tem conta (mesmo e-mail e CPF) e cria o outro perfil reaproveita o
-     * usuário; o documento de identidade só é gravado se ainda não havia um.
-     */
     private Usuario resolverUsuario(String nome, String email, String senha, String cpf, String telefone,
                                     DocumentoIdentidade identidade, MultipartFile avatar) {
         Optional<Usuario> porEmail = usuarioRepository.findByEmail(email);

@@ -13,12 +13,6 @@ import java.time.Duration;
 import java.util.Optional;
 import java.util.function.Function;
 
-/**
- * Converte o endereço digitado em latitude/longitude, sem nada a mais para o
- * usuário preencher. Falha de rede ou endereço não encontrado nunca bloqueia o
- * cadastro: devolve vazio e a regra de raio cai no fallback por cidade
- * (ver {@code Solicitacao#atendidaPor}).
- */
 @Slf4j
 @Service
 public class GeocodificacaoService {
@@ -41,7 +35,6 @@ public class GeocodificacaoService {
                 .build();
     }
 
-    /** Tenta primeiro rua + número + cidade; se não achar, só o CEP. */
     public Optional<Coordenadas> geocodificar(EnderecoGeocodificavel endereco) {
         if (!properties.habilitada()) {
             return Optional.empty();

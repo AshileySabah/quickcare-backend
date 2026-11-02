@@ -39,7 +39,6 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class PropostaService {
 
-    /** Um atendimento proposto não passa de um ano. */
     private static final Duration DURACAO_MAXIMA = Duration.ofDays(366);
 
     private final PropostaRepository propostaRepository;
@@ -53,12 +52,6 @@ public class PropostaService {
     private final BloqueioUsuarioRepository bloqueioUsuarioRepository;
     private final Clock clock;
 
-    /**
-     * O profissional só envia proposta para solicitação compatível com ele e
-     * que ainda recebe propostas — nunca para a que ele mesmo abriu no perfil
-     * de paciente. Depois de uma recusada ou cancelada, pode enviar outra. A
-     * primeira proposta move a solicitação de ABERTA para RECEBENDO_PROPOSTAS.
-     */
     @Transactional
     public PropostaResponse enviar(Long usuarioId, Long solicitacaoId, PropostaRequest request) {
         Profissional profissional = buscarProfissionalAtivo(usuarioId);
@@ -71,7 +64,6 @@ public class PropostaService {
                 .filter(s -> s.atendidaPor(profissional))
                 .orElseThrow(SolicitacaoNaoEncontradaException::new);
 
-        // Bloqueados entre si: a mesma resposta de quando fecha, sem revelar o bloqueio.
         if (!solicitacao.getStatus().recebePropostas() || bloqueados(solicitacao, profissional)) {
             throw new TransicaoStatusInvalidaException("Esta solicitação não está mais recebendo propostas.");
         }
@@ -96,10 +88,6 @@ public class PropostaService {
         return responder(salva);
     }
 
-    /**
-     * O paciente dono vê todas as propostas não canceladas; o profissional vê
-     * só as suas. Para os demais a solicitação "não existe".
-     */
     @Transactional(readOnly = true)
     public List<PropostaResponse> listarDaSolicitacao(Long usuarioId, Long solicitacaoId) {
         atendimentoService.processarVencidos();
@@ -131,7 +119,6 @@ public class PropostaService {
         return responder(propostaRepository.findByProfissionalIdOrderByCriadoEmDesc(profissional.getId()));
     }
 
-    /** Visível para o profissional autor e para o paciente dono da solicitação. */
     @Transactional(readOnly = true)
     public PropostaResponse buscar(Long usuarioId, Long id) {
         atendimentoService.processarVencidos();
@@ -142,10 +129,6 @@ public class PropostaService {
         return responder(proposta);
     }
 
-    /**
-     * Editar a proposta já aceita a tira do aceite: o atendimento cai, a vaga
-     * reabre e o paciente aceita de novo (ou escolhe outra).
-     */
     @Transactional
     public PropostaResponse atualizar(Long usuarioId, Long id, PropostaRequest request) {
         Proposta proposta = buscarAlteravelDoProfissional(usuarioId, id, "editada");
@@ -163,10 +146,6 @@ public class PropostaService {
         return responder(salva);
     }
 
-    /**
-     * Exclusão lógica. A aceita é o mesmo que cancelar o atendimento (a vaga
-     * reabre e a regra das 48h decide se conta ocorrência).
-     */
     @Transactional
     public PropostaResponse cancelar(Long usuarioId, Long id) {
         Proposta proposta = buscarAlteravelDoProfissional(usuarioId, id, "cancelada");
@@ -183,10 +162,6 @@ public class PropostaService {
         return responder(proposta);
     }
 
-    /**
-     * O paciente recusa uma proposta pendente; para o profissional ela aparece
-     * como recusada (diferente de cancelada, que é quando ele mesmo desiste).
-     */
     @Transactional
     public PropostaResponse recusar(Long usuarioId, Long id) {
         Proposta proposta = buscarDoPaciente(usuarioId, id);
@@ -203,10 +178,6 @@ public class PropostaService {
         return responder(proposta);
     }
 
-    /**
-     * O paciente aceita uma proposta: ela ocupa uma vaga (livre, ou a reservada
-     * de quem ainda não reaceitou) e vira um atendimento agendado.
-     */
     @Transactional
     public PropostaResponse aceitar(Long usuarioId, Long id) {
         Proposta proposta = buscarDoPaciente(usuarioId, id);
@@ -236,7 +207,6 @@ public class PropostaService {
         return responder(List.of(proposta)).get(0);
     }
 
-    /** Uma consulta para os atendimentos da lista toda; de cada proposta, o mais recente. */
     private List<PropostaResponse> responder(List<Proposta> propostas) {
         if (propostas.isEmpty()) {
             return List.of();
@@ -272,7 +242,6 @@ public class PropostaService {
                 .orElseThrow(() -> new PerfilNaoAutorizadoException("Apenas profissionais podem gerenciar propostas."));
     }
 
-    /** Proposta recebida numa solicitação do paciente, que precisa estar ativo. */
     private Proposta buscarDoPaciente(Long usuarioId, Long id) {
         Proposta proposta = propostaRepository.findById(id)
                 .filter(p -> p.getSolicitacao().ehDoUsuario(usuarioId))
@@ -284,7 +253,6 @@ public class PropostaService {
         return proposta;
     }
 
-    /** Pendente ou aceita, numa solicitação ainda em curso. */
     private Proposta buscarAlteravelDoProfissional(Long usuarioId, Long id, String acao) {
         Proposta proposta = buscarDoProfissional(usuarioId, id);
 

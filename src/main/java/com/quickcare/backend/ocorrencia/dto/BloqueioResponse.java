@@ -15,14 +15,17 @@ public record BloqueioResponse(
         Instant removidoEm,
         String removidoPor,
         String justificativaRemocao,
-        boolean desfeito
+        boolean desfeito,
+        String aplicadoPor,
+        String justificativa
 ) {
 
     public static BloqueioResponse de(Bloqueio bloqueio, Instant agora) {
         return new BloqueioResponse(bloqueio.getId(), bloqueio.getNivel(), bloqueio.getInicio(), bloqueio.getFim(),
                 bloqueio.ativoEm(agora), bloqueio.getRemovidoEm(),
                 bloqueio.getRemovidoPor() == null ? null : bloqueio.getRemovidoPor().getNome(),
-                bloqueio.getJustificativaRemocao(), bloqueio.isDesfeito());
+                bloqueio.getJustificativaRemocao(), bloqueio.isDesfeito(),
+                bloqueio.getCriadoPor() == null ? null : bloqueio.getCriadoPor().getNome(), bloqueio.getJustificativa());
     }
 
 }

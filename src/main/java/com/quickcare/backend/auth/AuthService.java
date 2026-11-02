@@ -53,7 +53,6 @@ public class AuthService {
         return new LoginResult(montarResposta(usuario), jwtService.gerarAccessToken(usuario), jwtService.gerarRefreshToken(usuario));
     }
 
-    /** Dados da sessão do usuário já autenticado pelo cookie — usado pelo front ao recarregar a página. */
     @Transactional(readOnly = true)
     public LoginResponse sessaoAtual(Long usuarioId) {
         Usuario usuario = usuarioRepository.findById(usuarioId)
@@ -78,7 +77,6 @@ public class AuthService {
                 usuario.getUltimoPerfil());
     }
 
-    /** Guarda o perfil escolhido no seletor; só vale para um perfil que o usuário tem e que está ativo. */
     @Transactional
     public LoginResponse definirPerfilAtivo(Long usuarioId, TipoPerfil perfil) {
         Usuario usuario = usuarioRepository.findById(usuarioId)
