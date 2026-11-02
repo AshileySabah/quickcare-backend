@@ -3,6 +3,7 @@ package com.quickcare.backend.solicitacao;
 import com.quickcare.backend.atendimento.Atendimento;
 import com.quickcare.backend.atendimento.AtendimentoRepository;
 import com.quickcare.backend.atendimento.AtendimentoService;
+import com.quickcare.backend.bloqueiousuario.BloqueioUsuarioRepository;
 import com.quickcare.backend.atendimento.StatusAtendimento;
 import com.quickcare.backend.cadastro.exception.EspecialidadeInvalidaException;
 import com.quickcare.backend.especialidade.Especialidade;
@@ -12,13 +13,14 @@ import com.quickcare.backend.geolocalizacao.EnderecoGeocodificavel;
 import com.quickcare.backend.geolocalizacao.GeocodificacaoService;
 import com.quickcare.backend.localizacao.Uf;
 import com.quickcare.backend.notificacao.Notificador;
+import com.quickcare.backend.ocorrencia.OcorrenciaService;
 import com.quickcare.backend.paciente.Paciente;
 import com.quickcare.backend.paciente.PacienteRepository;
 import com.quickcare.backend.profissional.Profissional;
 import com.quickcare.backend.profissional.ProfissionalRepository;
 import com.quickcare.backend.proposta.Proposta;
-import com.quickcare.backend.proposta.PropostaRepository;
 import com.quickcare.backend.proposta.PropostaRepository.ContagemPropostas;
+import com.quickcare.backend.proposta.PropostaRepository;
 import com.quickcare.backend.proposta.StatusProposta;
 import com.quickcare.backend.solicitacao.dto.EnderecoSolicitacaoRequest;
 import com.quickcare.backend.solicitacao.dto.ProfissionalSolicitadoRequest;
@@ -28,6 +30,7 @@ import com.quickcare.backend.solicitacao.exception.PerfilNaoAutorizadoException;
 import com.quickcare.backend.solicitacao.exception.SolicitacaoInvalidaException;
 import com.quickcare.backend.solicitacao.exception.SolicitacaoNaoEncontradaException;
 import com.quickcare.backend.solicitacao.exception.TransicaoStatusInvalidaException;
+import com.quickcare.backend.usuario.TipoPerfil;
 import com.quickcare.backend.validacao.StatusValidacao;
 import com.quickcare.backend.validacao.exception.CadastroNaoValidadoException;
 import lombok.RequiredArgsConstructor;
@@ -56,7 +59,9 @@ public class SolicitacaoService {
     private final GeocodificacaoService geocodificacaoService;
     private final Notificador notificador;
     private final AtendimentoService atendimentoService;
+    private final BloqueioUsuarioRepository bloqueioUsuarioRepository;
     private final AtendimentoRepository atendimentoRepository;
+    private final OcorrenciaService ocorrenciaService;
 
     @Transactional
     public SolicitacaoResponse criar(Long usuarioId, SolicitacaoRequest request) {
@@ -66,6 +71,7 @@ public class SolicitacaoService {
             throw new CadastroNaoValidadoException(
                     "Seu cadastro ainda não foi aprovado. Você poderá criar solicitações assim que ele for validado.");
         }
+        ocorrenciaService.exigirSemBloqueio(usuarioId, TipoPerfil.PACIENTE);
 
         Solicitacao solicitacao = Solicitacao.builder()
                 .paciente(paciente)
@@ -116,11 +122,14 @@ public class SolicitacaoService {
 
         Set<Long> comProposta = propostaRepository.findSolicitacaoIdsComPropostaDoProfissional(
                 profissional.getId(), StatusProposta.ATIVAS);
+        Set<Long> pacientesBloqueados = bloqueioUsuarioRepository.findPacienteIdsBloqueadosCom(profissional.getId());
 
         // A distância até o endereço presencial é conferida na entidade. Quem
-        // também é paciente não vê as próprias solicitações.
+        // também é paciente não vê as próprias solicitações, nem as de quem
+        // está bloqueado com ele (não importa quem bloqueou).
         return responder(candidatas.stream()
                 .filter(solicitacao -> !solicitacao.ehDoUsuario(usuarioId))
+                .filter(solicitacao -> !pacientesBloqueados.contains(solicitacao.getPaciente().getId()))
                 .filter(solicitacao -> !comProposta.contains(solicitacao.getId()))
                 .filter(solicitacao -> solicitacao.atendidaPor(profissional))
                 .toList());
@@ -139,10 +148,13 @@ public class SolicitacaoService {
                 .orElseThrow(SolicitacaoNaoEncontradaException::new);
 
         boolean ehDono = solicitacao.ehDoUsuario(usuarioId);
+        // Bloqueado com o paciente, só continua vendo a solicitação em que já
+        // tinha proposta (o histórico fica).
         boolean ehProfissionalEnvolvido = profissionalRepository.findByUsuarioId(usuarioId)
-                .map(profissional -> solicitacao.atendidaPor(profissional)
-                        || propostaRepository.existsBySolicitacaoIdAndProfissionalIdAndStatusNot(
-                                id, profissional.getId(), StatusProposta.CANCELADA))
+                .map(profissional -> propostaRepository.existsBySolicitacaoIdAndProfissionalIdAndStatusNot(
+                                id, profissional.getId(), StatusProposta.CANCELADA)
+                        || (solicitacao.atendidaPor(profissional) && !bloqueioUsuarioRepository
+                                .existsByPacienteIdAndProfissionalId(solicitacao.getPaciente().getId(), profissional.getId())))
                 .orElse(false);
 
         if (!ehDono && !ehProfissionalEnvolvido) {

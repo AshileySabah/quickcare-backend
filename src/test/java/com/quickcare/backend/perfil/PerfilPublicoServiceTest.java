@@ -2,6 +2,7 @@ package com.quickcare.backend.perfil;
 
 import com.quickcare.backend.atendimento.AtendimentoRepository;
 import com.quickcare.backend.atendimento.StatusAtendimento;
+import com.quickcare.backend.bloqueiousuario.BloqueioUsuarioRepository;
 import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
 import com.quickcare.backend.especialidade.CategoriaProfissional;
 import com.quickcare.backend.especialidade.Especialidade;
@@ -49,6 +50,7 @@ class PerfilPublicoServiceTest {
     @Mock private PropostaRepository propostaRepository;
     @Mock private AtendimentoRepository atendimentoRepository;
     @Mock private ArmazenamentoDocumentoService armazenamentoDocumentoService;
+    @Mock private BloqueioUsuarioRepository bloqueioUsuarioRepository;
 
     @InjectMocks
     private PerfilPublicoService service;

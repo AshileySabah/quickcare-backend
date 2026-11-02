@@ -3,7 +3,9 @@ package com.quickcare.backend.solicitacao;
 import com.quickcare.backend.atendimento.AtendimentoRepository;
 import com.quickcare.backend.atendimento.AtendimentoService;
 import com.quickcare.backend.notificacao.Notificador;
+import com.quickcare.backend.ocorrencia.OcorrenciaService;
 import com.quickcare.backend.cadastro.exception.EspecialidadeInvalidaException;
+import com.quickcare.backend.bloqueiousuario.BloqueioUsuarioRepository;
 import com.quickcare.backend.especialidade.CategoriaProfissional;
 import com.quickcare.backend.especialidade.Especialidade;
 import com.quickcare.backend.especialidade.EspecialidadeRepository;
@@ -88,6 +90,12 @@ class SolicitacaoServiceTest {
 
     @Mock
     private AtendimentoRepository atendimentoRepository;
+
+    @Mock
+    private OcorrenciaService ocorrenciaService;
+
+    @Mock
+    private BloqueioUsuarioRepository bloqueioUsuarioRepository;
 
     @InjectMocks
     private SolicitacaoService service;

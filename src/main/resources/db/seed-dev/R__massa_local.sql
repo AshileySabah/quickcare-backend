@@ -559,6 +559,17 @@ SELECT pg_temp.seed_proposta(pg_temp.seed_solicitacao('paciente@quickcare.dev',
            'CANCELADA', -2, 20),
        'ambos@quickcare.dev', 2400.00, 'Plantão noturno de 12h, cinco noites por semana.', 'RECUSADA', 19);
 
+-- Atendimentos de ontem e anteontem com o profissional@, para os relatos de
+-- "não foi realizado" mais abaixo (branch 4b).
+SELECT pg_temp.seed_proposta(pg_temp.seed_solicitacao('paciente@quickcare.dev',
+           'Curativo na perna depois de uma queda, uma visita.', 'PRESENCIAL', 'ENFERMEIRO', 'Curativos',
+           'EM_ANDAMENTO', -1, 6),
+       'profissional@quickcare.dev', 150.00, 'Limpeza e curativo da ferida com orientação para os próximos dias.', 'ACEITA', 5);
+SELECT pg_temp.seed_proposta(pg_temp.seed_solicitacao('maria@quickcare.dev',
+           'Curativo semanal na perna, com relatório para a médica.', 'PRESENCIAL', 'ENFERMEIRO', 'Curativos',
+           'EM_ANDAMENTO', -2, 8),
+       'profissional@quickcare.dev', 170.00, 'Curativo com registro fotográfico e relatório para a médica.', 'ACEITA', 7);
+
 -- Atendimentos: toda proposta aceita tem um, no estado que as datas indicam
 -- (como a migration V21 faz com as que já existiam).
 INSERT INTO atendimento (proposta_id, solicitacao_id, status, inicio, termino, aceito_em, criado_em)
@@ -617,6 +628,88 @@ FROM proposta p, solicitacao s, profissional pr, usuario u
 WHERE a.proposta_id = p.id AND s.id = p.solicitacao_id AND pr.id = p.profissional_id AND u.id = pr.usuario_id
   AND s.descricao LIKE 'Minha mãe precisa de curativos diários%' AND u.email = 'ambos@quickcare.dev'
   AND a.status = 'AGENDADO' AND a.remarcacao_por IS NULL;
+
+-- ---------------------------------------------------------------------------
+-- Problemas no atendimento, ocorrências e bloqueio (branch 4b)
+-- ---------------------------------------------------------------------------
+-- Cria o relato de "não foi realizado" no atendimento da solicitação
+-- (p_descricao), se ainda não houver; com p_contestacao, já vira disputa.
+CREATE OR REPLACE FUNCTION pg_temp.seed_problema(
+    p_descricao TEXT, p_relatado_por TEXT, p_relato TEXT, p_horas_atras INT, p_contestacao TEXT
+) RETURNS VOID AS $$
+DECLARE
+    v_atendimento atendimento%ROWTYPE;
+BEGIN
+    SELECT a.* INTO v_atendimento
+    FROM atendimento a JOIN solicitacao s ON s.id = a.solicitacao_id
+    WHERE s.descricao = p_descricao
+    ORDER BY a.id DESC LIMIT 1;
+    IF v_atendimento.id IS NULL OR EXISTS (SELECT 1 FROM problema_atendimento WHERE atendimento_id = v_atendimento.id) THEN
+        RETURN;
+    END IF;
+
+    INSERT INTO problema_atendimento (atendimento_id, relatado_por, motivo, descricao, status, prazo_resposta,
+                                      status_anterior, respondido_em, contestacao, contestado_em, criado_em, atualizado_em)
+    VALUES (v_atendimento.id, p_relatado_por, 'OUTRO_NAO_COMPARECEU', p_relato,
+            CASE WHEN p_contestacao IS NULL THEN 'AGUARDANDO_RESPOSTA' ELSE 'EM_DISPUTA' END,
+            now() - make_interval(hours => p_horas_atras) + INTERVAL '7 days',
+            'FINALIZADO',
+            CASE WHEN p_contestacao IS NOT NULL THEN now() - make_interval(hours => p_horas_atras / 2) END,
+            p_contestacao,
+            CASE WHEN p_contestacao IS NOT NULL THEN now() - make_interval(hours => p_horas_atras / 2) END,
+            now() - make_interval(hours => p_horas_atras), now());
+
+    UPDATE atendimento
+    SET status = CASE WHEN p_contestacao IS NULL THEN 'PROBLEMA_RELATADO' ELSE 'EM_DISPUTA' END,
+        lembrete_24h_em = inicio, lembrete_30min_em = inicio, lembrete_inicio_em = inicio
+    WHERE id = v_atendimento.id;
+    -- Sem problema resolvido, a solicitação segue em andamento.
+    UPDATE solicitacao SET status = 'EM_ANDAMENTO' WHERE id = v_atendimento.solicitacao_id;
+END;
+$$ LANGUAGE plpgsql;
+
+-- paciente@ relatou que o profissional@ não foi: ele confirma ou contesta (5 dias restantes).
+SELECT pg_temp.seed_problema('Curativo na perna depois de uma queda, uma visita.', 'PACIENTE',
+       'Esperei a tarde toda e o profissional não apareceu nem avisou.', 48, NULL);
+-- profissional@ relatou que a maria@ não estava em casa; ela contestou: disputa para o admin.
+SELECT pg_temp.seed_problema('Curativo semanal na perna, com relatório para a médica.', 'PROFISSIONAL',
+       'Cheguei no horário, toquei várias vezes e ninguém atendeu. Esperei 40 minutos.', 30,
+       'Fiquei em casa o dia todo e a campainha não tocou. Minha vizinha pode confirmar.');
+
+-- Ocorrências: profissional@ tem 1 de 3; nutricionista@ chegou a 3 e está bloqueada
+-- (não envia propostas por 7 dias). Uma anulada pelo admin, para o histórico.
+INSERT INTO ocorrencia (usuario_id, perfil, motivo, justificativa, criado_por_usuario_id, criado_em,
+                        anulada_em, anulada_por_usuario_id, justificativa_anulacao)
+SELECT u.id, 'PROFISSIONAL', o.motivo, o.justificativa,
+       CASE WHEN o.motivo = 'MANUAL' THEN adm.id END,
+       now() - make_interval(days => o.dias_atras),
+       CASE WHEN o.anulada THEN now() - make_interval(days => o.dias_atras - 1) END,
+       CASE WHEN o.anulada THEN adm.id END,
+       CASE WHEN o.anulada THEN 'Cancelamento por motivo de saúde comprovado.' END
+FROM (VALUES ('profissional@quickcare.dev', 'CANCELAMENTO_ATENDIMENTO', NULL, 20, FALSE),
+             ('nutricionista@quickcare.dev', 'CANCELAMENTO_ATENDIMENTO', NULL, 40, TRUE),
+             ('nutricionista@quickcare.dev', 'CANCELAMENTO_ATENDIMENTO', NULL, 25, FALSE),
+             ('nutricionista@quickcare.dev', 'NAO_COMPARECIMENTO', NULL, 9, FALSE),
+             ('nutricionista@quickcare.dev', 'MANUAL', 'Não compareceu a duas consultas por vídeo seguidas, confirmado com o paciente.', 2, FALSE))
+     AS o (email, motivo, justificativa, dias_atras, anulada)
+JOIN usuario u ON u.email = o.email
+CROSS JOIN (SELECT usuario_id AS id FROM administrador ORDER BY id LIMIT 1) adm
+WHERE NOT EXISTS (SELECT 1 FROM ocorrencia x WHERE x.usuario_id = u.id AND x.perfil = 'PROFISSIONAL');
+
+INSERT INTO bloqueio (usuario_id, perfil, nivel, inicio, fim)
+SELECT o.usuario_id, 'PROFISSIONAL', 1, o.criado_em, o.criado_em + INTERVAL '7 days'
+FROM ocorrencia o JOIN usuario u ON u.id = o.usuario_id
+WHERE u.email = 'nutricionista@quickcare.dev' AND o.motivo = 'MANUAL'
+  AND NOT EXISTS (SELECT 1 FROM bloqueio b WHERE b.usuario_id = o.usuario_id);
+
+-- Recurso em análise: nutricionista@ recorreu do cancelamento de 25 dias atrás
+-- (o admin vê em Ocorrências > "Com recurso" e decide).
+INSERT INTO recurso_ocorrencia (ocorrencia_id, texto, status, criado_em)
+SELECT o.id, 'Cancelei porque o paciente pediu por mensagem para trocar o dia; tenho o print da conversa.',
+       'EM_ANALISE', now() - INTERVAL '1 day'
+FROM ocorrencia o JOIN usuario u ON u.id = o.usuario_id
+WHERE u.email = 'nutricionista@quickcare.dev' AND o.motivo = 'CANCELAMENTO_ATENDIMENTO' AND o.anulada_em IS NULL
+  AND NOT EXISTS (SELECT 1 FROM recurso_ocorrencia r JOIN ocorrencia x ON x.id = r.ocorrencia_id WHERE x.usuario_id = u.id);
 
 -- Notificações de exemplo (sino): ambos@ tem não lidas nos dois perfis, para
 -- ver o indicador do outro perfil no seletor; paciente@ e profissional@ têm

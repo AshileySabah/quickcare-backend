@@ -2,6 +2,8 @@ package com.quickcare.backend.perfil;
 
 import com.quickcare.backend.atendimento.AtendimentoRepository;
 import com.quickcare.backend.atendimento.StatusAtendimento;
+import com.quickcare.backend.bloqueiousuario.BloqueioUsuario;
+import com.quickcare.backend.bloqueiousuario.BloqueioUsuarioRepository;
 import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
 import com.quickcare.backend.especialidade.Especialidade;
 import com.quickcare.backend.paciente.Paciente;
@@ -15,6 +17,7 @@ import com.quickcare.backend.profissional.ProfissionalRepository;
 import com.quickcare.backend.proposta.PropostaRepository;
 import com.quickcare.backend.proposta.StatusProposta;
 import com.quickcare.backend.solicitacao.StatusSolicitacao;
+import com.quickcare.backend.usuario.TipoPerfil;
 import com.quickcare.backend.validacao.StatusValidacao;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -34,16 +37,25 @@ public class PerfilPublicoService {
     private final PropostaRepository propostaRepository;
     private final AtendimentoRepository atendimentoRepository;
     private final ArmazenamentoDocumentoService armazenamentoDocumentoService;
+    private final BloqueioUsuarioRepository bloqueioUsuarioRepository;
 
     /**
-     * Qualquer usuário logado vê o profissional aprovado e não banido. Os
-     * contatos de emergência, só o paciente cujo atendimento com ele já começou.
+     * Qualquer usuário logado vê o profissional aprovado e não banido — menos o
+     * paciente que ele bloqueou. Os contatos de emergência, só o paciente cujo
+     * atendimento com ele já começou. {@code bloqueioId} vem para o paciente
+     * que o bloqueou (a tela oferece desbloquear).
      */
     @Transactional(readOnly = true)
     public PerfilPublicoProfissionalResponse buscarProfissional(Long usuarioId, Long profissionalId) {
         Profissional profissional = profissionalRepository.findById(profissionalId)
                 .filter(p -> !p.isBanido() && p.getStatusValidacao() == StatusValidacao.APROVADO)
                 .orElseThrow(PerfilNaoEncontradoException::new);
+        Long pacienteId = pacienteRepository.findByUsuarioId(usuarioId).map(Paciente::getId).orElse(null);
+        if (pacienteId != null && bloqueio(pacienteId, profissional.getId(), TipoPerfil.PROFISSIONAL) != null) {
+            throw new PerfilNaoEncontradoException();
+        }
+        BloqueioUsuario meuBloqueio = pacienteId == null ? null
+                : bloqueio(pacienteId, profissional.getId(), TipoPerfil.PACIENTE);
 
         return new PerfilPublicoProfissionalResponse(
                 profissional.getId(),
@@ -63,8 +75,14 @@ public class PerfilPublicoService {
                         profissional.getId(), StatusAtendimento.REALIZADOS),
                 atendimentoIniciado(usuarioId, profissional)
                         ? ContatoEmergenciaResponse.de(profissional.getContatosEmergencia())
-                        : null
+                        : null,
+                meuBloqueio == null ? null : meuBloqueio.getId()
         );
+    }
+
+    private BloqueioUsuario bloqueio(Long pacienteId, Long profissionalId, TipoPerfil bloqueadoPor) {
+        return bloqueioUsuarioRepository.findByPacienteIdAndProfissionalIdAndBloqueadoPor(
+                pacienteId, profissionalId, bloqueadoPor).orElse(null);
     }
 
     private boolean atendimentoIniciado(Long usuarioId, Profissional profissional) {
@@ -89,7 +107,8 @@ public class PerfilPublicoService {
      * Só o profissional com proposta aceita numa solicitação do paciente o vê —
      * antes disso nem o nome dele é revelado. Os dados de saúde, enquanto essa
      * solicitação estiver em curso; os contatos de emergência, só depois que o
-     * atendimento começou.
+     * atendimento começou. O paciente que bloqueou o profissional some para
+     * ele; se foi o profissional quem bloqueou, vem {@code bloqueioId}.
      */
     @Transactional(readOnly = true)
     public PerfilPublicoPacienteResponse buscarPaciente(Long usuarioId, Long pacienteId) {
@@ -98,9 +117,11 @@ public class PerfilPublicoService {
                 .orElseThrow(PerfilNaoEncontradoException::new);
 
         if (!propostaRepository.existsByProfissionalIdAndSolicitacaoPacienteIdAndStatus(
-                profissional.getId(), pacienteId, StatusProposta.ACEITA)) {
+                profissional.getId(), pacienteId, StatusProposta.ACEITA)
+                || bloqueio(pacienteId, profissional.getId(), TipoPerfil.PACIENTE) != null) {
             throw new PerfilNaoEncontradoException();
         }
+        BloqueioUsuario meuBloqueio = bloqueio(pacienteId, profissional.getId(), TipoPerfil.PROFISSIONAL);
 
         Paciente paciente = pacienteRepository.findById(pacienteId)
                 .orElseThrow(PerfilNaoEncontradoException::new);
@@ -119,7 +140,8 @@ public class PerfilPublicoService {
                         : null,
                 atendimentoEmAndamento(profissional, pacienteId)
                         ? ContatoEmergenciaResponse.de(paciente.getContatosEmergencia())
-                        : null
+                        : null,
+                meuBloqueio == null ? null : meuBloqueio.getId()
         );
     }
 

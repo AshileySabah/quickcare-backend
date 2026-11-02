@@ -116,6 +116,11 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.NOT_FOUND, ex.getMessage());
     }
 
+    @ExceptionHandler(RecursoNaoEncontradoException.class)
+    public ResponseEntity<ApiError> handleRecursoNaoEncontrado(RecursoNaoEncontradoException ex) {
+        return build(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
     /** O job (ou o outro lado) mexeu no mesmo registro ao mesmo tempo. */
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
     public ResponseEntity<ApiError> handleConflitoDeVersao() {

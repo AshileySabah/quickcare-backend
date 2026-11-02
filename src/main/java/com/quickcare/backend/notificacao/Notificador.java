@@ -3,7 +3,16 @@ package com.quickcare.backend.notificacao;
 import com.quickcare.backend.atendimento.Atendimento;
 import com.quickcare.backend.atendimento.LadoAtendimento;
 import com.quickcare.backend.especialidade.Especialidade;
+import com.quickcare.backend.ocorrencia.Bloqueio;
+import com.quickcare.backend.ocorrencia.MotivoOcorrencia;
+import com.quickcare.backend.ocorrencia.Ocorrencia;
+import com.quickcare.backend.ocorrencia.RecursoOcorrencia;
+import com.quickcare.backend.ocorrencia.RegrasBloqueio;
+import com.quickcare.backend.problema.DecisaoProblema;
+import com.quickcare.backend.problema.MotivoProblema;
+import com.quickcare.backend.problema.ProblemaAtendimento;
 import com.quickcare.backend.proposta.Proposta;
+import com.quickcare.backend.solicitacao.AcaoAdminSolicitacao;
 import com.quickcare.backend.solicitacao.Solicitacao;
 import com.quickcare.backend.usuario.TipoPerfil;
 import com.quickcare.backend.usuario.Usuario;
@@ -19,6 +28,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -222,6 +232,147 @@ public class Notificador {
                 mensagem + " Em breve você poderá avaliar o paciente.", true);
     }
 
+    // ------------------------------------------------- problema e disputa
+
+    /** Para quem precisa responder (confirmar ou contestar). */
+    public void problemaRelatado(ProblemaAtendimento problema) {
+        Proposta proposta = problema.getAtendimento().getProposta();
+        String quem = nomeDoLado(proposta, problema.getRelatadoPor());
+        String porque = problema.getMotivo() == MotivoProblema.COMBINADO
+                ? " (combinado entre vocês)"
+                : " porque você não compareceu";
+        para(proposta, problema.ladoQueResponde(), Destaque.PROPOSTA, TipoNotificacao.PROBLEMA_RELATADO,
+                "Atendimento relatado como não realizado",
+                quem + " relatou que o atendimento de " + servico(proposta) + " não foi realizado" + porque
+                        + ". Confirme ou conteste até " + quando(problema.getPrazoResposta()) + ".", true);
+    }
+
+    public void problemaConfirmado(ProblemaAtendimento problema) {
+        Proposta proposta = problema.getAtendimento().getProposta();
+        para(proposta, problema.getRelatadoPor(), Destaque.PROPOSTA, TipoNotificacao.PROBLEMA_CONFIRMADO,
+                "Não realização confirmada",
+                nomeDoLado(proposta, problema.ladoQueResponde()) + " confirmou que o atendimento de "
+                        + servico(proposta) + " não foi realizado.", true);
+    }
+
+    public void problemaSemResposta(ProblemaAtendimento problema) {
+        Proposta proposta = problema.getAtendimento().getProposta();
+        String fim = "O prazo de resposta acabou: o atendimento de " + servico(proposta) + " ficou como não realizado.";
+        para(proposta, problema.getRelatadoPor(), Destaque.PROPOSTA, TipoNotificacao.PROBLEMA_SEM_RESPOSTA,
+                "Atendimento ficou como não realizado", fim, true);
+        para(proposta, problema.ladoQueResponde(), Destaque.PROPOSTA, TipoNotificacao.PROBLEMA_SEM_RESPOSTA,
+                "Atendimento ficou como não realizado",
+                fim + (problema.ausente() != null ? " Isso conta uma ocorrência para você." : "")
+                        + " Se discordar, ainda dá para contestar com o admin.", true);
+    }
+
+    public void problemaContestado(ProblemaAtendimento problema) {
+        Proposta proposta = problema.getAtendimento().getProposta();
+        para(proposta, problema.getRelatadoPor(), Destaque.PROPOSTA, TipoNotificacao.PROBLEMA_CONTESTADO,
+                "Relato contestado",
+                nomeDoLado(proposta, problema.ladoQueResponde()) + " contestou o seu relato sobre o atendimento de "
+                        + servico(proposta) + ". Um administrador vai analisar e decidir.", true);
+    }
+
+    public void disputaDecidida(ProblemaAtendimento problema) {
+        Proposta proposta = problema.getAtendimento().getProposta();
+        String resultado = problema.getDecisao() == DecisaoProblema.REALIZADO ? "foi realizado" : "não foi realizado";
+        String mensagem = "Um administrador analisou a disputa e decidiu que o atendimento de " + servico(proposta)
+                + " " + resultado + ". Justificativa: " + comPontoFinal(problema.getDecisaoJustificativa());
+        para(proposta, LadoAtendimento.PACIENTE, Destaque.PROPOSTA, TipoNotificacao.DISPUTA_DECIDIDA,
+                "Disputa decidida", mensagem, true);
+        para(proposta, LadoAtendimento.PROFISSIONAL, Destaque.PROPOSTA, TipoNotificacao.DISPUTA_DECIDIDA,
+                "Disputa decidida", mensagem, true);
+    }
+
+    // --------------------------------------------- ocorrências e bloqueio
+
+    public void ocorrenciaRegistrada(Ocorrencia ocorrencia, int contando) {
+        notificacaoService.notificar(ocorrencia.getUsuario(), ocorrencia.getPerfil(), TipoNotificacao.OCORRENCIA_REGISTRADA,
+                "Você recebeu uma ocorrência",
+                limitar(MOTIVOS_OCORRENCIA.get(ocorrencia.getMotivo()) + " Agora são " + contando + " de "
+                        + RegrasBloqueio.LIMITE + " nos últimos " + RegrasBloqueio.JANELA_CONTAGEM.toDays()
+                        + " dias; ao chegar a " + RegrasBloqueio.LIMITE + ", o perfil é bloqueado temporariamente."),
+                ocorrenciasDo(ocorrencia.getPerfil()), false);
+    }
+
+    public void ocorrenciaAnulada(Ocorrencia ocorrencia) {
+        notificacaoService.notificar(ocorrencia.getUsuario(), ocorrencia.getPerfil(), TipoNotificacao.OCORRENCIA_ANULADA,
+                "Ocorrência anulada",
+                limitar("Um administrador anulou uma ocorrência sua: " + comPontoFinal(ocorrencia.getJustificativaAnulacao())),
+                ocorrenciasDo(ocorrencia.getPerfil()), true);
+    }
+
+    public void bloqueioAplicado(Bloqueio bloqueio) {
+        String acao = bloqueio.getPerfil() == TipoPerfil.PACIENTE ? "criar solicitações" : "enviar propostas";
+        notificacaoService.notificar(bloqueio.getUsuario(), bloqueio.getPerfil(), TipoNotificacao.BLOQUEIO_APLICADO,
+                "Perfil bloqueado temporariamente",
+                "Você chegou a " + RegrasBloqueio.LIMITE + " ocorrências em " + RegrasBloqueio.JANELA_CONTAGEM.toDays()
+                        + " dias e não poderá " + acao + " até " + quando(bloqueio.getFim())
+                        + ". O que já está em andamento continua normalmente.",
+                ocorrenciasDo(bloqueio.getPerfil()), true);
+    }
+
+    public void bloqueioRemovido(Bloqueio bloqueio) {
+        notificacaoService.notificar(bloqueio.getUsuario(), bloqueio.getPerfil(), TipoNotificacao.BLOQUEIO_REMOVIDO,
+                "Bloqueio removido",
+                limitar("Um administrador removeu o seu bloqueio: " + comPontoFinal(bloqueio.getJustificativaRemocao())),
+                ocorrenciasDo(bloqueio.getPerfil()), true);
+    }
+
+    public void bloqueioDesfeito(Bloqueio bloqueio) {
+        String acao = bloqueio.getPerfil() == TipoPerfil.PACIENTE ? "criar solicitações" : "enviar propostas";
+        notificacaoService.notificar(bloqueio.getUsuario(), bloqueio.getPerfil(), TipoNotificacao.BLOQUEIO_REMOVIDO,
+                "Bloqueio desfeito",
+                "Uma das ocorrências que bloquearam o seu perfil foi anulada, e as que sobraram não chegam a "
+                        + RegrasBloqueio.LIMITE + ". Você já pode " + acao + " de novo.",
+                ocorrenciasDo(bloqueio.getPerfil()), true);
+    }
+
+    public void recursoDecidido(RecursoOcorrencia recurso) {
+        Ocorrencia ocorrencia = recurso.getOcorrencia();
+        String resultado = recurso.getStatus() == RecursoOcorrencia.Status.ANULADA
+                ? "Um administrador aceitou o seu recurso e anulou a ocorrência: "
+                : "Um administrador analisou o seu recurso e manteve a ocorrência: ";
+        notificacaoService.notificar(ocorrencia.getUsuario(), ocorrencia.getPerfil(), TipoNotificacao.RECURSO_DECIDIDO,
+                "Recurso de ocorrência decidido",
+                limitar(resultado + comPontoFinal(recurso.getJustificativaDecisao())),
+                ocorrenciasDo(ocorrencia.getPerfil()), true);
+    }
+
+    // ------------------------------------------------ bloqueio entre usuários
+
+    /**
+     * Quem bloqueou encerrou a proposta pendente do outro. O aviso é neutro: o
+     * bloqueado não fica sabendo do bloqueio, só que a proposta saiu.
+     */
+    public void propostaEncerradaPorBloqueio(Proposta proposta, LadoAtendimento quemBloqueou) {
+        if (quemBloqueou == LadoAtendimento.PACIENTE) {
+            paraProfissional(proposta, Destaque.SOLICITACAO, TipoNotificacao.PROPOSTA_RECUSADA, "Proposta recusada",
+                    "O paciente recusou a sua proposta para " + servico(proposta) + ".");
+        } else {
+            propostaCancelada(proposta, false);
+        }
+    }
+
+    // ------------------------------------------------------------- admin
+
+    /** O admin reabriu, concluiu ou cancelou a solicitação; avisa o paciente e os profissionais afetados. */
+    public void solicitacaoAlteradaPeloAdmin(Solicitacao solicitacao, AcaoAdminSolicitacao acao,
+                                             Collection<Proposta> afetadas, String justificativa) {
+        String motivo = " Justificativa: " + comPontoFinal(justificativa);
+        String titulo = "Solicitação " + acao.getParticipio() + " pelo administrador";
+        notificacaoService.notificar(solicitacao.getPaciente().getUsuario(), TipoPerfil.PACIENTE,
+                TipoNotificacao.SOLICITACAO_ALTERADA_ADMIN, titulo,
+                limitar("Um administrador " + acao.getVerbo() + " a sua solicitação." + motivo),
+                "/patient/solicitacoes/" + solicitacao.getId() + "?" + PARAMETRO_DESTAQUE + "=solicitacao-" + solicitacao.getId(),
+                true);
+        afetadas.forEach(proposta -> paraProfissional(proposta, Destaque.SOLICITACAO, TipoNotificacao.SOLICITACAO_ALTERADA_ADMIN,
+                titulo,
+                "Um administrador alterou a solicitação de " + servico(proposta)
+                        + ": a sua proposta ou atendimento foi encerrado, sem penalidade para você." + motivo, true));
+    }
+
     // ------------------------------------------------------------ validação
 
     public void cadastroAprovado(Usuario usuario, TipoPerfil perfil) {
@@ -261,6 +412,33 @@ public class Notificador {
 
     private void paraProfissional(Proposta proposta, Destaque destaque, TipoNotificacao tipo, String titulo, String mensagem) {
         paraProfissional(proposta, destaque, tipo, titulo, mensagem, false);
+    }
+
+    private void para(Proposta proposta, LadoAtendimento lado, Destaque destaque, TipoNotificacao tipo, String titulo,
+                      String mensagem, boolean comEmail) {
+        if (lado == LadoAtendimento.PACIENTE) {
+            paraPaciente(proposta, destaque, tipo, titulo, mensagem, comEmail);
+        } else {
+            paraProfissional(proposta, destaque, tipo, titulo, mensagem, comEmail);
+        }
+    }
+
+    /** O paciente aparece como "O paciente"; o profissional, pelo nome. */
+    private static String nomeDoLado(Proposta proposta, LadoAtendimento lado) {
+        return lado == LadoAtendimento.PACIENTE ? "O paciente" : nomeDoProfissional(proposta);
+    }
+
+    private static final Map<MotivoOcorrencia, String> MOTIVOS_OCORRENCIA = Map.of(
+            MotivoOcorrencia.CANCELAMENTO_ATENDIMENTO, "Você cancelou um atendimento fora da janela de tolerância.",
+            MotivoOcorrencia.ALTERACAO_TARDIA_SOLICITACAO,
+            "Você alterou uma solicitação (ou trocou o profissional) a menos de 48h do atendimento.",
+            MotivoOcorrencia.NAO_COMPARECIMENTO, "Um atendimento ficou registrado como não comparecimento seu.",
+            MotivoOcorrencia.DECISAO_DISPUTA, "Um administrador decidiu uma disputa contra você.",
+            MotivoOcorrencia.MANUAL, "Um administrador registrou uma ocorrência no seu perfil.");
+
+    /** O quadro de ocorrências fica na home de cada perfil. */
+    private static String ocorrenciasDo(TipoPerfil perfil) {
+        return inicioDo(perfil) + "?" + PARAMETRO_DESTAQUE + "=ocorrencias";
     }
 
     private void paraProfissional(
@@ -314,9 +492,13 @@ public class Notificador {
     }
 
     /** As especialidades pedidas, ex.: "Curativos e Sondagem". */
-    static String servico(Proposta proposta) {
+    public static String servico(Proposta proposta) {
+        return servico(proposta.getSolicitacao());
+    }
+
+    public static String servico(Solicitacao solicitacao) {
         Set<String> nomes = new LinkedHashSet<>();
-        proposta.getSolicitacao().getProfissionais().forEach(linha ->
+        solicitacao.getProfissionais().forEach(linha ->
                 linha.getEspecialidades().stream().map(Especialidade::getNome).forEach(nomes::add));
 
         List<String> lista = List.copyOf(nomes);

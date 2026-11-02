@@ -5,6 +5,8 @@ import com.quickcare.backend.atendimento.AtendimentoRepository;
 import com.quickcare.backend.atendimento.AtendimentoService;
 import com.quickcare.backend.atendimento.StatusAtendimento;
 import com.quickcare.backend.notificacao.Notificador;
+import com.quickcare.backend.ocorrencia.OcorrenciaService;
+import com.quickcare.backend.bloqueiousuario.BloqueioUsuarioRepository;
 import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
 import com.quickcare.backend.especialidade.CategoriaProfissional;
 import com.quickcare.backend.especialidade.Especialidade;
@@ -87,6 +89,10 @@ class PropostaServiceTest {
     private AtendimentoService atendimentoService;
     @Mock
     private AtendimentoRepository atendimentoRepository;
+    @Mock
+    private OcorrenciaService ocorrenciaService;
+    @Mock
+    private BloqueioUsuarioRepository bloqueioUsuarioRepository;
 
     private PropostaService service;
 
@@ -98,7 +104,7 @@ class PropostaServiceTest {
     void setUp() {
         service = new PropostaService(propostaRepository, solicitacaoRepository, profissionalRepository,
                 armazenamentoDocumentoService, atendimentoService, atendimentoRepository, notificador,
-                Clock.fixed(AGORA, ZoneOffset.UTC));
+                ocorrenciaService, bloqueioUsuarioRepository, Clock.fixed(AGORA, ZoneOffset.UTC));
 
         curativos = Especialidade.builder().id(5L).nome("Curativos").categoria(CategoriaProfissional.ENFERMEIRO).build();
 

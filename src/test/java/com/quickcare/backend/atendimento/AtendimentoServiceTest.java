@@ -349,6 +349,49 @@ class AtendimentoServiceTest {
                 MotivoOcorrencia.CANCELAMENTO_ATENDIMENTO, atendimento);
     }
 
+    // -------------------------------------------- bloqueio entre usuários
+
+    @Test
+    void pacienteQueBloqueiaRecusaOVigenteEAPendenteComUmaOcorrenciaSo() {
+        Profissional profissional = profissional(20L, USUARIO_PROFISSIONAL_ID);
+        linha.setQuantidade(2);
+        Atendimento primeiro = agendado(profissional, dias(10));
+        Atendimento segundo = agendado(profissional, dias(11));
+        relogio.avancar(dias(3));
+        Proposta pendente = pendente(300L, profissional, dias(12));
+        when(atendimentoRepository.findByPropostaProfissionalIdAndSolicitacaoPacienteIdAndStatusIn(
+                20L, 10L, StatusAtendimento.ATIVOS)).thenReturn(List.of(primeiro, segundo));
+        when(propostaRepository.findByProfissionalIdAndSolicitacaoPacienteIdAndStatus(20L, 10L, StatusProposta.PENDENTE))
+                .thenReturn(List.of(pendente));
+
+        service.encerrarPorBloqueio(10L, 20L, LadoAtendimento.PACIENTE);
+
+        assertThat(primeiro.getStatus()).isEqualTo(StatusAtendimento.CANCELADO);
+        assertThat(segundo.getStatus()).isEqualTo(StatusAtendimento.CANCELADO);
+        assertThat(primeiro.getProposta().getStatus()).isEqualTo(StatusProposta.RECUSADA);
+        assertThat(pendente.getStatus()).isEqualTo(StatusProposta.RECUSADA);
+        assertThat(linha.getVagasPreenchidas()).isZero();
+        // Os dois contariam pela regra das 48h; o bloqueio gera uma só.
+        verify(ocorrenciaService).registrar(usuarioPaciente, TipoPerfil.PACIENTE,
+                MotivoOcorrencia.CANCELAMENTO_ATENDIMENTO, primeiro);
+        verify(notificador).atendimentoCancelado(primeiro, LadoAtendimento.PACIENTE);
+        verify(notificador).propostaEncerradaPorBloqueio(pendente, LadoAtendimento.PACIENTE);
+    }
+
+    @Test
+    void profissionalQueBloqueiaDentroDaToleranciaCancelaSemOcorrencia() {
+        Profissional profissional = profissional(20L, USUARIO_PROFISSIONAL_ID);
+        Atendimento atendimento = agendado(profissional, dias(10));
+        when(atendimentoRepository.findByPropostaProfissionalIdAndSolicitacaoPacienteIdAndStatusIn(
+                20L, 10L, StatusAtendimento.ATIVOS)).thenReturn(List.of(atendimento));
+
+        service.encerrarPorBloqueio(10L, 20L, LadoAtendimento.PROFISSIONAL);
+
+        assertThat(atendimento.getProposta().getStatus()).isEqualTo(StatusProposta.CANCELADA);
+        verify(ocorrenciaService, never()).registrar(any(), any(), any(), any());
+        verify(notificador).atendimentoCancelado(atendimento, LadoAtendimento.PROFISSIONAL);
+    }
+
     // ------------------------------------------------ mudanças no horário
 
     @Test
@@ -396,6 +439,62 @@ class AtendimentoServiceTest {
 
         verify(notificador, never()).lembrete(any(), eq(Notificador.Lembrete.VESPERA));
         assertThat(atendimento.getLembrete24hEm()).isNotNull();
+    }
+
+    // ------------------------------------------- problema e admin (4b)
+
+    @Test
+    void naoRealizadoAntesDoTerminoReabreAVaga() {
+        Atendimento atendimento = agendado(profissional(20L, USUARIO_PROFISSIONAL_ID), Duration.ofHours(-1));
+        atendimento.setStatus(StatusAtendimento.PROBLEMA_RELATADO);
+        solicitacao.setStatus(StatusSolicitacao.EM_ANDAMENTO);
+
+        service.encerrarComoNaoRealizado(atendimento, LadoAtendimento.PROFISSIONAL, relogio.instant());
+
+        assertThat(atendimento.getStatus()).isEqualTo(StatusAtendimento.NAO_REALIZADO);
+        assertThat(linha.getVagasPreenchidas()).isZero();
+        assertThat(atendimento.getProposta().getStatus()).isEqualTo(StatusProposta.CANCELADA);
+        assertThat(solicitacao.getStatus()).isEqualTo(StatusSolicitacao.ABERTA);
+    }
+
+    @Test
+    void naoRealizadoDepoisDoTerminoNaoReabreAVaga() {
+        Atendimento atendimento = agendado(profissional(20L, USUARIO_PROFISSIONAL_ID), Duration.ofHours(-10));
+        atendimento.setStatus(StatusAtendimento.PROBLEMA_RELATADO);
+        solicitacao.setStatus(StatusSolicitacao.EM_ANDAMENTO);
+
+        service.encerrarComoNaoRealizado(atendimento, LadoAtendimento.PROFISSIONAL, relogio.instant());
+
+        assertThat(atendimento.getStatus()).isEqualTo(StatusAtendimento.NAO_REALIZADO);
+        assertThat(linha.getVagasPreenchidas()).isEqualTo(1);
+        assertThat(atendimento.getProposta().getStatus()).isEqualTo(StatusProposta.ACEITA);
+        // Nada mais vai acontecer e as vagas estão preenchidas: a solicitação encerra.
+        assertThat(solicitacao.getStatus()).isEqualTo(StatusSolicitacao.CONCLUIDA);
+    }
+
+    @Test
+    void comProblemaEmAbertoNaoEditaASolicitacao() {
+        Atendimento atendimento = agendado(profissional(20L, USUARIO_PROFISSIONAL_ID), Duration.ofHours(-10));
+        atendimento.setStatus(StatusAtendimento.EM_DISPUTA);
+
+        assertThatThrownBy(() -> service.prepararEdicao(solicitacao))
+                .isInstanceOf(TransicaoStatusInvalidaException.class)
+                .hasMessageContaining("problema relatado");
+    }
+
+    @Test
+    void adminCancelaASolicitacaoSemOcorrenciaParaNinguem() {
+        Atendimento atendimento = agendado(profissional(20L, USUARIO_PROFISSIONAL_ID), dias(1));
+        Proposta outra = pendente(300L, profissional(21L, 3L), dias(2));
+
+        List<Proposta> afetadas = service.encerrarPeloAdmin(solicitacao, StatusSolicitacao.CANCELADA);
+
+        assertThat(atendimento.getStatus()).isEqualTo(StatusAtendimento.CANCELADO);
+        assertThat(atendimento.getMotivoCancelamento()).isEqualTo(MotivoCancelamento.ADMIN);
+        assertThat(outra.getStatus()).isEqualTo(StatusProposta.RECUSADA);
+        assertThat(afetadas).containsExactlyInAnyOrder(atendimento.getProposta(), outra);
+        assertThat(solicitacao.getStatus()).isEqualTo(StatusSolicitacao.CANCELADA);
+        verify(ocorrenciaService, never()).registrar(any(), any(), any(), any());
     }
 
     // ---------------------------------------------------------------- apoio

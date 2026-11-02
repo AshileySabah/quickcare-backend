@@ -14,5 +14,7 @@ public enum MotivoCancelamento {
     /** O paciente aceitou outro profissional na vaga reservada. */
     SUBSTITUIDO,
     /** A nova versão da solicitação não tem mais vaga para este profissional. */
-    EDICAO_INCOMPATIVEL
+    EDICAO_INCOMPATIVEL,
+    /** O admin cancelou ou concluiu a solicitação. */
+    ADMIN
 }

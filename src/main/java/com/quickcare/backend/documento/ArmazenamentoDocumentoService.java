@@ -50,6 +50,17 @@ public class ArmazenamentoDocumentoService {
         return enviarParaPasta("anexos-validacao", arquivo);
     }
 
+    /** Prova anexada ao relato de problema no atendimento ou à contestação. */
+    public String enviarAnexoProblema(MultipartFile arquivo) {
+        validar(arquivo, TIPOS_ACEITOS, "Envie um arquivo PDF, JPG ou PNG.");
+        return enviarParaPasta("anexos-problema", arquivo);
+    }
+
+    /** Valida antes de enviar qualquer um, para não deixar arquivos órfãos se um deles for inválido. */
+    public void validarAnexo(MultipartFile arquivo) {
+        validar(arquivo, TIPOS_ACEITOS, "Envie um arquivo PDF, JPG ou PNG.");
+    }
+
     private String enviarParaPasta(String pasta, MultipartFile arquivo) {
         String nomeArquivo = UUID.randomUUID() + extrairExtensao(arquivo.getOriginalFilename());
 

@@ -2,16 +2,19 @@ package com.quickcare.backend.atendimento.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.quickcare.backend.atendimento.Atendimento;
+import com.quickcare.backend.atendimento.AtendimentoService;
 import com.quickcare.backend.atendimento.LadoAtendimento;
 import com.quickcare.backend.atendimento.MotivoCancelamento;
 import com.quickcare.backend.atendimento.StatusAtendimento;
 import com.quickcare.backend.ocorrencia.RegrasOcorrencia;
+import com.quickcare.backend.problema.dto.ProblemaResponse;
 
 import java.time.Instant;
 
 /**
  * O atendimento como os dois lados veem. {@code cancelamentoContaOcorrencia}
- * e {@code alteracaoTardia} deixam o front avisar antes de cancelar ou editar.
+ * e {@code alteracaoTardia} deixam o front avisar antes de cancelar ou editar;
+ * {@code podeRelatarProblema}, mostrar "Não foi realizado".
  */
 public record AtendimentoResponse(
         Long id,
@@ -23,7 +26,9 @@ public record AtendimentoResponse(
         @JsonInclude(JsonInclude.Include.NON_NULL) LadoAtendimento canceladoPor,
         @JsonInclude(JsonInclude.Include.NON_NULL) MotivoCancelamento motivoCancelamento,
         boolean cancelamentoContaOcorrencia,
-        boolean alteracaoTardia
+        boolean alteracaoTardia,
+        boolean podeRelatarProblema,
+        @JsonInclude(JsonInclude.Include.NON_NULL) ProblemaResponse problema
 ) {
 
     /** Período proposto por um lado, à espera da resposta do outro. */
@@ -45,7 +50,11 @@ public record AtendimentoResponse(
                 atendimento.getCanceladoPor(),
                 atendimento.getMotivoCancelamento(),
                 ativo && RegrasOcorrencia.cancelamentoConta(atendimento, agora),
-                ativo && RegrasOcorrencia.alteracaoTardia(atendimento, agora)
+                ativo && RegrasOcorrencia.alteracaoTardia(atendimento, agora),
+                atendimento.getProblema() == null
+                        && atendimento.getStatus().aceitaRelatoDeProblema()
+                        && agora.isBefore(atendimento.getTermino().plus(AtendimentoService.JANELA_CONCLUSAO)),
+                atendimento.getProblema() == null ? null : ProblemaResponse.de(atendimento.getProblema())
         );
     }
 

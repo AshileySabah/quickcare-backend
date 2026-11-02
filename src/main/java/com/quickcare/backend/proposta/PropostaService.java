@@ -3,8 +3,10 @@ package com.quickcare.backend.proposta;
 import com.quickcare.backend.atendimento.Atendimento;
 import com.quickcare.backend.atendimento.AtendimentoRepository;
 import com.quickcare.backend.atendimento.AtendimentoService;
+import com.quickcare.backend.bloqueiousuario.BloqueioUsuarioRepository;
 import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
 import com.quickcare.backend.notificacao.Notificador;
+import com.quickcare.backend.ocorrencia.OcorrenciaService;
 import com.quickcare.backend.profissional.Profissional;
 import com.quickcare.backend.profissional.ProfissionalRepository;
 import com.quickcare.backend.proposta.dto.PropostaRequest;
@@ -18,6 +20,7 @@ import com.quickcare.backend.solicitacao.exception.PerfilNaoAutorizadoException;
 import com.quickcare.backend.solicitacao.exception.SolicitacaoInvalidaException;
 import com.quickcare.backend.solicitacao.exception.SolicitacaoNaoEncontradaException;
 import com.quickcare.backend.solicitacao.exception.TransicaoStatusInvalidaException;
+import com.quickcare.backend.usuario.TipoPerfil;
 import com.quickcare.backend.validacao.StatusValidacao;
 import com.quickcare.backend.validacao.exception.CadastroNaoValidadoException;
 import lombok.RequiredArgsConstructor;
@@ -46,6 +49,8 @@ public class PropostaService {
     private final AtendimentoService atendimentoService;
     private final AtendimentoRepository atendimentoRepository;
     private final Notificador notificador;
+    private final OcorrenciaService ocorrenciaService;
+    private final BloqueioUsuarioRepository bloqueioUsuarioRepository;
     private final Clock clock;
 
     /**
@@ -60,12 +65,14 @@ public class PropostaService {
         if (profissional.getStatusValidacao() != StatusValidacao.APROVADO) {
             throw new CadastroNaoValidadoException("Só profissionais com cadastro aprovado podem enviar propostas.");
         }
+        ocorrenciaService.exigirSemBloqueio(usuarioId, TipoPerfil.PROFISSIONAL);
         Solicitacao solicitacao = solicitacaoRepository.findById(solicitacaoId)
                 .filter(s -> !s.ehDoUsuario(usuarioId))
                 .filter(s -> s.atendidaPor(profissional))
                 .orElseThrow(SolicitacaoNaoEncontradaException::new);
 
-        if (!solicitacao.getStatus().recebePropostas()) {
+        // Bloqueados entre si: a mesma resposta de quando fecha, sem revelar o bloqueio.
+        if (!solicitacao.getStatus().recebePropostas() || bloqueados(solicitacao, profissional)) {
             throw new TransicaoStatusInvalidaException("Esta solicitação não está mais recebendo propostas.");
         }
         if (propostaRepository.existsBySolicitacaoIdAndProfissionalIdAndStatusIn(
@@ -204,7 +211,8 @@ public class PropostaService {
     public PropostaResponse aceitar(Long usuarioId, Long id) {
         Proposta proposta = buscarDoPaciente(usuarioId, id);
 
-        if (!proposta.getStatus().pendente() || !proposta.getSolicitacao().getStatus().recebePropostas()) {
+        if (!proposta.getStatus().pendente() || !proposta.getSolicitacao().getStatus().recebePropostas()
+                || bloqueados(proposta.getSolicitacao(), proposta.getProfissional())) {
             throw new TransicaoStatusInvalidaException("Esta proposta não está mais disponível para aceite.");
         }
 
@@ -212,6 +220,11 @@ public class PropostaService {
         Proposta salva = propostaRepository.saveAndFlush(proposta);
         notificador.propostaAceita(salva);
         return responder(salva);
+    }
+
+    private boolean bloqueados(Solicitacao solicitacao, Profissional profissional) {
+        return bloqueioUsuarioRepository.existsByPacienteIdAndProfissionalId(
+                solicitacao.getPaciente().getId(), profissional.getId());
     }
 
     private void recalcularSolicitacao(Solicitacao solicitacao) {

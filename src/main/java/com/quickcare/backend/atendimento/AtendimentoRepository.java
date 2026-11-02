@@ -32,6 +32,11 @@ public interface AtendimentoRepository extends JpaRepository<Atendimento, Long> 
     boolean existsByPropostaProfissionalIdAndSolicitacaoPacienteIdAndStatusIn(
             Long profissionalId, Long pacienteId, Collection<StatusAtendimento> status);
 
+    @EntityGraph(attributePaths = {"proposta", "proposta.profissional", "proposta.profissional.usuario",
+            "solicitacao", "solicitacao.paciente", "solicitacao.paciente.usuario"})
+    List<Atendimento> findByPropostaProfissionalIdAndSolicitacaoPacienteIdAndStatusIn(
+            Long profissionalId, Long pacienteId, Collection<StatusAtendimento> status);
+
     long countByPropostaProfissionalIdAndStatusIn(Long profissionalId, Collection<StatusAtendimento> status);
 
     /** Os que já passaram do horário em que o status muda (o job e a leitura processam). */

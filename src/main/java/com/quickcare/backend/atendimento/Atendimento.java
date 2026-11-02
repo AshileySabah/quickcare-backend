@@ -1,5 +1,6 @@
 package com.quickcare.backend.atendimento;
 
+import com.quickcare.backend.problema.ProblemaAtendimento;
 import com.quickcare.backend.proposta.Proposta;
 import com.quickcare.backend.solicitacao.Solicitacao;
 import com.quickcare.backend.solicitacao.exception.TransicaoStatusInvalidaException;
@@ -13,6 +14,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
@@ -23,6 +25,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 
@@ -101,6 +104,10 @@ public class Atendimento {
 
     @Column(name = "lembrete_inicio_em")
     private Instant lembreteInicioEm;
+
+    /** O relato de "não foi realizado", se houver (no máximo um por atendimento). */
+    @OneToOne(mappedBy = "atendimento", fetch = FetchType.LAZY)
+    private ProblemaAtendimento problema;
 
     @Version
     @Column(nullable = false)
@@ -247,6 +254,32 @@ public class Atendimento {
 
     public void concluir() {
         status = StatusAtendimento.CONCLUIDO;
+    }
+
+    // ------------------------------------------------------------ problema
+
+    /** Do início até 72h depois do término; para tudo o que mudaria sozinho. */
+    public void relatarProblema(Instant agora, Duration janelaDepoisDoTermino) {
+        exigir(status.aceitaRelatoDeProblema(), status == StatusAtendimento.AGENDADO
+                ? "O atendimento ainda não começou. Remarque ou cancele." : "Este atendimento não aceita mais relato de problema.");
+        exigir(agora.isBefore(termino.plus(janelaDepoisDoTermino)), "O prazo para relatar problema já passou.");
+        status = StatusAtendimento.PROBLEMA_RELATADO;
+        limparRemarcacao();
+    }
+
+    public void entrarEmDisputa() {
+        exigir(status == StatusAtendimento.PROBLEMA_RELATADO || status == StatusAtendimento.NAO_REALIZADO,
+                "Este atendimento não pode ser contestado.");
+        status = StatusAtendimento.EM_DISPUTA;
+    }
+
+    public void marcarNaoRealizado() {
+        status = StatusAtendimento.NAO_REALIZADO;
+    }
+
+    /** O admin decidiu que aconteceu: volta a correr (antes do término) ou já conclui. */
+    public void retomarComoRealizado(Instant agora) {
+        status = agora.isBefore(termino) ? StatusAtendimento.EM_ANDAMENTO : StatusAtendimento.CONCLUIDO;
     }
 
     private void exigirRemarcacaoDoOutroLado(LadoAtendimento quemResponde) {

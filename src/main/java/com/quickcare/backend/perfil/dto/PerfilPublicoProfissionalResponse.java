@@ -28,6 +28,8 @@ public record PerfilPublicoProfissionalResponse(
         String uf,
         Instant membroDesde,
         long atendimentosConcluidos,
-        @JsonInclude(JsonInclude.Include.NON_NULL) List<ContatoEmergenciaResponse> contatosEmergencia
+        @JsonInclude(JsonInclude.Include.NON_NULL) List<ContatoEmergenciaResponse> contatosEmergencia,
+        /** O bloqueio que quem vê fez desta pessoa, se houver. */
+        @JsonInclude(JsonInclude.Include.NON_NULL) Long bloqueioId
 ) {
 }

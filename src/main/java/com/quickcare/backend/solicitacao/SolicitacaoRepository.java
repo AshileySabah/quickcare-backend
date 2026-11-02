@@ -47,4 +47,8 @@ public interface SolicitacaoRepository extends JpaRepository<Solicitacao, Long> 
     @EntityGraph(attributePaths = {"profissionais", "profissionais.especialidades"})
     Optional<Solicitacao> findByIdAndPacienteId(Long id, Long pacienteId);
 
+    /** Todas, para a lista do admin (filtrada em memória). */
+    @EntityGraph(attributePaths = {"paciente", "paciente.usuario"})
+    List<Solicitacao> findAllByOrderByCriadoEmDesc();
+
 }

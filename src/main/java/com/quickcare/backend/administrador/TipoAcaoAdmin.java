@@ -1,0 +1,13 @@
+package com.quickcare.backend.administrador;
+
+public enum TipoAcaoAdmin {
+    OCORRENCIA_LANCADA,
+    OCORRENCIA_ANULADA,
+    RECURSO_ACEITO,
+    RECURSO_NEGADO,
+    BLOQUEIO_REMOVIDO,
+    DISPUTA_DECIDIDA,
+    SOLICITACAO_REABERTA,
+    SOLICITACAO_CONCLUIDA,
+    SOLICITACAO_CANCELADA
+}

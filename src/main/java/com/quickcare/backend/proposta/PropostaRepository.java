@@ -51,6 +51,9 @@ public interface PropostaRepository extends JpaRepository<Proposta, Long> {
 
     List<Proposta> findBySolicitacaoIdAndStatus(Long solicitacaoId, StatusProposta status);
 
+    List<Proposta> findByProfissionalIdAndSolicitacaoPacienteIdAndStatus(
+            Long profissionalId, Long pacienteId, StatusProposta status);
+
     /** Propostas não canceladas por solicitação — o que o paciente vê como "propostas recebidas". */
     @Query("""
             select p.solicitacao.id as solicitacaoId, count(p) as total
