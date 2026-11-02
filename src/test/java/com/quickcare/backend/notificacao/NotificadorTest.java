@@ -115,6 +115,22 @@ class NotificadorTest {
     }
 
     @Test
+    void edicaoQueTiraOAceiteVaiPorEmail() {
+        notificador.propostaAlterada(proposta, true);
+        notificador.propostaAlterada(proposta, false);
+        notificador.solicitacaoAlterada(List.of(proposta), List.of(proposta));
+
+        verify(notificacaoService).notificar(eq(usuarioPaciente), eq(TipoPerfil.PACIENTE),
+                eq(TipoNotificacao.PROPOSTA_AGUARDA_REACEITE), anyString(), anyString(), anyString(), eq(true));
+        verify(notificacaoService).notificar(eq(usuarioPaciente), eq(TipoPerfil.PACIENTE),
+                eq(TipoNotificacao.PROPOSTA_ALTERADA), anyString(), anyString(), anyString(), eq(false));
+        verify(notificacaoService).notificar(eq(usuarioProfissional), eq(TipoPerfil.PROFISSIONAL),
+                eq(TipoNotificacao.PROPOSTA_AGUARDA_REACEITE), anyString(), anyString(), anyString(), eq(true));
+        verify(notificacaoService).notificar(eq(usuarioProfissional), eq(TipoPerfil.PROFISSIONAL),
+                eq(TipoNotificacao.SOLICITACAO_ALTERADA), anyString(), anyString(), anyString(), eq(false));
+    }
+
+    @Test
     void etapaReprovadaVaiPorEmailComAJustificativa() {
         notificador.etapaReprovada(usuarioProfissional, TipoPerfil.PROFISSIONAL, TipoEtapaValidacao.CNPJ, "Documento ilegível");
 

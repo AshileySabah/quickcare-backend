@@ -51,7 +51,7 @@ public class Notificador {
         if (estavaAceita) {
             paraPaciente(proposta, Destaque.PROPOSTA, TipoNotificacao.PROPOSTA_AGUARDA_REACEITE, "Proposta alterada: aceite de novo",
                     nomeDoProfissional(proposta) + " alterou a proposta que você tinha aceitado para "
-                            + servico(proposta) + ". Aceite de novo para confirmar, ou escolha outra.");
+                            + servico(proposta) + ". Aceite de novo para confirmar, ou escolha outra.", true);
         } else {
             paraPaciente(proposta, Destaque.PROPOSTA, TipoNotificacao.PROPOSTA_ALTERADA, "Proposta alterada",
                     nomeDoProfissional(proposta) + " alterou a proposta para a sua solicitação de " + servico(proposta) + ".");
@@ -85,12 +85,16 @@ public class Notificador {
                 TipoNotificacao.PROPOSTA_RECUSADA, "Proposta recusada", mensagem);
     }
 
-    /** As que estavam aceitas voltaram a aguardar o aceite; as pendentes só precisam ser conferidas. */
+    /**
+     * As que estavam aceitas voltaram a aguardar o aceite (sino + e-mail, pois
+     * pedem resposta); as pendentes só precisam ser conferidas (só sino).
+     */
     public void solicitacaoAlterada(Collection<Proposta> aguardandoReaceite, Collection<Proposta> pendentes) {
         aguardandoReaceite.forEach(proposta -> paraProfissional(proposta, Destaque.PROPOSTA, TipoNotificacao.PROPOSTA_AGUARDA_REACEITE,
                 "Solicitação alterada: reaceite ou recuse",
                 "O paciente alterou a solicitação de " + servico(proposta)
-                        + " depois de aceitar a sua proposta. Reaceite ou recuse a nova versão (recusar não gera penalidade)."));
+                        + " depois de aceitar a sua proposta. Reaceite ou recuse a nova versão (recusar não gera penalidade).",
+                true));
         pendentes.forEach(proposta -> paraProfissional(proposta, Destaque.SOLICITACAO, TipoNotificacao.SOLICITACAO_ALTERADA,
                 "Solicitação alterada",
                 "O paciente alterou a solicitação de " + servico(proposta) + ". Confira se a sua proposta ainda atende."));
@@ -119,22 +123,24 @@ public class Notificador {
     public void substituido(Proposta proposta) {
         paraProfissional(proposta, Destaque.SOLICITACAO, TipoNotificacao.ATENDIMENTO_SUBSTITUIDO, "Vaga preenchida por outro profissional",
                 "Enquanto aguardava o seu reaceite, o paciente escolheu outro profissional para a vaga de "
-                        + servico(proposta) + ". Não há penalidade para você.");
+                        + servico(proposta) + ". Não há penalidade para você.", true);
     }
 
     public void edicaoIncompativel(Proposta proposta) {
         paraProfissional(proposta, Destaque.SOLICITACAO, TipoNotificacao.ATENDIMENTO_CANCELADO, "Atendimento cancelado",
                 "A nova versão da solicitação de " + servico(proposta)
-                        + " não tem mais vaga para o seu perfil, então o atendimento foi cancelado. Não há penalidade para você.");
+                        + " não tem mais vaga para o seu perfil, então o atendimento foi cancelado. Não há penalidade para você.",
+                true);
     }
 
     public void semReaceite(Atendimento atendimento) {
         Proposta proposta = atendimento.getProposta();
         paraProfissional(proposta, Destaque.SOLICITACAO, TipoNotificacao.ATENDIMENTO_CANCELADO, "Atendimento cancelado",
-                "O atendimento de " + servico(proposta) + " foi cancelado: o horário de início chegou sem o seu reaceite.");
+                "O atendimento de " + servico(proposta) + " foi cancelado: o horário de início chegou sem o seu reaceite.",
+                true);
         paraPaciente(proposta, Destaque.SOLICITACAO, TipoNotificacao.ATENDIMENTO_CANCELADO, "Atendimento cancelado",
                 nomeDoProfissional(proposta) + " não reaceitou a tempo, então o atendimento de " + servico(proposta)
-                        + " foi cancelado e a vaga voltou a receber propostas.");
+                        + " foi cancelado e a vaga voltou a receber propostas.", true);
     }
 
     public void remarcacaoSolicitada(Atendimento atendimento) {
