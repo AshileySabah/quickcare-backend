@@ -1,0 +1,28 @@
+<!doctype html>
+<html xmlns:th="http://www.thymeleaf.org" lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title th:text="${titulo} + ' - QuickCare'">Notificação - QuickCare</title>
+  </head>
+  <body style="margin: 0; padding: 24px; background: #f5f7f7; font-family: Arial, sans-serif; color: #1f2933">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width: 520px; margin: 0 auto; background: #ffffff; border-radius: 8px">
+      <tr>
+        <td style="padding: 32px">
+          <h1 style="margin: 0 0 16px; font-size: 20px; color: #2c7a7b" th:text="${titulo}">Título</h1>
+          <p style="margin: 0 0 16px">Olá, <strong th:text="${nome}">Nome</strong>!</p>
+          <p style="margin: 0 0 24px" th:text="${mensagem}">Mensagem</p>
+          <p style="margin: 0 0 24px">
+            <a
+              th:href="${link}"
+              href="#"
+              style="background: #2c7a7b; color: #ffffff; padding: 12px 20px; border-radius: 6px; text-decoration: none; display: inline-block"
+              >Abrir o QuickCare</a
+            >
+          </p>
+          <p style="margin: 0; font-size: 13px; color: #52606d">Você recebeu este e-mail porque tem uma conta no QuickCare.</p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

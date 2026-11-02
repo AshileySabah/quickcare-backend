@@ -1,6 +1,7 @@
 package com.quickcare.backend.proposta;
 
 import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
+import com.quickcare.backend.notificacao.Notificador;
 import com.quickcare.backend.profissional.Profissional;
 import com.quickcare.backend.profissional.ProfissionalRepository;
 import com.quickcare.backend.proposta.dto.PropostaRequest;
@@ -30,6 +31,7 @@ public class PropostaService {
     private final SolicitacaoRepository solicitacaoRepository;
     private final ProfissionalRepository profissionalRepository;
     private final ArmazenamentoDocumentoService armazenamentoDocumentoService;
+    private final Notificador notificador;
 
     /**
      * O profissional só envia proposta para solicitação compatível com ele e
@@ -67,7 +69,9 @@ public class PropostaService {
             solicitacao.setStatus(StatusSolicitacao.RECEBENDO_PROPOSTAS);
         }
 
-        return responder(propostaRepository.save(proposta));
+        Proposta salva = propostaRepository.save(proposta);
+        notificador.propostaRecebida(salva);
+        return responder(salva);
     }
 
     /**
@@ -120,14 +124,17 @@ public class PropostaService {
     @Transactional
     public PropostaResponse atualizar(Long usuarioId, Long id, PropostaRequest request) {
         Proposta proposta = buscarAlteravelDoProfissional(usuarioId, id, "editada");
+        boolean estavaAceita = proposta.getStatus() == StatusProposta.ACEITA;
 
-        if (proposta.getStatus() == StatusProposta.ACEITA) {
+        if (estavaAceita) {
             proposta.voltarParaReaceite(MotivoReaceite.PROPOSTA_ALTERADA);
             reabrirParaPropostas(proposta.getSolicitacao());
         }
 
         aplicarDados(proposta, request);
-        return responder(propostaRepository.saveAndFlush(proposta));
+        Proposta salva = propostaRepository.saveAndFlush(proposta);
+        notificador.propostaAlterada(salva, estavaAceita);
+        return responder(salva);
     }
 
     /**
@@ -137,8 +144,9 @@ public class PropostaService {
     @Transactional
     public PropostaResponse cancelar(Long usuarioId, Long id) {
         Proposta proposta = buscarAlteravelDoProfissional(usuarioId, id, "cancelada");
+        boolean estavaAceita = proposta.getStatus() == StatusProposta.ACEITA;
 
-        if (proposta.getStatus() == StatusProposta.ACEITA) {
+        if (estavaAceita) {
             proposta.liberarVaga();
             reabrirParaPropostas(proposta.getSolicitacao());
         }
@@ -146,6 +154,7 @@ public class PropostaService {
         proposta.setStatus(StatusProposta.CANCELADA);
         propostaRepository.saveAndFlush(proposta);
         reabrirSeNaoSobrouProposta(proposta.getSolicitacao());
+        notificador.propostaCancelada(proposta, estavaAceita);
 
         return responder(proposta);
     }
@@ -165,6 +174,7 @@ public class PropostaService {
         proposta.setStatus(StatusProposta.RECUSADA);
         propostaRepository.saveAndFlush(proposta);
         reabrirSeNaoSobrouProposta(proposta.getSolicitacao());
+        notificador.propostaRecusada(proposta, false);
 
         return responder(proposta);
     }
@@ -212,13 +222,18 @@ public class PropostaService {
         propostaRepository.findBySolicitacaoIdAndStatus(solicitacao.getId(), StatusProposta.PENDENTE).stream()
                 .filter(outra -> !outra.getId().equals(proposta.getId()))
                 .filter(outra -> completa || solicitacao.vagaDisponivelPara(outra.getProfissional()).isEmpty())
-                .forEach(outra -> outra.setStatus(StatusProposta.RECUSADA));
+                .forEach(outra -> {
+                    outra.setStatus(StatusProposta.RECUSADA);
+                    notificador.propostaRecusada(outra, true);
+                });
 
         if (completa) {
             solicitacao.setStatus(StatusSolicitacao.EM_ANDAMENTO);
         }
 
-        return responder(propostaRepository.saveAndFlush(proposta));
+        Proposta salva = propostaRepository.saveAndFlush(proposta);
+        notificador.propostaAceita(salva);
+        return responder(salva);
     }
 
     private PropostaResponse responder(Proposta proposta) {

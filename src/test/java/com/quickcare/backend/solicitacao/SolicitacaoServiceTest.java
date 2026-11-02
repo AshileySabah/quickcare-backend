@@ -1,5 +1,6 @@
 package com.quickcare.backend.solicitacao;
 
+import com.quickcare.backend.notificacao.Notificador;
 import com.quickcare.backend.cadastro.exception.EspecialidadeInvalidaException;
 import com.quickcare.backend.especialidade.CategoriaProfissional;
 import com.quickcare.backend.especialidade.Especialidade;
@@ -75,6 +76,9 @@ class SolicitacaoServiceTest {
     private PropostaRepository propostaRepository;
     @Mock
     private GeocodificacaoService geocodificacaoService;
+
+    @Mock
+    private Notificador notificador;
 
     @InjectMocks
     private SolicitacaoService service;
@@ -334,6 +338,7 @@ class SolicitacaoServiceTest {
         service.cancelar(USUARIO_PACIENTE_ID, 50L);
 
         assertThat(pendente.getStatus()).isEqualTo(StatusProposta.RECUSADA);
+        verify(notificador).solicitacaoCancelada(List.of(pendente));
     }
 
     @Test

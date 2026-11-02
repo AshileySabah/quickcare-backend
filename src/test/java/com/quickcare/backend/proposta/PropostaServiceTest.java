@@ -1,5 +1,6 @@
 package com.quickcare.backend.proposta;
 
+import com.quickcare.backend.notificacao.Notificador;
 import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
 import com.quickcare.backend.especialidade.CategoriaProfissional;
 import com.quickcare.backend.especialidade.Especialidade;
@@ -68,6 +69,9 @@ class PropostaServiceTest {
     @Mock
     private ArmazenamentoDocumentoService armazenamentoDocumentoService;
 
+    @Mock
+    private Notificador notificador;
+
     @InjectMocks
     private PropostaService service;
 
@@ -122,6 +126,7 @@ class PropostaServiceTest {
         assertThat(response.solicitacao().pacienteNome()).isNull();
         assertThat(response.solicitacao().pacienteId()).isNull();
         assertThat(solicitacao.getStatus()).isEqualTo(StatusSolicitacao.RECEBENDO_PROPOSTAS);
+        verify(notificador).propostaRecebida(any());
     }
 
     @Test
@@ -318,6 +323,8 @@ class PropostaServiceTest {
         assertThat(response.solicitacao().pacienteNome()).isEqualTo("Paciente Teste");
         assertThat(concorrente.getStatus()).isEqualTo(StatusProposta.RECUSADA);
         assertThat(solicitacao.getStatus()).isEqualTo(StatusSolicitacao.EM_ANDAMENTO);
+        verify(notificador).propostaAceita(escolhida);
+        verify(notificador).propostaRecusada(concorrente, true);
     }
 
     @Test

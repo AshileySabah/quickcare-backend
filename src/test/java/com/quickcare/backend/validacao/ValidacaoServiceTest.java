@@ -1,5 +1,6 @@
 package com.quickcare.backend.validacao;
 
+import com.quickcare.backend.notificacao.Notificador;
 import com.quickcare.backend.administrador.AdministradorRepository;
 import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
 import com.quickcare.backend.documento.Documento;
@@ -65,6 +66,9 @@ class ValidacaoServiceTest {
     private ArmazenamentoDocumentoService armazenamentoDocumentoService;
     @Mock
     private ValidacaoResponses responses;
+
+    @Mock
+    private Notificador notificador;
 
     @InjectMocks
     private ValidacaoService service;

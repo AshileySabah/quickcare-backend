@@ -555,3 +555,96 @@ SELECT pg_temp.seed_proposta(pg_temp.seed_solicitacao('paciente@quickcare.dev',
            'Cuidadora noturna por um mês.', 'PRESENCIAL', 'CUIDADOR', 'Cuidador de Idosos',
            'CANCELADA', -2, 20),
        'ambos@quickcare.dev', 2400.00, 'Plantão noturno de 12h, cinco noites por semana.', 'RECUSADA', 19);
+
+-- Notificações de exemplo (sino): ambos@ tem não lidas nos dois perfis, para
+-- ver o indicador do outro perfil no seletor; paciente@ e profissional@ têm
+-- lidas e não lidas. Os links apontam para solicitações e propostas reais da
+-- massa, com o item a destacar (?destaque=), como o back gera.
+
+-- Versão anterior desta massa: links sem destaque (só dev).
+DELETE FROM notificacao
+WHERE link IN ('/patient', '/professional/propostas', '/professional/historico') AND tipo <> 'CADASTRO_APROVADO';
+
+-- p_descricao identifica a solicitação; p_email_profissional, a proposta (a
+-- ativa dele, ou a mais recente). p_destaque: PROPOSTA, SOLICITACAO ou nulo
+-- (sem solicitação: p_link_fixo).
+CREATE OR REPLACE FUNCTION pg_temp.seed_notificacao(
+    p_email TEXT, p_perfil TEXT, p_tipo TEXT, p_titulo TEXT, p_mensagem TEXT,
+    p_descricao TEXT, p_email_profissional TEXT, p_destaque TEXT, p_link_fixo TEXT,
+    p_horas_atras INT, p_lida BOOLEAN
+) RETURNS VOID AS $$
+DECLARE
+    v_usuario_id BIGINT;
+    v_solicitacao_id BIGINT;
+    v_proposta_id BIGINT;
+    v_link TEXT := p_link_fixo;
+BEGIN
+    SELECT id INTO v_usuario_id FROM usuario WHERE email = p_email;
+    IF v_usuario_id IS NULL THEN
+        RETURN;
+    END IF;
+
+    IF p_descricao IS NOT NULL THEN
+        SELECT id INTO v_solicitacao_id FROM solicitacao WHERE descricao LIKE p_descricao || '%' ORDER BY id LIMIT 1;
+        SELECT p.id INTO v_proposta_id
+        FROM proposta p
+        JOIN profissional pr ON pr.id = p.profissional_id
+        JOIN usuario u ON u.id = pr.usuario_id
+        WHERE p.solicitacao_id = v_solicitacao_id AND u.email = p_email_profissional
+        ORDER BY (p.status IN ('PENDENTE', 'ACEITA')) DESC, p.id DESC
+        LIMIT 1;
+        IF v_solicitacao_id IS NULL OR v_proposta_id IS NULL THEN
+            RETURN;
+        END IF;
+
+        v_link := CASE p_perfil WHEN 'PACIENTE' THEN '/patient' ELSE '/professional' END
+                  || '/solicitacoes/' || v_solicitacao_id || '?destaque='
+                  || CASE p_destaque WHEN 'PROPOSTA' THEN 'proposta-' || v_proposta_id
+                                     ELSE 'solicitacao-' || v_solicitacao_id END;
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM notificacao
+               WHERE usuario_id = v_usuario_id AND perfil = p_perfil AND titulo = p_titulo AND mensagem = p_mensagem) THEN
+        UPDATE notificacao SET link = v_link
+        WHERE usuario_id = v_usuario_id AND perfil = p_perfil AND titulo = p_titulo AND mensagem = p_mensagem;
+        RETURN;
+    END IF;
+
+    INSERT INTO notificacao (usuario_id, perfil, tipo, titulo, mensagem, link, lida_em, criado_em)
+    VALUES (v_usuario_id, p_perfil, p_tipo, p_titulo, p_mensagem, v_link,
+            CASE WHEN p_lida THEN now() - make_interval(hours => p_horas_atras) + INTERVAL '10 minutes' END,
+            now() - make_interval(hours => p_horas_atras));
+END;
+$$ LANGUAGE plpgsql;
+
+-- ambos@ como paciente
+SELECT pg_temp.seed_notificacao('ambos@quickcare.dev', 'PACIENTE', 'PROPOSTA_RECEBIDA', 'Nova proposta',
+       'Profissional Teste enviou uma proposta para a sua solicitação de Curativos.',
+       'Curativo pós-cirúrgico no joelho', 'profissional@quickcare.dev', 'PROPOSTA', NULL, 3, FALSE);
+SELECT pg_temp.seed_notificacao('ambos@quickcare.dev', 'PACIENTE', 'PROPOSTA_RECEBIDA', 'Nova proposta',
+       'Carla Mendes enviou uma proposta para a sua solicitação de Nutrição.',
+       'Acompanhamento nutricional para controle do colesterol', 'nutricionista@quickcare.dev', 'PROPOSTA', NULL, 26, TRUE);
+
+-- ambos@ como cuidadora
+SELECT pg_temp.seed_notificacao('ambos@quickcare.dev', 'PROFISSIONAL', 'PROPOSTA_ACEITA', 'Proposta aceita',
+       'O paciente aceitou a sua proposta para Cuidador de Idosos.',
+       'Cuidadora para os fins de semana', 'ambos@quickcare.dev', 'PROPOSTA', NULL, 5, FALSE);
+SELECT pg_temp.seed_notificacao('ambos@quickcare.dev', 'PROFISSIONAL', 'SOLICITACAO_CANCELADA', 'Solicitação cancelada',
+       'O paciente cancelou a solicitação de Cuidador de Idosos.',
+       'Cuidadora noturna por um mês', 'ambos@quickcare.dev', 'SOLICITACAO', NULL, 48, FALSE);
+
+-- paciente@
+SELECT pg_temp.seed_notificacao('paciente@quickcare.dev', 'PACIENTE', 'CADASTRO_APROVADO', 'Cadastro aprovado',
+       'Seu cadastro de paciente foi aprovado. Você já pode criar solicitações.',
+       NULL, NULL, NULL, '/patient', 240, TRUE);
+SELECT pg_temp.seed_notificacao('paciente@quickcare.dev', 'PACIENTE', 'PROPOSTA_RECEBIDA', 'Nova proposta',
+       'Profissional Teste enviou uma proposta para a sua solicitação de Curativos.',
+       'Minha mãe precisa de curativos diários', 'profissional@quickcare.dev', 'PROPOSTA', NULL, 2, FALSE);
+
+-- profissional@
+SELECT pg_temp.seed_notificacao('profissional@quickcare.dev', 'PROFISSIONAL', 'CADASTRO_APROVADO', 'Cadastro aprovado',
+       'Seu cadastro de profissional foi aprovado. Você já pode enviar propostas.',
+       NULL, NULL, NULL, '/professional', 240, TRUE);
+SELECT pg_temp.seed_notificacao('profissional@quickcare.dev', 'PROFISSIONAL', 'SOLICITACAO_ALTERADA', 'Solicitação alterada',
+       'O paciente alterou a solicitação de Curativos. Confira se a sua proposta ainda atende.',
+       'Minha mãe precisa de curativos diários', 'profissional@quickcare.dev', 'SOLICITACAO', NULL, 1, FALSE);

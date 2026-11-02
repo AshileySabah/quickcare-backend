@@ -7,6 +7,7 @@ import com.quickcare.backend.geolocalizacao.Coordenadas;
 import com.quickcare.backend.geolocalizacao.EnderecoGeocodificavel;
 import com.quickcare.backend.geolocalizacao.GeocodificacaoService;
 import com.quickcare.backend.localizacao.Uf;
+import com.quickcare.backend.notificacao.Notificador;
 import com.quickcare.backend.paciente.Paciente;
 import com.quickcare.backend.paciente.PacienteRepository;
 import com.quickcare.backend.profissional.Profissional;
@@ -50,6 +51,7 @@ public class SolicitacaoService {
     private final EspecialidadeRepository especialidadeRepository;
     private final PropostaRepository propostaRepository;
     private final GeocodificacaoService geocodificacaoService;
+    private final Notificador notificador;
 
     @Transactional
     public SolicitacaoResponse criar(Long usuarioId, SolicitacaoRequest request) {
@@ -158,8 +160,14 @@ public class SolicitacaoService {
             solicitacao.setStatus(StatusSolicitacao.RECEBENDO_PROPOSTAS);
         }
 
+        List<Proposta> pendentes = propostaRepository.findBySolicitacaoIdAndStatus(id, StatusProposta.PENDENTE).stream()
+                .filter(proposta -> !aceitas.contains(proposta))
+                .toList();
+
         aplicarDados(solicitacao, request);
-        return responder(solicitacaoRepository.saveAndFlush(solicitacao));
+        SolicitacaoResponse response = responder(solicitacaoRepository.saveAndFlush(solicitacao));
+        notificador.solicitacaoAlterada(aceitas, pendentes);
+        return response;
     }
 
     /** Propostas ainda pendentes são recusadas junto com o cancelamento. */
@@ -171,10 +179,14 @@ public class SolicitacaoService {
             throw new TransicaoStatusInvalidaException("Esta solicitação não pode mais ser cancelada.");
         }
 
-        propostaRepository.findBySolicitacaoIdAndStatus(id, StatusProposta.PENDENTE)
-                .forEach(proposta -> proposta.setStatus(StatusProposta.RECUSADA));
+        List<Proposta> pendentes = propostaRepository.findBySolicitacaoIdAndStatus(id, StatusProposta.PENDENTE);
+        List<Proposta> aceitas = propostaRepository.findBySolicitacaoIdAndStatus(id, StatusProposta.ACEITA);
+        pendentes.forEach(proposta -> proposta.setStatus(StatusProposta.RECUSADA));
         solicitacao.setStatus(StatusSolicitacao.CANCELADA);
-        return responder(solicitacaoRepository.saveAndFlush(solicitacao));
+
+        SolicitacaoResponse response = responder(solicitacaoRepository.saveAndFlush(solicitacao));
+        notificador.solicitacaoCancelada(concatenar(aceitas, pendentes));
+        return response;
     }
 
     @Transactional
@@ -186,7 +198,15 @@ public class SolicitacaoService {
         }
 
         solicitacao.setStatus(StatusSolicitacao.CONCLUIDA);
-        return responder(solicitacaoRepository.saveAndFlush(solicitacao));
+        SolicitacaoResponse response = responder(solicitacaoRepository.saveAndFlush(solicitacao));
+        notificador.solicitacaoConcluida(propostaRepository.findBySolicitacaoIdAndStatus(id, StatusProposta.ACEITA));
+        return response;
+    }
+
+    private static List<Proposta> concatenar(List<Proposta> primeiras, List<Proposta> outras) {
+        List<Proposta> todas = new ArrayList<>(primeiras);
+        todas.addAll(outras);
+        return todas;
     }
 
     private SolicitacaoResponse responder(Solicitacao solicitacao) {
