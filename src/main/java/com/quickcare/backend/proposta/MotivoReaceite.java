@@ -4,6 +4,9 @@ package com.quickcare.backend.proposta;
 public enum MotivoReaceite {
     /** O profissional alterou a proposta depois do aceite. */
     PROPOSTA_ALTERADA,
-    /** O paciente alterou a solicitação depois de aceitar a proposta. */
+    /**
+     * Legado: antes da branch 4a, editar a solicitação devolvia as aceitas ao
+     * paciente. Hoje é o profissional quem reaceita (atendimento AGUARDANDO_REACEITE).
+     */
     SOLICITACAO_ALTERADA
 }

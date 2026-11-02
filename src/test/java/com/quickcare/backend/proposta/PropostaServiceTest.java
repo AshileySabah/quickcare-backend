@@ -1,5 +1,10 @@
 package com.quickcare.backend.proposta;
 
+import com.quickcare.backend.atendimento.Atendimento;
+import com.quickcare.backend.atendimento.AtendimentoRepository;
+import com.quickcare.backend.atendimento.AtendimentoService;
+import com.quickcare.backend.atendimento.StatusAtendimento;
+import com.quickcare.backend.notificacao.Notificador;
 import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
 import com.quickcare.backend.especialidade.CategoriaProfissional;
 import com.quickcare.backend.especialidade.Especialidade;
@@ -26,12 +31,15 @@ import com.quickcare.backend.validacao.exception.CadastroNaoValidadoException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
@@ -40,6 +48,7 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -56,8 +65,12 @@ class PropostaServiceTest {
     /** ~70 km da Paulista. */
     private static final Coordenadas CAMPINAS = new Coordenadas(new BigDecimal("-22.905600"), new BigDecimal("-47.060800"));
 
+    private static final Instant AGORA = Instant.parse("2026-11-02T12:00:00Z");
+    private static final Instant INICIO = AGORA.plus(Duration.ofDays(5));
+    private static final Instant TERMINO = INICIO.plus(Duration.ofHours(8));
+
     private static final PropostaRequest REQUEST = new PropostaRequest(
-            new BigDecimal("180.00"), "  Curativos diários com relatório semanal de evolução.  ", LocalDate.now().plusDays(5));
+            new BigDecimal("180.00"), "  Curativos diários com relatório semanal de evolução.  ", INICIO, TERMINO);
 
     @Mock
     private PropostaRepository propostaRepository;
@@ -68,7 +81,13 @@ class PropostaServiceTest {
     @Mock
     private ArmazenamentoDocumentoService armazenamentoDocumentoService;
 
-    @InjectMocks
+    @Mock
+    private Notificador notificador;
+    @Mock
+    private AtendimentoService atendimentoService;
+    @Mock
+    private AtendimentoRepository atendimentoRepository;
+
     private PropostaService service;
 
     private Especialidade curativos;
@@ -77,6 +96,10 @@ class PropostaServiceTest {
 
     @BeforeEach
     void setUp() {
+        service = new PropostaService(propostaRepository, solicitacaoRepository, profissionalRepository,
+                armazenamentoDocumentoService, atendimentoService, atendimentoRepository, notificador,
+                Clock.fixed(AGORA, ZoneOffset.UTC));
+
         curativos = Especialidade.builder().id(5L).nome("Curativos").categoria(CategoriaProfissional.ENFERMEIRO).build();
 
         Paciente paciente = Paciente.builder()
@@ -122,6 +145,7 @@ class PropostaServiceTest {
         assertThat(response.solicitacao().pacienteNome()).isNull();
         assertThat(response.solicitacao().pacienteId()).isNull();
         assertThat(solicitacao.getStatus()).isEqualTo(StatusSolicitacao.RECEBENDO_PROPOSTAS);
+        verify(notificador).propostaRecebida(any());
     }
 
     @Test
@@ -262,7 +286,7 @@ class PropostaServiceTest {
         when(propostaRepository.saveAndFlush(proposta)).thenReturn(proposta);
 
         PropostaResponse response = service.atualizar(USUARIO_PROFISSIONAL_ID, 100L,
-                new PropostaRequest(new BigDecimal("250.00"), "Abordagem revisada com visitas diárias.", LocalDate.now()));
+                new PropostaRequest(new BigDecimal("250.00"), "Abordagem revisada com visitas diárias.", INICIO, TERMINO));
 
         assertThat(response.valor()).isEqualByComparingTo("250.00");
     }
@@ -302,115 +326,67 @@ class PropostaServiceTest {
     }
 
     @Test
-    void aceitarRecusaAsDemaisEColocaSolicitacaoEmAndamento() {
+    void naoAceitaTerminoAntesDoInicio() {
+        mockProfissional(profissional);
+        when(solicitacaoRepository.findById(50L)).thenReturn(Optional.of(solicitacao));
+
+        assertThatThrownBy(() -> service.enviar(USUARIO_PROFISSIONAL_ID, 50L,
+                new PropostaRequest(new BigDecimal("180.00"), "Curativos diários com relatório semanal.", TERMINO, INICIO)))
+                .hasMessage("O término precisa ser depois do início.");
+    }
+
+    @Test
+    void aceitarAgendaOAtendimentoERevelaOPaciente() {
         solicitacao.setStatus(StatusSolicitacao.RECEBENDO_PROPOSTAS);
-        Profissional outro = profissional(21L, USUARIO_OUTRO_PROFISSIONAL_ID, ModalidadeAtendimento.AMBOS);
         Proposta escolhida = proposta(100L, profissional, StatusProposta.PENDENTE);
-        Proposta concorrente = proposta(101L, outro, StatusProposta.PENDENTE);
         when(propostaRepository.findById(100L)).thenReturn(Optional.of(escolhida));
-        when(propostaRepository.findBySolicitacaoIdAndStatus(50L, StatusProposta.PENDENTE))
-                .thenReturn(List.of(escolhida, concorrente));
+        when(atendimentoService.aceitarProposta(escolhida)).thenAnswer(invocation -> {
+            escolhida.setStatus(StatusProposta.ACEITA);
+            return Atendimento.agendar(escolhida, AGORA);
+        });
         when(propostaRepository.saveAndFlush(escolhida)).thenReturn(escolhida);
+        when(atendimentoRepository.findByPropostaIdInOrderByIdAsc(List.of(100L)))
+                .thenReturn(List.of(Atendimento.agendar(escolhida, AGORA)));
 
         PropostaResponse response = service.aceitar(USUARIO_PACIENTE_ID, 100L);
 
         assertThat(response.status()).isEqualTo(StatusProposta.ACEITA);
         assertThat(response.solicitacao().pacienteNome()).isEqualTo("Paciente Teste");
-        assertThat(concorrente.getStatus()).isEqualTo(StatusProposta.RECUSADA);
-        assertThat(solicitacao.getStatus()).isEqualTo(StatusSolicitacao.EM_ANDAMENTO);
+        assertThat(response.atendimento().status()).isEqualTo(StatusAtendimento.AGENDADO);
+        assertThat(response.atendimento().inicio()).isEqualTo(INICIO);
+        verify(notificador).propostaAceita(escolhida);
     }
 
+    /** Editou a aceita: deixa de estar aceita e o paciente precisa aceitar (ou recusar) de novo. */
     @Test
-    void aceitaAteAQuantidadePedidaAntesDeEntrarEmAndamento() {
-        solicitacao.setStatus(StatusSolicitacao.RECEBENDO_PROPOSTAS);
-        SolicitacaoProfissional linha = solicitacao.getProfissionais().iterator().next();
-        linha.setQuantidade(2);
-        Profissional outro = profissional(21L, USUARIO_OUTRO_PROFISSIONAL_ID, ModalidadeAtendimento.AMBOS);
-        Proposta primeira = proposta(100L, profissional, StatusProposta.PENDENTE);
-        Proposta segunda = proposta(101L, outro, StatusProposta.PENDENTE);
-        when(propostaRepository.findById(100L)).thenReturn(Optional.of(primeira));
-        when(propostaRepository.findById(101L)).thenReturn(Optional.of(segunda));
-        when(propostaRepository.findBySolicitacaoIdAndStatus(50L, StatusProposta.PENDENTE))
-                .thenReturn(List.of(primeira, segunda), List.of(segunda));
-        when(propostaRepository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
-
-        service.aceitar(USUARIO_PACIENTE_ID, 100L);
-
-        assertThat(linha.getVagasPreenchidas()).isEqualTo(1);
-        assertThat(primeira.getVaga()).isSameAs(linha);
-        assertThat(segunda.getStatus()).isEqualTo(StatusProposta.PENDENTE);
-        assertThat(solicitacao.getStatus()).isEqualTo(StatusSolicitacao.RECEBENDO_PROPOSTAS);
-
-        service.aceitar(USUARIO_PACIENTE_ID, 101L);
-
-        assertThat(linha.getVagasPreenchidas()).isEqualTo(2);
-        assertThat(solicitacao.getStatus()).isEqualTo(StatusSolicitacao.EM_ANDAMENTO);
-    }
-
-    @Test
-    void aoLotarUmaLinhaRecusaQuemSoCabiaNela() {
-        Especialidade sondagem = Especialidade.builder().id(6L).nome("Sondagem").categoria(CategoriaProfissional.ENFERMEIRO).build();
-        solicitacao.setStatus(StatusSolicitacao.RECEBENDO_PROPOSTAS);
-        solicitacao.getProfissionais().add(SolicitacaoProfissional.builder()
-                .id(2L)
-                .solicitacao(solicitacao)
-                .categoria(CategoriaProfissional.ENFERMEIRO)
-                .especialidades(new LinkedHashSet<>(List.of(sondagem)))
-                .quantidade(1)
-                .build());
-        Profissional concorrenteCurativos = profissional(21L, USUARIO_OUTRO_PROFISSIONAL_ID, ModalidadeAtendimento.AMBOS);
-        Profissional deSondagem = profissional(22L, 4L, ModalidadeAtendimento.AMBOS);
-        deSondagem.setEspecialidades(Set.of(sondagem));
-        Proposta escolhida = proposta(100L, profissional, StatusProposta.PENDENTE);
-        Proposta semVaga = proposta(101L, concorrenteCurativos, StatusProposta.PENDENTE);
-        Proposta aindaCabe = proposta(102L, deSondagem, StatusProposta.PENDENTE);
-        when(propostaRepository.findById(100L)).thenReturn(Optional.of(escolhida));
-        when(propostaRepository.findBySolicitacaoIdAndStatus(50L, StatusProposta.PENDENTE))
-                .thenReturn(List.of(escolhida, semVaga, aindaCabe));
-        when(propostaRepository.saveAndFlush(escolhida)).thenReturn(escolhida);
-
-        service.aceitar(USUARIO_PACIENTE_ID, 100L);
-
-        assertThat(semVaga.getStatus()).isEqualTo(StatusProposta.RECUSADA);
-        assertThat(aindaCabe.getStatus()).isEqualTo(StatusProposta.PENDENTE);
-        assertThat(solicitacao.getStatus()).isEqualTo(StatusSolicitacao.RECEBENDO_PROPOSTAS);
-    }
-
-    @Test
-    void editarPropostaAceitaLiberaAVagaEVoltaAAguardarOAceite() {
+    void editarPropostaAceitaTiraDoAceiteEVoltaParaOPaciente() {
         solicitacao.setStatus(StatusSolicitacao.EM_ANDAMENTO);
-        SolicitacaoProfissional linha = solicitacao.getProfissionais().iterator().next();
-        linha.setVagasPreenchidas(1);
         Proposta aceita = proposta(100L, profissional, StatusProposta.ACEITA);
-        aceita.setVaga(linha);
         mockProfissional(profissional);
         when(propostaRepository.findById(100L)).thenReturn(Optional.of(aceita));
         when(propostaRepository.saveAndFlush(aceita)).thenReturn(aceita);
+        when(propostaRepository.existsBySolicitacaoIdAndStatus(50L, StatusProposta.PENDENTE)).thenReturn(true);
 
         PropostaResponse response = service.atualizar(USUARIO_PROFISSIONAL_ID, 100L, REQUEST);
 
+        verify(atendimentoService).cancelarPorAlteracaoDaProposta(aceita);
         assertThat(response.status()).isEqualTo(StatusProposta.PENDENTE);
         assertThat(response.motivoReaceite()).isEqualTo(MotivoReaceite.PROPOSTA_ALTERADA);
-        assertThat(linha.getVagasPreenchidas()).isZero();
         assertThat(solicitacao.getStatus()).isEqualTo(StatusSolicitacao.RECEBENDO_PROPOSTAS);
+        verify(notificador).propostaAlterada(aceita, true);
     }
 
     @Test
-    void cancelarPropostaAceitaReabreAVaga() {
+    void cancelarPropostaAceitaCancelaOAtendimento() {
         solicitacao.setStatus(StatusSolicitacao.EM_ANDAMENTO);
-        SolicitacaoProfissional linha = solicitacao.getProfissionais().iterator().next();
-        linha.setVagasPreenchidas(1);
         Proposta aceita = proposta(100L, profissional, StatusProposta.ACEITA);
-        aceita.setVaga(linha);
         mockProfissional(profissional);
         when(propostaRepository.findById(100L)).thenReturn(Optional.of(aceita));
 
-        PropostaResponse response = service.cancelar(USUARIO_PROFISSIONAL_ID, 100L);
+        service.cancelar(USUARIO_PROFISSIONAL_ID, 100L);
 
-        assertThat(response.status()).isEqualTo(StatusProposta.CANCELADA);
-        assertThat(linha.getVagasPreenchidas()).isZero();
-        assertThat(aceita.getVaga()).isNull();
-        assertThat(solicitacao.getStatus()).isNotEqualTo(StatusSolicitacao.EM_ANDAMENTO);
+        verify(atendimentoService).cancelarPeloProfissional(aceita);
+        verify(notificador, never()).propostaCancelada(any(), anyBoolean());
     }
 
     @Test
@@ -490,7 +466,8 @@ class PropostaServiceTest {
                 .profissional(autor)
                 .valor(new BigDecimal("180.00"))
                 .abordagem("Curativos diários com relatório semanal.")
-                .prazo(LocalDate.now().plusDays(5))
+                .inicio(INICIO)
+                .termino(TERMINO)
                 .status(status)
                 .build();
     }

@@ -66,9 +66,4 @@ public class SolicitacaoController {
         return solicitacaoService.cancelar(usuarioId, id);
     }
 
-    @PatchMapping("/{id}/concluir")
-    public SolicitacaoResponse concluir(@AuthenticationPrincipal Long usuarioId, @PathVariable Long id) {
-        return solicitacaoService.concluir(usuarioId, id);
-    }
-
 }

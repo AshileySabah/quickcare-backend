@@ -36,6 +36,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Entity
 @Table(name = "solicitacao")
@@ -128,7 +129,7 @@ public class Solicitacao {
     public boolean atendidaPor(Profissional profissional) {
         return ModalidadeSolicitacao.atendidasPor(profissional.getModalidadeAtendimento()).contains(modalidade)
                 && dentroDoRaioDe(profissional)
-                && vagaDisponivelPara(profissional).isPresent();
+                && linhasQueRecebem(profissional).findAny().isPresent();
     }
 
     /**
@@ -137,18 +138,49 @@ public class Solicitacao {
      * vaga que um profissional menos especializado também preencheria.
      */
     public Optional<SolicitacaoProfissional> vagaDisponivelPara(Profissional profissional) {
+        return linhasDoProfissional(profissional)
+                .filter(SolicitacaoProfissional::temVaga)
+                .max(Comparator.comparingInt(pedido -> pedido.getEspecialidades().size()));
+    }
+
+    /** Linhas do profissional com vaga livre ou reservada: ele pode enviar proposta e ser aceito nelas. */
+    public Stream<SolicitacaoProfissional> linhasQueRecebem(Profissional profissional) {
+        return linhasDoProfissional(profissional).filter(SolicitacaoProfissional::aceitaPropostas);
+    }
+
+    private Stream<SolicitacaoProfissional> linhasDoProfissional(Profissional profissional) {
         Set<Long> especialidadeIds = profissional.getEspecialidades().stream()
                 .map(Especialidade::getId)
                 .collect(Collectors.toSet());
-
         return profissionais.stream()
-                .filter(SolicitacaoProfissional::temVaga)
-                .filter(pedido -> pedido.atendidaPor(profissional.getCategoria(), especialidadeIds))
-                .max(Comparator.comparingInt(pedido -> pedido.getEspecialidades().size()));
+                .filter(pedido -> pedido.atendidaPor(profissional.getCategoria(), especialidadeIds));
     }
 
     public boolean todasAsVagasPreenchidas() {
         return profissionais.stream().noneMatch(SolicitacaoProfissional::temVaga);
+    }
+
+    /** Todas preenchidas e nenhuma aguardando reaceite: não recebe mais propostas. */
+    public boolean completa() {
+        return profissionais.stream().noneMatch(SolicitacaoProfissional::aceitaPropostas);
+    }
+
+    /**
+     * Depois de mexer nas vagas: completa, em andamento; com alguém aceito ou
+     * proposta pendente, recebendo propostas; sem nada, aberta. Encerrada
+     * (concluída ou cancelada) não muda.
+     */
+    public void recalcularStatus(boolean temPropostaPendente) {
+        if (!StatusSolicitacao.EM_CURSO.contains(status)) {
+            return;
+        }
+        if (completa()) {
+            status = StatusSolicitacao.EM_ANDAMENTO;
+        } else if (temVagaPreenchida() || temPropostaPendente) {
+            status = StatusSolicitacao.RECEBENDO_PROPOSTAS;
+        } else {
+            status = StatusSolicitacao.ABERTA;
+        }
     }
 
     public boolean temVagaPreenchida() {

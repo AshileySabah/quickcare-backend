@@ -7,11 +7,13 @@ import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
 import com.quickcare.backend.documento.Documento;
 import com.quickcare.backend.documento.DocumentoRepository;
 import com.quickcare.backend.documento.TipoDocumento;
+import com.quickcare.backend.notificacao.Notificador;
 import com.quickcare.backend.paciente.Paciente;
 import com.quickcare.backend.paciente.PacienteRepository;
 import com.quickcare.backend.profissional.Profissional;
 import com.quickcare.backend.profissional.ProfissionalRepository;
 import com.quickcare.backend.solicitacao.exception.PerfilNaoAutorizadoException;
+import com.quickcare.backend.usuario.TipoPerfil;
 import com.quickcare.backend.usuario.Usuario;
 import com.quickcare.backend.usuario.UsuarioRepository;
 import com.quickcare.backend.validacao.dto.DecisaoEtapaRequest;
@@ -52,6 +54,7 @@ public class ValidacaoService {
     private final DocumentoRepository documentoRepository;
     private final ArmazenamentoDocumentoService armazenamentoDocumentoService;
     private final ValidacaoResponses responses;
+    private final Notificador notificador;
 
     // ---------------------------------------------------------------- cadastro
 
@@ -136,7 +139,9 @@ public class ValidacaoService {
         etapa.setAvaliadoPor(usuarioRepository.getReferenceById(adminUsuarioId));
         etapa.setAvaliadoEm(Instant.now());
 
+        StatusValidacao anterior = cadastro.statusValidacao();
         recalcularStatus(cadastro, todas);
+        avisarDecisao(cadastro, etapa, anterior);
         return responses.detalhe(cadastro, todas, true);
     }
 
@@ -300,6 +305,17 @@ public class ValidacaoService {
                 : profissionalRepository.findByUsuarioId(usuarioId).filter(p -> !p.isBanido()).map(CadastroAvaliado::de);
         return cadastro.orElseThrow(() -> new PerfilNaoAutorizadoException(
                 "Você não possui um perfil de " + (perfil == PerfilValidado.PACIENTE ? "paciente" : "profissional") + " ativo."));
+    }
+
+    /** Cada etapa reprovada avisa (com a justificativa); a aprovação, só quando o cadastro todo passa. */
+    private void avisarDecisao(CadastroAvaliado cadastro, EtapaValidacao etapa, StatusValidacao anterior) {
+        TipoPerfil perfil = cadastro.perfil() == PerfilValidado.PACIENTE ? TipoPerfil.PACIENTE : TipoPerfil.PROFISSIONAL;
+
+        if (etapa.getStatus() == StatusEtapa.REPROVADA) {
+            notificador.etapaReprovada(cadastro.usuario(), perfil, etapa.getTipo(), etapa.getJustificativa());
+        } else if (cadastro.statusValidacao() == StatusValidacao.APROVADO && anterior != StatusValidacao.APROVADO) {
+            notificador.cadastroAprovado(cadastro.usuario(), perfil);
+        }
     }
 
     private void recalcularStatus(CadastroAvaliado cadastro, List<EtapaValidacao> todas) {

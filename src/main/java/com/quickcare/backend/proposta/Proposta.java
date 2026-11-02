@@ -24,7 +24,6 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.time.LocalDate;
 
 @Entity
 @Table(name = "proposta")
@@ -58,8 +57,12 @@ public class Proposta {
     @Column(nullable = false, length = 1000)
     private String abordagem;
 
+    /** Período oferecido; o do atendimento começa igual e muda por remarcação. */
     @Column(nullable = false)
-    private LocalDate prazo;
+    private Instant inicio;
+
+    @Column(nullable = false)
+    private Instant termino;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
@@ -91,23 +94,25 @@ public class Proposta {
     }
 
     /**
-     * A proposta aceita sai da vaga e volta a pendente: o paciente precisa
-     * aceitá-la de novo (ou outra). Na pendente não muda nada.
+     * A proposta aceita que o profissional alterou volta a pendente: o paciente
+     * precisa aceitá-la de novo (ou outra). A vaga é liberada pelo atendimento.
      */
     public void voltarParaReaceite(MotivoReaceite motivo) {
-        if (status != StatusProposta.ACEITA) {
-            return;
-        }
-        liberarVaga();
         status = StatusProposta.PENDENTE;
         motivoReaceite = motivo;
     }
 
-    public void liberarVaga() {
-        if (vaga != null) {
-            vaga.liberarVaga();
-            vaga = null;
+    /** Sai da vaga que ocupava; {@code reservada} se ela aguardava o reaceite dele. */
+    public void liberarVaga(boolean reservada) {
+        if (vaga == null) {
+            return;
         }
+        if (reservada) {
+            vaga.liberarVagaReservada();
+        } else {
+            vaga.liberarVaga();
+        }
+        vaga = null;
     }
 
     public boolean ehDoUsuario(Long usuarioId) {

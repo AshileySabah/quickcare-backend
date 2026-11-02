@@ -1,0 +1,26 @@
+package com.quickcare.backend.notificacao;
+
+/** O que aconteceu; o front usa para escolher o ícone. */
+public enum TipoNotificacao {
+    PROPOSTA_RECEBIDA,
+    PROPOSTA_ALTERADA,
+    PROPOSTA_CANCELADA,
+    PROPOSTA_ACEITA,
+    PROPOSTA_RECUSADA,
+    PROPOSTA_AGUARDA_REACEITE,
+    SOLICITACAO_ALTERADA,
+    SOLICITACAO_CANCELADA,
+    /** Legado: conclusão manual pelo paciente (antes da branch 4a). */
+    SOLICITACAO_CONCLUIDA,
+    REACEITE_ACEITO,
+    REACEITE_RECUSADO,
+    ATENDIMENTO_SUBSTITUIDO,
+    REMARCACAO_SOLICITADA,
+    REMARCACAO_ACEITA,
+    REMARCACAO_RECUSADA,
+    ATENDIMENTO_CANCELADO,
+    LEMBRETE_ATENDIMENTO,
+    ATENDIMENTO_FINALIZADO,
+    CADASTRO_APROVADO,
+    ETAPA_REPROVADA
+}

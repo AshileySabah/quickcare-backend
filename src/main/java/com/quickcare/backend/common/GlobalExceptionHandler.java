@@ -16,6 +16,8 @@ import com.quickcare.backend.documento.DocumentoObrigatorioException;
 import com.quickcare.backend.jwt.TokenInvalidoException;
 import com.quickcare.backend.perfil.exception.PerfilNaoEncontradoException;
 import com.quickcare.backend.proposta.exception.PropostaJaEnviadaException;
+import com.quickcare.backend.atendimento.exception.AtendimentoNaoEncontradoException;
+import com.quickcare.backend.notificacao.exception.NotificacaoNaoEncontradaException;
 import com.quickcare.backend.proposta.exception.PropostaNaoEncontradaException;
 import com.quickcare.backend.solicitacao.exception.PerfilNaoAutorizadoException;
 import com.quickcare.backend.solicitacao.exception.SolicitacaoInvalidaException;
@@ -28,6 +30,7 @@ import com.quickcare.backend.validacao.exception.TransicaoEtapaInvalidaException
 import com.quickcare.backend.validacao.exception.ValidacaoInvalidaException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -105,6 +108,22 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(SolicitacaoNaoEncontradaException.class)
     public ResponseEntity<ApiError> handleSolicitacaoNaoEncontrada(SolicitacaoNaoEncontradaException ex) {
+        return build(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    @ExceptionHandler(AtendimentoNaoEncontradoException.class)
+    public ResponseEntity<ApiError> handleAtendimentoNaoEncontrado(AtendimentoNaoEncontradoException ex) {
+        return build(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    /** O job (ou o outro lado) mexeu no mesmo registro ao mesmo tempo. */
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<ApiError> handleConflitoDeVersao() {
+        return build(HttpStatus.CONFLICT, "Este atendimento acabou de mudar. Recarregue a página e tente de novo.");
+    }
+
+    @ExceptionHandler(NotificacaoNaoEncontradaException.class)
+    public ResponseEntity<ApiError> handleNotificacaoNaoEncontrada(NotificacaoNaoEncontradaException ex) {
         return build(HttpStatus.NOT_FOUND, ex.getMessage());
     }
 
