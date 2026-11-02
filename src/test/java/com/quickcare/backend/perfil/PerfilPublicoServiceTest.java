@@ -1,5 +1,7 @@
 package com.quickcare.backend.perfil;
 
+import com.quickcare.backend.atendimento.AtendimentoRepository;
+import com.quickcare.backend.atendimento.StatusAtendimento;
 import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
 import com.quickcare.backend.especialidade.CategoriaProfissional;
 import com.quickcare.backend.especialidade.Especialidade;
@@ -45,6 +47,7 @@ class PerfilPublicoServiceTest {
     @Mock private ProfissionalRepository profissionalRepository;
     @Mock private PacienteRepository pacienteRepository;
     @Mock private PropostaRepository propostaRepository;
+    @Mock private AtendimentoRepository atendimentoRepository;
     @Mock private ArmazenamentoDocumentoService armazenamentoDocumentoService;
 
     @InjectMocks
@@ -86,8 +89,7 @@ class PerfilPublicoServiceTest {
     @Test
     void mostraOProfissionalAprovadoSemDadosDeContato() {
         when(profissionalRepository.findById(PROFISSIONAL_ID)).thenReturn(Optional.of(profissional));
-        when(propostaRepository.countByProfissionalIdAndStatusAndSolicitacaoStatus(
-                PROFISSIONAL_ID, StatusProposta.ACEITA, StatusSolicitacao.CONCLUIDA)).thenReturn(4L);
+        when(atendimentoRepository.countByPropostaProfissionalIdAndStatusIn(PROFISSIONAL_ID, StatusAtendimento.REALIZADOS)).thenReturn(4L);
 
         PerfilPublicoProfissionalResponse perfil = service.buscarProfissional(USUARIO_PROFISSIONAL_ID, PROFISSIONAL_ID);
 
@@ -101,7 +103,7 @@ class PerfilPublicoServiceTest {
     void pacienteComAtendimentoIniciadoVeOsContatosDeEmergenciaDoProfissional() {
         when(profissionalRepository.findById(PROFISSIONAL_ID)).thenReturn(Optional.of(profissional));
         when(pacienteRepository.findByUsuarioId(USUARIO_PACIENTE_ID)).thenReturn(Optional.of(paciente));
-        mockFase(StatusSolicitacao.ATENDIMENTO_INICIADO, true);
+        mockAtendimentoEmAndamento(true);
 
         PerfilPublicoProfissionalResponse perfil = service.buscarProfissional(USUARIO_PACIENTE_ID, PROFISSIONAL_ID);
 
@@ -113,7 +115,7 @@ class PerfilPublicoServiceTest {
     void pacienteComPropostaAceitaMasAtendimentoNaoIniciadoNaoVeOsContatos() {
         when(profissionalRepository.findById(PROFISSIONAL_ID)).thenReturn(Optional.of(profissional));
         when(pacienteRepository.findByUsuarioId(USUARIO_PACIENTE_ID)).thenReturn(Optional.of(paciente));
-        mockFase(StatusSolicitacao.ATENDIMENTO_INICIADO, false);
+        mockAtendimentoEmAndamento(false);
 
         assertThat(service.buscarProfissional(USUARIO_PACIENTE_ID, PROFISSIONAL_ID).contatosEmergencia()).isNull();
     }
@@ -148,7 +150,7 @@ class PerfilPublicoServiceTest {
     void propostaAceitaSemAtendimentoIniciadoMostraASaudeMasNaoOsContatos() {
         mockPacienteComPropostaAceita();
         mockFase(StatusSolicitacao.EM_CURSO, true);
-        mockFase(StatusSolicitacao.ATENDIMENTO_INICIADO, false);
+        mockAtendimentoEmAndamento(false);
 
         PerfilPublicoPacienteResponse perfil = service.buscarPaciente(USUARIO_PROFISSIONAL_ID, PACIENTE_ID);
 
@@ -161,7 +163,7 @@ class PerfilPublicoServiceTest {
     void comAtendimentoIniciadoMostraTambemOsContatosDeEmergencia() {
         mockPacienteComPropostaAceita();
         mockFase(StatusSolicitacao.EM_CURSO, true);
-        mockFase(StatusSolicitacao.ATENDIMENTO_INICIADO, true);
+        mockAtendimentoEmAndamento(true);
 
         PerfilPublicoPacienteResponse perfil = service.buscarPaciente(USUARIO_PROFISSIONAL_ID, PACIENTE_ID);
 
@@ -184,6 +186,12 @@ class PerfilPublicoServiceTest {
         when(propostaRepository.existsByProfissionalIdAndSolicitacaoPacienteIdAndStatus(
                 PROFISSIONAL_ID, PACIENTE_ID, StatusProposta.ACEITA)).thenReturn(true);
         when(pacienteRepository.findById(PACIENTE_ID)).thenReturn(Optional.of(paciente));
+    }
+
+    /** Contatos de emergência: só com um atendimento entre os dois acontecendo agora. */
+    private void mockAtendimentoEmAndamento(boolean resultado) {
+        lenient().when(atendimentoRepository.existsByPropostaProfissionalIdAndSolicitacaoPacienteIdAndStatusIn(
+                PROFISSIONAL_ID, PACIENTE_ID, Set.of(StatusAtendimento.EM_ANDAMENTO))).thenReturn(resultado);
     }
 
     private void mockFase(Set<StatusSolicitacao> fase, boolean resultado) {

@@ -1,5 +1,7 @@
 package com.quickcare.backend.solicitacao;
 
+import com.quickcare.backend.atendimento.AtendimentoRepository;
+import com.quickcare.backend.atendimento.AtendimentoService;
 import com.quickcare.backend.notificacao.Notificador;
 import com.quickcare.backend.cadastro.exception.EspecialidadeInvalidaException;
 import com.quickcare.backend.especialidade.CategoriaProfissional;
@@ -14,7 +16,6 @@ import com.quickcare.backend.paciente.PacienteRepository;
 import com.quickcare.backend.profissional.Profissional;
 import com.quickcare.backend.profissional.ModalidadeAtendimento;
 import com.quickcare.backend.profissional.ProfissionalRepository;
-import com.quickcare.backend.proposta.MotivoReaceite;
 import com.quickcare.backend.proposta.Proposta;
 import com.quickcare.backend.proposta.PropostaRepository;
 import com.quickcare.backend.proposta.StatusProposta;
@@ -34,6 +35,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -53,6 +55,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -79,6 +82,12 @@ class SolicitacaoServiceTest {
 
     @Mock
     private Notificador notificador;
+
+    @Mock
+    private AtendimentoService atendimentoService;
+
+    @Mock
+    private AtendimentoRepository atendimentoRepository;
 
     @InjectMocks
     private SolicitacaoService service;
@@ -267,23 +276,25 @@ class SolicitacaoServiceTest {
         assertThat(salva.getValue().getLongitude()).isEqualByComparingTo("-46.652400");
     }
 
+    /** Os aceitos não voltam para o paciente: reservam vaga e o profissional reaceita ou recusa. */
     @Test
-    void editarComPropostaAceitaLiberaAVagaEPedeNovoAceite() {
+    void editarComAceitosPedeReaceiteAosProfissionais() {
         Solicitacao solicitacao = mockSolicitacaoDoPaciente(StatusSolicitacao.EM_ANDAMENTO);
-        SolicitacaoProfissional linha = solicitacao.getProfissionais().iterator().next();
-        linha.setVagasPreenchidas(1);
-        Proposta aceita = Proposta.builder().id(100L).solicitacao(solicitacao).vaga(linha).status(StatusProposta.ACEITA).build();
-        when(propostaRepository.findBySolicitacaoIdAndStatus(50L, StatusProposta.ACEITA)).thenReturn(List.of(aceita));
+        Proposta aceita = Proposta.builder().id(100L).solicitacao(solicitacao).status(StatusProposta.ACEITA).build();
+        Proposta pendente = Proposta.builder().id(101L).solicitacao(solicitacao).status(StatusProposta.PENDENTE).build();
+        when(propostaRepository.findBySolicitacaoIdAndStatus(50L, StatusProposta.PENDENTE)).thenReturn(List.of(pendente));
+        when(atendimentoService.solicitacaoEditada(solicitacao)).thenReturn(List.of(aceita));
         when(especialidadeRepository.findAllByIdIn(anyList())).thenReturn(List.of(nutricao));
         when(solicitacaoRepository.saveAndFlush(solicitacao)).thenReturn(solicitacao);
 
         service.atualizar(USUARIO_PACIENTE_ID, 50L,
                 request(ModalidadeSolicitacao.ONLINE, null, pedido(CategoriaProfissional.OUTRO, 1, nutricao)));
 
-        assertThat(aceita.getStatus()).isEqualTo(StatusProposta.PENDENTE);
-        assertThat(aceita.getMotivoReaceite()).isEqualTo(MotivoReaceite.SOLICITACAO_ALTERADA);
-        assertThat(aceita.getVaga()).isNull();
-        assertThat(solicitacao.getStatus()).isEqualTo(StatusSolicitacao.RECEBENDO_PROPOSTAS);
+        InOrder ordem = inOrder(atendimentoService, solicitacaoRepository);
+        ordem.verify(atendimentoService).prepararEdicao(solicitacao);
+        ordem.verify(solicitacaoRepository).saveAndFlush(solicitacao);
+        ordem.verify(atendimentoService).solicitacaoEditada(solicitacao);
+        verify(notificador).solicitacaoAlterada(List.of(aceita), List.of(pendente));
     }
 
     @Test
@@ -338,6 +349,7 @@ class SolicitacaoServiceTest {
         service.cancelar(USUARIO_PACIENTE_ID, 50L);
 
         assertThat(pendente.getStatus()).isEqualTo(StatusProposta.RECUSADA);
+        verify(atendimentoService).solicitacaoCancelada(solicitacao);
         verify(notificador).solicitacaoCancelada(List.of(pendente));
     }
 
@@ -347,15 +359,6 @@ class SolicitacaoServiceTest {
 
         assertThatThrownBy(() -> service.cancelar(USUARIO_PACIENTE_ID, 50L))
                 .isInstanceOf(TransicaoStatusInvalidaException.class);
-    }
-
-    @Test
-    void concluiApenasSolicitacaoEmAndamento() {
-        mockSolicitacaoDoPaciente(StatusSolicitacao.ABERTA);
-
-        assertThatThrownBy(() -> service.concluir(USUARIO_PACIENTE_ID, 50L))
-                .isInstanceOf(TransicaoStatusInvalidaException.class)
-                .hasMessage("Apenas solicitações em andamento podem ser concluídas.");
     }
 
     @Test

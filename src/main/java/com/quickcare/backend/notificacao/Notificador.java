@@ -1,5 +1,7 @@
 package com.quickcare.backend.notificacao;
 
+import com.quickcare.backend.atendimento.Atendimento;
+import com.quickcare.backend.atendimento.LadoAtendimento;
 import com.quickcare.backend.especialidade.Especialidade;
 import com.quickcare.backend.proposta.Proposta;
 import com.quickcare.backend.solicitacao.Solicitacao;
@@ -9,6 +11,11 @@ import com.quickcare.backend.validacao.TipoEtapaValidacao;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -27,6 +34,9 @@ public class Notificador {
     private static final int TAMANHO_MAXIMO_MENSAGEM = 500;
     /** Mesmo nome que o front lê (HIGHLIGHT_PARAM). */
     private static final String PARAMETRO_DESTAQUE = "destaque";
+    private static final ZoneId FUSO = ZoneId.of("America/Sao_Paulo");
+    private static final DateTimeFormatter DIA = DateTimeFormatter.ofPattern("dd/MM");
+    private static final DateTimeFormatter HORA = DateTimeFormatter.ofPattern("HH:mm");
 
     private final NotificacaoService notificacaoService;
 
@@ -78,9 +88,9 @@ public class Notificador {
     /** As que estavam aceitas voltaram a aguardar o aceite; as pendentes só precisam ser conferidas. */
     public void solicitacaoAlterada(Collection<Proposta> aguardandoReaceite, Collection<Proposta> pendentes) {
         aguardandoReaceite.forEach(proposta -> paraProfissional(proposta, Destaque.PROPOSTA, TipoNotificacao.PROPOSTA_AGUARDA_REACEITE,
-                "Solicitação alterada: aguarde novo aceite",
+                "Solicitação alterada: reaceite ou recuse",
                 "O paciente alterou a solicitação de " + servico(proposta)
-                        + " depois de aceitar a sua proposta. Revise a proposta: ela aguarda um novo aceite."));
+                        + " depois de aceitar a sua proposta. Reaceite ou recuse a nova versão (recusar não gera penalidade)."));
         pendentes.forEach(proposta -> paraProfissional(proposta, Destaque.SOLICITACAO, TipoNotificacao.SOLICITACAO_ALTERADA,
                 "Solicitação alterada",
                 "O paciente alterou a solicitação de " + servico(proposta) + ". Confira se a sua proposta ainda atende."));
@@ -92,10 +102,118 @@ public class Notificador {
                 "O paciente cancelou a solicitação de " + servico(proposta) + "."));
     }
 
-    public void solicitacaoConcluida(Collection<Proposta> aceitas) {
-        aceitas.forEach(proposta -> paraProfissional(proposta, Destaque.SOLICITACAO, TipoNotificacao.SOLICITACAO_CONCLUIDA,
-                "Atendimento concluído",
-                "O paciente marcou como concluída a solicitação de " + servico(proposta) + "."));
+    // ---------------------------------------------------------- atendimento
+
+    public void reaceiteRespondido(Proposta proposta, boolean reaceitou) {
+        if (reaceitou) {
+            paraPaciente(proposta, Destaque.PROPOSTA, TipoNotificacao.REACEITE_ACEITO, "Profissional reaceitou",
+                    nomeDoProfissional(proposta) + " reaceitou a nova versão da sua solicitação de " + servico(proposta) + ".");
+        } else {
+            paraPaciente(proposta, Destaque.SOLICITACAO, TipoNotificacao.REACEITE_RECUSADO, "Profissional recusou a nova versão",
+                    nomeDoProfissional(proposta) + " recusou a nova versão da sua solicitação de " + servico(proposta)
+                            + ". A vaga voltou a receber propostas.");
+        }
+    }
+
+    /** O paciente pôs outro profissional na vaga que aguardava o reaceite dele. */
+    public void substituido(Proposta proposta) {
+        paraProfissional(proposta, Destaque.SOLICITACAO, TipoNotificacao.ATENDIMENTO_SUBSTITUIDO, "Vaga preenchida por outro profissional",
+                "Enquanto aguardava o seu reaceite, o paciente escolheu outro profissional para a vaga de "
+                        + servico(proposta) + ". Não há penalidade para você.");
+    }
+
+    public void edicaoIncompativel(Proposta proposta) {
+        paraProfissional(proposta, Destaque.SOLICITACAO, TipoNotificacao.ATENDIMENTO_CANCELADO, "Atendimento cancelado",
+                "A nova versão da solicitação de " + servico(proposta)
+                        + " não tem mais vaga para o seu perfil, então o atendimento foi cancelado. Não há penalidade para você.");
+    }
+
+    public void semReaceite(Atendimento atendimento) {
+        Proposta proposta = atendimento.getProposta();
+        paraProfissional(proposta, Destaque.SOLICITACAO, TipoNotificacao.ATENDIMENTO_CANCELADO, "Atendimento cancelado",
+                "O atendimento de " + servico(proposta) + " foi cancelado: o horário de início chegou sem o seu reaceite.");
+        paraPaciente(proposta, Destaque.SOLICITACAO, TipoNotificacao.ATENDIMENTO_CANCELADO, "Atendimento cancelado",
+                nomeDoProfissional(proposta) + " não reaceitou a tempo, então o atendimento de " + servico(proposta)
+                        + " foi cancelado e a vaga voltou a receber propostas.");
+    }
+
+    public void remarcacaoSolicitada(Atendimento atendimento) {
+        Proposta proposta = atendimento.getProposta();
+        String periodo = periodo(atendimento.getRemarcacaoInicio(), atendimento.getRemarcacaoTermino());
+        if (atendimento.getRemarcacaoPor() == LadoAtendimento.PACIENTE) {
+            paraProfissional(proposta, Destaque.PROPOSTA, TipoNotificacao.REMARCACAO_SOLICITADA, "Pedido de remarcação",
+                    "O paciente pediu para remarcar o atendimento de " + servico(proposta) + " para " + periodo
+                            + ". Aceite ou recuse.", true);
+        } else {
+            paraPaciente(proposta, Destaque.PROPOSTA, TipoNotificacao.REMARCACAO_SOLICITADA, "Pedido de remarcação",
+                    nomeDoProfissional(proposta) + " pediu para remarcar o atendimento de " + servico(proposta) + " para "
+                            + periodo + ". Aceite ou recuse.", true);
+        }
+    }
+
+    /** Avisa quem pediu a remarcação; {@code pedidaPor} é esse lado. */
+    public void remarcacaoRespondida(Atendimento atendimento, LadoAtendimento pedidaPor, boolean aceita) {
+        Proposta proposta = atendimento.getProposta();
+        String quemRespondeu = pedidaPor == LadoAtendimento.PACIENTE ? nomeDoProfissional(proposta) : "O paciente";
+        String mensagem = aceita
+                ? quemRespondeu + " aceitou a remarcação. O atendimento de " + servico(proposta) + " agora é "
+                        + periodo(atendimento.getInicio(), atendimento.getTermino()) + "."
+                : quemRespondeu + " recusou a remarcação. O atendimento de " + servico(proposta) + " continua "
+                        + periodo(atendimento.getInicio(), atendimento.getTermino()) + ".";
+        TipoNotificacao tipo = aceita ? TipoNotificacao.REMARCACAO_ACEITA : TipoNotificacao.REMARCACAO_RECUSADA;
+        String titulo = aceita ? "Remarcação aceita" : "Remarcação recusada";
+
+        if (pedidaPor == LadoAtendimento.PACIENTE) {
+            paraPaciente(proposta, Destaque.PROPOSTA, tipo, titulo, mensagem, true);
+        } else {
+            paraProfissional(proposta, Destaque.PROPOSTA, tipo, titulo, mensagem, true);
+        }
+    }
+
+    /** Avisa o outro lado de quem cancelou. */
+    public void atendimentoCancelado(Atendimento atendimento, LadoAtendimento canceladoPor) {
+        Proposta proposta = atendimento.getProposta();
+        String quando = periodo(atendimento.getInicio(), atendimento.getTermino());
+        if (canceladoPor == LadoAtendimento.PACIENTE) {
+            paraProfissional(proposta, Destaque.SOLICITACAO, TipoNotificacao.ATENDIMENTO_CANCELADO, "Atendimento cancelado",
+                    "O paciente cancelou o atendimento de " + servico(proposta) + " marcado para " + quando + ".", true);
+        } else {
+            paraPaciente(proposta, Destaque.SOLICITACAO, TipoNotificacao.ATENDIMENTO_CANCELADO, "Atendimento cancelado",
+                    nomeDoProfissional(proposta) + " cancelou o atendimento de " + servico(proposta) + " marcado para "
+                            + quando + ". A vaga voltou a receber propostas.", true);
+        }
+    }
+
+    public enum Lembrete {
+        VESPERA,
+        TRINTA_MINUTOS,
+        INICIO
+    }
+
+    /** Para os dois lados, no sino e por e-mail. */
+    public void lembrete(Atendimento atendimento, Lembrete lembrete) {
+        Proposta proposta = atendimento.getProposta();
+        String hora = HORA.format(atendimento.getInicio().atZone(FUSO));
+        String mensagem = switch (lembrete) {
+            case VESPERA -> "O atendimento de " + servico(proposta) + " é " + quando(atendimento.getInicio()) + ".";
+            case TRINTA_MINUTOS -> "O atendimento de " + servico(proposta) + " começa às " + hora + ".";
+            case INICIO -> "O atendimento de " + servico(proposta) + " começou agora (" + hora + ").";
+        };
+        String titulo = lembrete == Lembrete.INICIO ? "Atendimento começando" : "Lembrete de atendimento";
+
+        paraPaciente(proposta, Destaque.PROPOSTA, TipoNotificacao.LEMBRETE_ATENDIMENTO, titulo,
+                mensagem + " Profissional: " + nomeDoProfissional(proposta) + ".", true);
+        paraProfissional(proposta, Destaque.PROPOSTA, TipoNotificacao.LEMBRETE_ATENDIMENTO, titulo, mensagem, true);
+    }
+
+    /** No término; o pedido de avaliação entra aqui na branch 5. */
+    public void atendimentoFinalizado(Atendimento atendimento) {
+        Proposta proposta = atendimento.getProposta();
+        String mensagem = "O atendimento de " + servico(proposta) + " terminou.";
+        paraPaciente(proposta, Destaque.PROPOSTA, TipoNotificacao.ATENDIMENTO_FINALIZADO, "Atendimento finalizado",
+                mensagem + " Em breve você poderá avaliar " + nomeDoProfissional(proposta) + ".", true);
+        paraProfissional(proposta, Destaque.PROPOSTA, TipoNotificacao.ATENDIMENTO_FINALIZADO, "Atendimento finalizado",
+                mensagem + " Em breve você poderá avaliar o paciente.", true);
     }
 
     // ------------------------------------------------------------ validação
@@ -125,14 +243,48 @@ public class Notificador {
     }
 
     private void paraPaciente(Proposta proposta, Destaque destaque, TipoNotificacao tipo, String titulo, String mensagem) {
+        paraPaciente(proposta, destaque, tipo, titulo, mensagem, false);
+    }
+
+    private void paraPaciente(
+            Proposta proposta, Destaque destaque, TipoNotificacao tipo, String titulo, String mensagem, boolean comEmail) {
         Solicitacao solicitacao = proposta.getSolicitacao();
         notificacaoService.notificar(solicitacao.getPaciente().getUsuario(), TipoPerfil.PACIENTE, tipo, titulo,
-                limitar(mensagem), linkDaSolicitacao("/patient", proposta, destaque), false);
+                limitar(mensagem), linkDaSolicitacao("/patient", proposta, destaque), comEmail);
     }
 
     private void paraProfissional(Proposta proposta, Destaque destaque, TipoNotificacao tipo, String titulo, String mensagem) {
+        paraProfissional(proposta, destaque, tipo, titulo, mensagem, false);
+    }
+
+    private void paraProfissional(
+            Proposta proposta, Destaque destaque, TipoNotificacao tipo, String titulo, String mensagem, boolean comEmail) {
         notificacaoService.notificar(proposta.getProfissional().getUsuario(), TipoPerfil.PROFISSIONAL, tipo, titulo,
-                limitar(mensagem), linkDaSolicitacao("/professional", proposta, destaque), false);
+                limitar(mensagem), linkDaSolicitacao("/professional", proposta, destaque), comEmail);
+    }
+
+    /** "05/11, das 08:00 às 18:00" ou, em dias diferentes, "de 05/11 às 08:00 até 07/11 às 18:00". */
+    static String periodo(Instant inicio, Instant termino) {
+        ZonedDateTime de = inicio.atZone(FUSO);
+        ZonedDateTime ate = termino.atZone(FUSO);
+        if (de.toLocalDate().equals(ate.toLocalDate())) {
+            return DIA.format(de) + ", das " + HORA.format(de) + " às " + HORA.format(ate);
+        }
+        return "de " + DIA.format(de) + " às " + HORA.format(de) + " até " + DIA.format(ate) + " às " + HORA.format(ate);
+    }
+
+    /** "hoje às 14:00", "amanhã às 14:00" ou "em 05/11 às 14:00". */
+    private static String quando(Instant instante) {
+        ZonedDateTime momento = instante.atZone(FUSO);
+        LocalDate hoje = LocalDate.now(FUSO);
+        String hora = " às " + HORA.format(momento);
+        if (momento.toLocalDate().equals(hoje)) {
+            return "hoje" + hora;
+        }
+        if (momento.toLocalDate().equals(hoje.plusDays(1))) {
+            return "amanhã" + hora;
+        }
+        return "em " + DIA.format(momento) + hora;
     }
 
     private static String linkDaSolicitacao(String area, Proposta proposta, Destaque destaque) {

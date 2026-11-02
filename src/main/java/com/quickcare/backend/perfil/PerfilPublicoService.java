@@ -1,5 +1,7 @@
 package com.quickcare.backend.perfil;
 
+import com.quickcare.backend.atendimento.AtendimentoRepository;
+import com.quickcare.backend.atendimento.StatusAtendimento;
 import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
 import com.quickcare.backend.especialidade.Especialidade;
 import com.quickcare.backend.paciente.Paciente;
@@ -30,6 +32,7 @@ public class PerfilPublicoService {
     private final ProfissionalRepository profissionalRepository;
     private final PacienteRepository pacienteRepository;
     private final PropostaRepository propostaRepository;
+    private final AtendimentoRepository atendimentoRepository;
     private final ArmazenamentoDocumentoService armazenamentoDocumentoService;
 
     /**
@@ -56,8 +59,8 @@ public class PerfilPublicoService {
                 profissional.getCidade(),
                 profissional.getUf(),
                 profissional.getCriadoEm(),
-                propostaRepository.countByProfissionalIdAndStatusAndSolicitacaoStatus(
-                        profissional.getId(), StatusProposta.ACEITA, StatusSolicitacao.CONCLUIDA),
+                atendimentoRepository.countByPropostaProfissionalIdAndStatusIn(
+                        profissional.getId(), StatusAtendimento.REALIZADOS),
                 atendimentoIniciado(usuarioId, profissional)
                         ? ContatoEmergenciaResponse.de(profissional.getContatosEmergencia())
                         : null
@@ -66,8 +69,14 @@ public class PerfilPublicoService {
 
     private boolean atendimentoIniciado(Long usuarioId, Profissional profissional) {
         return pacienteRepository.findByUsuarioId(usuarioId)
-                .map(paciente -> atendimentoNaFase(profissional, paciente.getId(), StatusSolicitacao.ATENDIMENTO_INICIADO))
+                .map(paciente -> atendimentoEmAndamento(profissional, paciente.getId()))
                 .orElse(false);
+    }
+
+    /** Os contatos de emergência são trocados enquanto um atendimento entre os dois está acontecendo. */
+    private boolean atendimentoEmAndamento(Profissional profissional, Long pacienteId) {
+        return atendimentoRepository.existsByPropostaProfissionalIdAndSolicitacaoPacienteIdAndStatusIn(
+                profissional.getId(), pacienteId, Set.of(StatusAtendimento.EM_ANDAMENTO));
     }
 
     /** O profissional tem proposta aceita numa solicitação do paciente que está numa dessas fases. */
@@ -108,7 +117,7 @@ public class PerfilPublicoService {
                         ? new PerfilPublicoPacienteResponse.Saude(
                                 paciente.getAlergias(), paciente.getCondicoesSaude(), paciente.getMedicamentosEmUso())
                         : null,
-                atendimentoNaFase(profissional, pacienteId, StatusSolicitacao.ATENDIMENTO_INICIADO)
+                atendimentoEmAndamento(profissional, pacienteId)
                         ? ContatoEmergenciaResponse.de(paciente.getContatosEmergencia())
                         : null
         );

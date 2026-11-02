@@ -289,13 +289,13 @@ propostas (email, status, valor, abordagem) AS (
            ('ambos@quickcare.dev', 'ACEITA', 150.00,
             'Acompanhamento durante o dia, com apoio na alimentação, higiene e medicação.')
 )
-INSERT INTO proposta (solicitacao_id, profissional_id, solicitacao_profissional_id, valor, abordagem, prazo, status)
+INSERT INTO proposta (solicitacao_id, profissional_id, solicitacao_profissional_id, valor, abordagem, inicio, termino, status)
 SELECT presencial.id, pr.id,
        CASE WHEN p.status = 'ACEITA'
             THEN (SELECT sp.id FROM solicitacao_profissional sp
                   WHERE sp.solicitacao_id = presencial.id AND sp.categoria = 'CUIDADOR')
        END,
-       p.valor, p.abordagem, CURRENT_DATE + 10, p.status
+       p.valor, p.abordagem, (CURRENT_DATE + 10 + TIME '08:00') AT TIME ZONE 'America/Sao_Paulo', (CURRENT_DATE + 10 + TIME '18:00') AT TIME ZONE 'America/Sao_Paulo', p.status
 FROM presencial
 CROSS JOIN propostas p
 JOIN usuario u ON u.email = p.email
@@ -359,10 +359,10 @@ JOIN especialidade e ON e.nome = 'Nutrição'
 WHERE u.email = 'nutricionista@quickcare.dev'
 ON CONFLICT DO NOTHING;
 
-INSERT INTO proposta (solicitacao_id, profissional_id, valor, abordagem, prazo, status)
+INSERT INTO proposta (solicitacao_id, profissional_id, valor, abordagem, inicio, termino, status)
 SELECT s.id, pr.id, 120.00,
        'Avaliação inicial por vídeo e plano alimentar com retorno quinzenal pelos próximos três meses.',
-       CURRENT_DATE + 20, 'PENDENTE'
+       (CURRENT_DATE + 20 + TIME '08:00') AT TIME ZONE 'America/Sao_Paulo', (CURRENT_DATE + 20 + TIME '18:00') AT TIME ZONE 'America/Sao_Paulo', 'PENDENTE'
 FROM solicitacao s
 JOIN paciente pa ON pa.id = s.paciente_id
 JOIN usuario up ON up.id = pa.usuario_id AND up.email = 'paciente@quickcare.dev'
@@ -426,10 +426,10 @@ especialidade_da_linha AS (
     INSERT INTO solicitacao_profissional_especialidade (solicitacao_profissional_id, especialidade_id)
     SELECT linha.id, e.id FROM linha JOIN especialidade e ON e.nome = 'Curativos'
 )
-INSERT INTO proposta (solicitacao_id, profissional_id, solicitacao_profissional_id, valor, abordagem, prazo, status)
+INSERT INTO proposta (solicitacao_id, profissional_id, solicitacao_profissional_id, valor, abordagem, inicio, termino, status)
 SELECT linha.solicitacao_id, pr.id, linha.id, 200.00,
        'Curativo diário com avaliação da ferida e orientação sobre o controle da glicemia.',
-       CURRENT_DATE + 7, 'ACEITA'
+       (CURRENT_DATE + 7 + TIME '08:00') AT TIME ZONE 'America/Sao_Paulo', (CURRENT_DATE + 7 + TIME '18:00') AT TIME ZONE 'America/Sao_Paulo', 'ACEITA'
 FROM linha
 JOIN usuario u ON u.email = 'profissional@quickcare.dev'
 JOIN profissional pr ON pr.usuario_id = u.id;
@@ -508,10 +508,13 @@ BEGIN
         UPDATE solicitacao_profissional SET vagas_preenchidas = vagas_preenchidas + 1 WHERE id = v_linha;
     END IF;
 
-    INSERT INTO proposta (solicitacao_id, profissional_id, solicitacao_profissional_id, valor, abordagem, prazo, status,
-                          criado_em, atualizado_em)
-    VALUES (p_solicitacao, v_profissional, v_linha, p_valor, p_abordagem, CURRENT_DATE + 10, p_status,
-            now() - make_interval(days => p_dias_atras), now());
+    INSERT INTO proposta (solicitacao_id, profissional_id, solicitacao_profissional_id, valor, abordagem, inicio, termino,
+                          status, criado_em, atualizado_em)
+    SELECT p_solicitacao, v_profissional, v_linha, p_valor, p_abordagem,
+           (s.prazo_desejado + TIME '08:00') AT TIME ZONE 'America/Sao_Paulo',
+           (s.prazo_desejado + TIME '18:00') AT TIME ZONE 'America/Sao_Paulo',
+           p_status, now() - make_interval(days => p_dias_atras), now()
+    FROM solicitacao s WHERE s.id = p_solicitacao;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -555,6 +558,65 @@ SELECT pg_temp.seed_proposta(pg_temp.seed_solicitacao('paciente@quickcare.dev',
            'Cuidadora noturna por um mês.', 'PRESENCIAL', 'CUIDADOR', 'Cuidador de Idosos',
            'CANCELADA', -2, 20),
        'ambos@quickcare.dev', 2400.00, 'Plantão noturno de 12h, cinco noites por semana.', 'RECUSADA', 19);
+
+-- Atendimentos: toda proposta aceita tem um, no estado que as datas indicam
+-- (como a migration V21 faz com as que já existiam).
+INSERT INTO atendimento (proposta_id, solicitacao_id, status, inicio, termino, aceito_em, criado_em)
+SELECT p.id, p.solicitacao_id,
+       CASE
+           WHEN s.status = 'CANCELADA' THEN 'CANCELADO'
+           WHEN now() < p.inicio THEN 'AGENDADO'
+           WHEN now() < p.termino THEN 'EM_ANDAMENTO'
+           WHEN now() < p.termino + INTERVAL '72 hours' THEN 'FINALIZADO'
+           ELSE 'CONCLUIDO'
+       END,
+       p.inicio, p.termino, p.atualizado_em - INTERVAL '3 days', p.atualizado_em
+FROM proposta p
+JOIN solicitacao s ON s.id = p.solicitacao_id
+WHERE p.status = 'ACEITA'
+  AND NOT EXISTS (SELECT 1 FROM atendimento a WHERE a.proposta_id = p.id);
+
+-- Os de solicitações concluídas aconteceram no dia desejado delas (no passado).
+UPDATE proposta p
+SET inicio = (s.prazo_desejado + TIME '08:00') AT TIME ZONE 'America/Sao_Paulo',
+    termino = (s.prazo_desejado + TIME '18:00') AT TIME ZONE 'America/Sao_Paulo'
+FROM solicitacao s
+WHERE s.id = p.solicitacao_id AND s.status = 'CONCLUIDA' AND p.status = 'ACEITA'
+  AND s.prazo_desejado < CURRENT_DATE AND p.inicio > now();
+
+UPDATE atendimento a
+SET inicio = p.inicio, termino = p.termino, status = 'CONCLUIDO',
+    aceito_em = LEAST(a.aceito_em, p.inicio - INTERVAL '3 days'),
+    lembrete_24h_em = p.inicio, lembrete_30min_em = p.inicio, lembrete_inicio_em = p.inicio
+FROM proposta p, solicitacao s
+WHERE a.proposta_id = p.id AND s.id = p.solicitacao_id AND s.status = 'CONCLUIDA'
+  AND a.inicio <> p.inicio;
+
+-- Um em andamento agora (ambos@ cuidando da mãe da Maria no fim de semana):
+-- contatos de emergência liberados dos dois lados. A cada recarga da massa,
+-- o período volta a cercar o horário atual.
+UPDATE atendimento a
+SET status = 'EM_ANDAMENTO',
+    inicio = date_trunc('hour', now()) - INTERVAL '2 hours',
+    termino = date_trunc('hour', now()) + INTERVAL '8 hours',
+    aceito_em = now() - INTERVAL '5 days',
+    lembrete_24h_em = now(), lembrete_30min_em = now(), lembrete_inicio_em = now()
+FROM proposta p, solicitacao s
+WHERE a.proposta_id = p.id AND s.id = p.solicitacao_id
+  AND s.descricao LIKE 'Cuidadora para os fins de semana%'
+  AND a.status IN ('AGENDADO', 'EM_ANDAMENTO', 'FINALIZADO', 'CONCLUIDO');
+
+-- Uma remarcação pendente: o paciente@ pediu para adiantar um dia o
+-- atendimento da ambos@ (ela aceita ou recusa como profissional).
+UPDATE atendimento a
+SET remarcacao_inicio = a.inicio - INTERVAL '1 day',
+    remarcacao_termino = a.termino - INTERVAL '1 day',
+    remarcacao_por = 'PACIENTE',
+    remarcacao_solicitada_em = now() - INTERVAL '2 hours'
+FROM proposta p, solicitacao s, profissional pr, usuario u
+WHERE a.proposta_id = p.id AND s.id = p.solicitacao_id AND pr.id = p.profissional_id AND u.id = pr.usuario_id
+  AND s.descricao LIKE 'Minha mãe precisa de curativos diários%' AND u.email = 'ambos@quickcare.dev'
+  AND a.status = 'AGENDADO' AND a.remarcacao_por IS NULL;
 
 -- Notificações de exemplo (sino): ambos@ tem não lidas nos dois perfis, para
 -- ver o indicador do outro perfil no seletor; paciente@ e profissional@ têm

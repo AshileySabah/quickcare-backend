@@ -1,5 +1,9 @@
 package com.quickcare.backend.solicitacao;
 
+import com.quickcare.backend.atendimento.Atendimento;
+import com.quickcare.backend.atendimento.AtendimentoRepository;
+import com.quickcare.backend.atendimento.AtendimentoService;
+import com.quickcare.backend.atendimento.StatusAtendimento;
 import com.quickcare.backend.cadastro.exception.EspecialidadeInvalidaException;
 import com.quickcare.backend.especialidade.Especialidade;
 import com.quickcare.backend.especialidade.EspecialidadeRepository;
@@ -12,7 +16,6 @@ import com.quickcare.backend.paciente.Paciente;
 import com.quickcare.backend.paciente.PacienteRepository;
 import com.quickcare.backend.profissional.Profissional;
 import com.quickcare.backend.profissional.ProfissionalRepository;
-import com.quickcare.backend.proposta.MotivoReaceite;
 import com.quickcare.backend.proposta.Proposta;
 import com.quickcare.backend.proposta.PropostaRepository;
 import com.quickcare.backend.proposta.PropostaRepository.ContagemPropostas;
@@ -52,6 +55,8 @@ public class SolicitacaoService {
     private final PropostaRepository propostaRepository;
     private final GeocodificacaoService geocodificacaoService;
     private final Notificador notificador;
+    private final AtendimentoService atendimentoService;
+    private final AtendimentoRepository atendimentoRepository;
 
     @Transactional
     public SolicitacaoResponse criar(Long usuarioId, SolicitacaoRequest request) {
@@ -68,11 +73,12 @@ public class SolicitacaoService {
                 .build();
         aplicarDados(solicitacao, request);
 
-        return SolicitacaoResponse.de(solicitacaoRepository.save(solicitacao), 0);
+        return SolicitacaoResponse.de(solicitacaoRepository.save(solicitacao), 0, List.of());
     }
 
     @Transactional(readOnly = true)
     public List<SolicitacaoResponse> listarDoPaciente(Long usuarioId) {
+        atendimentoService.processarVencidos();
         Paciente paciente = buscarPacienteAtivo(usuarioId);
 
         return responder(solicitacaoRepository.findByPacienteIdOrderByCriadoEmDesc(paciente.getId()));
@@ -87,6 +93,7 @@ public class SolicitacaoService {
      */
     @Transactional(readOnly = true)
     public List<SolicitacaoResponse> listarDisponiveis(Long usuarioId) {
+        atendimentoService.processarVencidos();
         Profissional profissional = profissionalRepository.findByUsuarioId(usuarioId)
                 .filter(p -> !p.isBanido())
                 .orElseThrow(() -> new PerfilNaoAutorizadoException("Apenas profissionais podem ver solicitações disponíveis."));
@@ -127,6 +134,7 @@ public class SolicitacaoService {
      */
     @Transactional(readOnly = true)
     public SolicitacaoResponse buscar(Long usuarioId, Long id) {
+        atendimentoService.processarVencidos();
         Solicitacao solicitacao = solicitacaoRepository.findById(id)
                 .orElseThrow(SolicitacaoNaoEncontradaException::new);
 
@@ -152,25 +160,22 @@ public class SolicitacaoService {
             throw new TransicaoStatusInvalidaException("Esta solicitação não pode mais ser editada.");
         }
 
-        // Editar substitui as linhas pedidas: as propostas aceitas saem das
-        // vagas e voltam a aguardar o aceite do paciente na versão nova.
-        List<Proposta> aceitas = propostaRepository.findBySolicitacaoIdAndStatus(id, StatusProposta.ACEITA);
-        aceitas.forEach(proposta -> proposta.voltarParaReaceite(MotivoReaceite.SOLICITACAO_ALTERADA));
-        if (!aceitas.isEmpty()) {
-            solicitacao.setStatus(StatusSolicitacao.RECEBENDO_PROPOSTAS);
-        }
-
-        List<Proposta> pendentes = propostaRepository.findBySolicitacaoIdAndStatus(id, StatusProposta.PENDENTE).stream()
-                .filter(proposta -> !aceitas.contains(proposta))
-                .toList();
+        // Editar substitui as linhas pedidas. Os aceitos que ainda vão atender
+        // reservam vaga na versão nova e reaceitam ou recusam; enquanto isso a
+        // solicitação volta a receber propostas.
+        atendimentoService.prepararEdicao(solicitacao);
+        List<Proposta> pendentes = propostaRepository.findBySolicitacaoIdAndStatus(id, StatusProposta.PENDENTE);
 
         aplicarDados(solicitacao, request);
+        solicitacaoRepository.saveAndFlush(solicitacao);
+        List<Proposta> aguardandoReaceite = atendimentoService.solicitacaoEditada(solicitacao);
+
         SolicitacaoResponse response = responder(solicitacaoRepository.saveAndFlush(solicitacao));
-        notificador.solicitacaoAlterada(aceitas, pendentes);
+        notificador.solicitacaoAlterada(aguardandoReaceite, pendentes);
         return response;
     }
 
-    /** Propostas ainda pendentes são recusadas junto com o cancelamento. */
+    /** Pendentes são recusadas e os atendimentos que ainda iam acontecer, cancelados. */
     @Transactional
     public SolicitacaoResponse cancelar(Long usuarioId, Long id) {
         Solicitacao solicitacao = buscarDoPaciente(usuarioId, id);
@@ -180,26 +185,15 @@ public class SolicitacaoService {
         }
 
         List<Proposta> pendentes = propostaRepository.findBySolicitacaoIdAndStatus(id, StatusProposta.PENDENTE);
-        List<Proposta> aceitas = propostaRepository.findBySolicitacaoIdAndStatus(id, StatusProposta.ACEITA);
+        List<Proposta> aceitas = atendimentoRepository.findBySolicitacaoIdAndStatusIn(id, StatusAtendimento.ATIVOS).stream()
+                .map(Atendimento::getProposta)
+                .toList();
         pendentes.forEach(proposta -> proposta.setStatus(StatusProposta.RECUSADA));
+        atendimentoService.solicitacaoCancelada(solicitacao);
         solicitacao.setStatus(StatusSolicitacao.CANCELADA);
 
         SolicitacaoResponse response = responder(solicitacaoRepository.saveAndFlush(solicitacao));
         notificador.solicitacaoCancelada(concatenar(aceitas, pendentes));
-        return response;
-    }
-
-    @Transactional
-    public SolicitacaoResponse concluir(Long usuarioId, Long id) {
-        Solicitacao solicitacao = buscarDoPaciente(usuarioId, id);
-
-        if (solicitacao.getStatus() != StatusSolicitacao.EM_ANDAMENTO) {
-            throw new TransicaoStatusInvalidaException("Apenas solicitações em andamento podem ser concluídas.");
-        }
-
-        solicitacao.setStatus(StatusSolicitacao.CONCLUIDA);
-        SolicitacaoResponse response = responder(solicitacaoRepository.saveAndFlush(solicitacao));
-        notificador.solicitacaoConcluida(propostaRepository.findBySolicitacaoIdAndStatus(id, StatusProposta.ACEITA));
         return response;
     }
 
@@ -219,14 +213,20 @@ public class SolicitacaoService {
             return List.of();
         }
 
+        List<Long> ids = solicitacoes.stream().map(Solicitacao::getId).toList();
         Map<Long, Long> totalPorSolicitacao = propostaRepository
-                .contarPorSolicitacao(solicitacoes.stream().map(Solicitacao::getId).toList(), StatusProposta.CANCELADA)
+                .contarPorSolicitacao(ids, StatusProposta.CANCELADA)
                 .stream()
                 .collect(Collectors.toMap(ContagemPropostas::getSolicitacaoId, ContagemPropostas::getTotal));
+        Map<Long, List<Atendimento>> ativosPorSolicitacao = atendimentoRepository
+                .findBySolicitacaoIdInAndStatusIn(ids, StatusAtendimento.ATIVOS).stream()
+                .collect(Collectors.groupingBy(atendimento -> atendimento.getSolicitacao().getId()));
 
         return solicitacoes.stream()
                 .map(solicitacao -> SolicitacaoResponse.de(
-                        solicitacao, totalPorSolicitacao.getOrDefault(solicitacao.getId(), 0L)))
+                        solicitacao,
+                        totalPorSolicitacao.getOrDefault(solicitacao.getId(), 0L),
+                        ativosPorSolicitacao.getOrDefault(solicitacao.getId(), List.of())))
                 .toList();
     }
 
