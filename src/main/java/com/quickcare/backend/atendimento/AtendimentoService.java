@@ -299,30 +299,28 @@ public class AtendimentoService {
 
     @Transactional
     public void encerrarPorBloqueio(Long pacienteId, Long profissionalId, LadoAtendimento quemBloqueou) {
+        encerrarPorBloqueio(pacienteId, profissionalId, quemBloqueou, null);
+    }
+
+    @Transactional
+    public void encerrarPorBloqueio(Long pacienteId, Long profissionalId, LadoAtendimento quemBloqueou, String motivo) {
         if (quemBloqueou == LadoAtendimento.SISTEMA) {
             encerrarPorBloqueioDoAdmin(pacienteId, profissionalId);
             return;
         }
         Instant agora = Instant.now(clock);
-        Atendimento comOcorrencia = null;
-        MotivoOcorrencia motivo = null;
-
-        for (Atendimento atendimento : atendimentoRepository.findByPropostaProfissionalIdAndSolicitacaoPacienteIdAndStatusIn(
-                profissionalId, pacienteId, StatusAtendimento.ATIVOS)) {
-            if (atendimento.getStatus() == StatusAtendimento.AGUARDANDO_REACEITE
-                    && quemBloqueou == LadoAtendimento.PROFISSIONAL) {
-                recusarReaceite(atendimento);
-                continue;
-            }
-            Optional<MotivoOcorrencia> conta = ocorrenciaDoCancelamento(atendimento, agora);
-            if (motivo == null && conta.isPresent()) {
-                motivo = conta.get();
-                comOcorrencia = atendimento;
-            }
-            encerrarPorDesistencia(atendimento, quemBloqueou, agora);
+        List<Atendimento> vigentes = atendimentoRepository.findByPropostaProfissionalIdAndSolicitacaoPacienteIdAndStatusIn(
+                profissionalId, pacienteId, StatusAtendimento.ATIVOS);
+        Atendimento tardio = vigentes.stream()
+                .filter(atendimento -> RegrasOcorrencia.bloqueioTardio(atendimento, agora))
+                .findFirst()
+                .orElse(null);
+        for (Atendimento atendimento : vigentes) {
+            encerrar(atendimento, quemBloqueou, MotivoCancelamento.DESISTENCIA, StatusProposta.RECUSADA, agora, true);
+            notificador.atendimentoCancelado(atendimento, quemBloqueou);
         }
-        if (comOcorrencia != null) {
-            ocorrenciaService.registrar(usuarioDo(comOcorrencia, quemBloqueou), perfilDo(quemBloqueou), motivo, comOcorrencia);
+        if (tardio != null) {
+            ocorrenciaService.bloqueioTardio(usuarioDo(tardio, quemBloqueou), perfilDo(quemBloqueou), tardio, motivo);
         }
 
         for (Proposta pendente : propostaRepository.findByProfissionalIdAndSolicitacaoPacienteIdAndStatus(

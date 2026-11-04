@@ -5,9 +5,10 @@ public enum MotivoOcorrencia {
     ALTERACAO_TARDIA_SOLICITACAO,
     NAO_COMPARECIMENTO,
     DECISAO_DISPUTA,
-    MANUAL;
+    MANUAL,
+    BLOQUEIO_TARDIO;
 
     public boolean recorrivel() {
-        return this != NAO_COMPARECIMENTO && this != DECISAO_DISPUTA;
+        return this != NAO_COMPARECIMENTO && this != DECISAO_DISPUTA && this != BLOQUEIO_TARDIO;
     }
 }

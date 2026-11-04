@@ -7,6 +7,7 @@ import com.quickcare.backend.administrador.TipoAcaoAdmin;
 import com.quickcare.backend.administrador.dto.AcaoAdminResponse;
 import com.quickcare.backend.common.RecursoNaoEncontradoException;
 import com.quickcare.backend.ocorrencia.dto.BloqueioResponse;
+import com.quickcare.backend.ocorrencia.dto.MotivoBloqueioResponse;
 import com.quickcare.backend.ocorrencia.dto.OcorrenciaResponse;
 import com.quickcare.backend.ocorrencia.dto.PerfilAdminDetalheResponse;
 import com.quickcare.backend.ocorrencia.dto.PerfilAdminResumoResponse;
@@ -46,6 +47,7 @@ public class AdminPerfilService {
     private final OcorrenciaRepository ocorrenciaRepository;
     private final BloqueioRepository bloqueioRepository;
     private final RecursoOcorrenciaRepository recursoRepository;
+    private final MotivoBloqueioTardioRepository motivoBloqueioRepository;
     private final OcorrenciaService ocorrenciaService;
     private final AcaoAdminRepository acaoAdminRepository;
     private final AcessoAdmin acessoAdmin;
@@ -127,6 +129,16 @@ public class AdminPerfilService {
         return detalhe(carregar(ocorrencia.getPerfil(), ocorrencia.getUsuario().getId()));
     }
 
+    @Transactional
+    public PerfilAdminDetalheResponse decidirMotivoDeBloqueio(Long adminUsuarioId, Long motivoId, boolean aceitar,
+                                                             String justificativa) {
+        Usuario admin = acessoAdmin.exigir(adminUsuarioId);
+        MotivoBloqueioTardio motivo = ocorrenciaService.decidirMotivoDeBloqueio(admin, motivoId, aceitar, justificativa);
+        acessoAdmin.registrar(admin, aceitar ? TipoAcaoAdmin.MOTIVO_BLOQUEIO_ACEITO : TipoAcaoAdmin.MOTIVO_BLOQUEIO_NEGADO,
+                AcaoAdmin.Alvo.MOTIVO_BLOQUEIO, motivo.getId(), motivo.getPerfil().name(), justificativa);
+        return detalhe(carregar(motivo.getPerfil(), motivo.getUsuario().getId()));
+    }
+
     @Transactional(readOnly = true)
     public long contarRecursosEmAnalise(Long adminUsuarioId) {
         acessoAdmin.exigir(adminUsuarioId);
@@ -166,7 +178,9 @@ public class AdminPerfilService {
         return new PerfilAdminResumoResponse(usuarioId, linha.perfil(), linha.usuario().getNome(), linha.usuario().getEmail(),
                 linha.statusValidacao(), linha.banido(), ocorrenciaService.contando(usuarioId, linha.perfil()),
                 recursoRepository.countByStatusAndOcorrenciaUsuarioIdAndOcorrenciaPerfil(
-                        RecursoOcorrencia.Status.EM_ANALISE, usuarioId, linha.perfil()),
+                        RecursoOcorrencia.Status.EM_ANALISE, usuarioId, linha.perfil())
+                        + motivoBloqueioRepository.countByStatusAndUsuarioIdAndPerfil(
+                        MotivoBloqueioTardio.Status.EM_ANALISE, usuarioId, linha.perfil()),
                 ocorrenciaService.bloqueioAtivo(usuarioId, linha.perfil()).map(bloqueio -> BloqueioResponse.de(bloqueio, agora))
                         .orElse(null));
     }
@@ -177,8 +191,14 @@ public class AdminPerfilService {
         List<Ocorrencia> ocorrencias = ocorrenciaRepository.findByUsuarioIdAndPerfilOrderByCriadoEmDesc(usuarioId, linha.perfil());
         List<Bloqueio> bloqueios = bloqueioRepository.findByUsuarioIdAndPerfilOrderByInicioDesc(usuarioId, linha.perfil());
         Bloqueio corte = ocorrenciaService.corte(usuarioId, linha.perfil(), agora);
+        List<MotivoBloqueioTardio> motivos = motivoBloqueioRepository.findByUsuarioIdAndPerfilOrderByCriadoEmDesc(
+                usuarioId, linha.perfil());
 
         List<AcaoAdmin> acoes = new ArrayList<>();
+        if (!motivos.isEmpty()) {
+            acoes.addAll(acaoAdminRepository.findByAlvoTipoAndAlvoIdIn(AcaoAdmin.Alvo.MOTIVO_BLOQUEIO,
+                    motivos.stream().map(MotivoBloqueioTardio::getId).toList()));
+        }
         if (!ocorrencias.isEmpty()) {
             acoes.addAll(acaoAdminRepository.findByAlvoTipoAndAlvoIdIn(AcaoAdmin.Alvo.OCORRENCIA,
                     ocorrencias.stream().map(Ocorrencia::getId).toList()));
@@ -194,6 +214,7 @@ public class AdminPerfilService {
                 (int) RegrasBloqueio.JANELA_CONTAGEM.toDays(),
                 ocorrencias.stream().map(ocorrencia -> OcorrenciaResponse.paraOAdmin(ocorrencia, corte)).toList(),
                 bloqueios.stream().map(bloqueio -> BloqueioResponse.de(bloqueio, agora)).toList(),
+                motivos.stream().map(MotivoBloqueioResponse::de).toList(),
                 acoes.stream()
                         .sorted(Comparator.comparing(AcaoAdmin::getCriadoEm).reversed())
                         .map(AcaoAdminResponse::de)

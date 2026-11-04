@@ -18,6 +18,12 @@ public final class RegrasOcorrencia {
         return !dentroDaTolerancia && !aceitoEmCimaDaHora;
     }
 
+    public static boolean bloqueioTardio(Atendimento atendimento, Instant agora) {
+        boolean faltaMenosDe48h = agora.isAfter(atendimento.getInicio().minus(JANELA));
+        boolean aceitoEmCimaDaHora = atendimento.getAceitoEm().isAfter(atendimento.getInicio().minus(JANELA));
+        return faltaMenosDe48h && !aceitoEmCimaDaHora;
+    }
+
     public static boolean alteracaoTardia(Atendimento atendimento, Instant momentoDaAlteracao) {
         return momentoDaAlteracao.isAfter(atendimento.getInicio().minus(JANELA));
     }

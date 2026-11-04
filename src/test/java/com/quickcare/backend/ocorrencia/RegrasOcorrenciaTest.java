@@ -35,6 +35,17 @@ class RegrasOcorrenciaTest {
     }
 
     @Test
+    void bloqueioTardioEhAMenosDe48hDoInicioDeUmAceiteFeitoAntes() {
+        Atendimento atendimento = aceitoAntesDoInicio(Duration.ofDays(10));
+        Atendimento aceitoEmCimaDaHora = aceitoAntesDoInicio(Duration.ofHours(30));
+
+        assertThat(RegrasOcorrencia.bloqueioTardio(atendimento, INICIO.minus(Duration.ofHours(49)))).isFalse();
+        assertThat(RegrasOcorrencia.bloqueioTardio(atendimento, INICIO.minus(Duration.ofHours(47)))).isTrue();
+        assertThat(RegrasOcorrencia.bloqueioTardio(atendimento, INICIO.plus(Duration.ofHours(2)))).isTrue();
+        assertThat(RegrasOcorrencia.bloqueioTardio(aceitoEmCimaDaHora, INICIO.minus(Duration.ofHours(10)))).isFalse();
+    }
+
+    @Test
     void alteracaoTardiaEhAMenosDe48hDoInicio() {
         Atendimento atendimento = aceitoAntesDoInicio(Duration.ofDays(10));
 

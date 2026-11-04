@@ -35,6 +35,7 @@ public class AcaoAdmin {
         SOLICITACAO,
         PROPOSTA,
         BLOQUEIO_USUARIO,
+        MOTIVO_BLOQUEIO,
         USUARIO
     }
 

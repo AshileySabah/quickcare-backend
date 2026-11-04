@@ -14,8 +14,7 @@ public record PerfilPublicoPacienteResponse(
         String uf,
         Instant membroDesde,
         @JsonInclude(JsonInclude.Include.NON_NULL) Saude saude,
-        @JsonInclude(JsonInclude.Include.NON_NULL) List<ContatoEmergenciaResponse> contatosEmergencia,
-        @JsonInclude(JsonInclude.Include.NON_NULL) Long bloqueioId
+        @JsonInclude(JsonInclude.Include.NON_NULL) List<ContatoEmergenciaResponse> contatosEmergencia
 ) {
 
     public record Saude(

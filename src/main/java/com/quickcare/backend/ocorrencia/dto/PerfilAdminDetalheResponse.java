@@ -10,6 +10,7 @@ public record PerfilAdminDetalheResponse(
         int janelaDias,
         List<OcorrenciaResponse> ocorrencias,
         List<BloqueioResponse> bloqueios,
+        List<MotivoBloqueioResponse> motivosDeBloqueio,
         List<AcaoAdminResponse> acoes
 ) {
 }

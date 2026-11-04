@@ -332,7 +332,7 @@ class AtendimentoServiceTest {
     }
 
     @Test
-    void pacienteQueBloqueiaRecusaOVigenteEAPendenteComUmaOcorrenciaSo() {
+    void pacienteQueBloqueiaComMaisDe48hRecusaAAceitaEAPendenteSemOcorrencia() {
         Profissional profissional = profissional(20L, USUARIO_PROFISSIONAL_ID);
         linha.setQuantidade(2);
         Atendimento primeiro = agendado(profissional, dias(10));
@@ -351,23 +351,28 @@ class AtendimentoServiceTest {
         assertThat(primeiro.getProposta().getStatus()).isEqualTo(StatusProposta.RECUSADA);
         assertThat(pendente.getStatus()).isEqualTo(StatusProposta.RECUSADA);
         assertThat(linha.getVagasPreenchidas()).isZero();
-        verify(ocorrenciaService).registrar(usuarioPaciente, TipoPerfil.PACIENTE,
-                MotivoOcorrencia.CANCELAMENTO_ATENDIMENTO, primeiro);
+        assertThat(segundo.getProposta().getStatus()).isEqualTo(StatusProposta.RECUSADA);
+        verify(ocorrenciaService, never()).registrar(any(), any(), any(), any());
+        verify(ocorrenciaService, never()).bloqueioTardio(any(), any(), any(), any());
         verify(notificador).atendimentoCancelado(primeiro, LadoAtendimento.PACIENTE);
         verify(notificador).propostaEncerradaPorBloqueio(pendente, LadoAtendimento.PACIENTE);
     }
 
     @Test
-    void profissionalQueBloqueiaDentroDaToleranciaCancelaSemOcorrencia() {
+    void profissionalQueBloqueiaAMenosDe48hEncerraNaHoraEMandaOMotivoParaAnalise() {
         Profissional profissional = profissional(20L, USUARIO_PROFISSIONAL_ID);
         Atendimento atendimento = agendado(profissional, dias(10));
+        relogio.avancar(dias(9));
         when(atendimentoRepository.findByPropostaProfissionalIdAndSolicitacaoPacienteIdAndStatusIn(
                 20L, 10L, StatusAtendimento.ATIVOS)).thenReturn(List.of(atendimento));
 
-        service.encerrarPorBloqueio(10L, 20L, LadoAtendimento.PROFISSIONAL);
+        service.encerrarPorBloqueio(10L, 20L, LadoAtendimento.PROFISSIONAL, "Paciente me ameaçou por mensagem.");
 
-        assertThat(atendimento.getProposta().getStatus()).isEqualTo(StatusProposta.CANCELADA);
+        assertThat(atendimento.getStatus()).isEqualTo(StatusAtendimento.CANCELADO);
+        assertThat(atendimento.getProposta().getStatus()).isEqualTo(StatusProposta.RECUSADA);
         verify(ocorrenciaService, never()).registrar(any(), any(), any(), any());
+        verify(ocorrenciaService).bloqueioTardio(profissional.getUsuario(), TipoPerfil.PROFISSIONAL, atendimento,
+                "Paciente me ameaçou por mensagem.");
         verify(notificador).atendimentoCancelado(atendimento, LadoAtendimento.PROFISSIONAL);
     }
 

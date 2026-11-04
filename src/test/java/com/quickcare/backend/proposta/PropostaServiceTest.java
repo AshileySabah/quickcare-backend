@@ -281,6 +281,37 @@ class PropostaServiceTest {
     }
 
     @Test
+    void comBloqueioOPacienteNaoVeNomeNemFotoDoProfissionalNoHistorico() {
+        when(solicitacaoRepository.findById(50L)).thenReturn(Optional.of(solicitacao));
+        when(propostaRepository.findBySolicitacaoIdOrderByCriadoEmAsc(50L)).thenReturn(List.of(
+                proposta(100L, profissional, StatusProposta.RECUSADA)));
+        when(bloqueioUsuarioRepository.existsByPacienteIdAndProfissionalId(10L, 20L)).thenReturn(true);
+
+        PropostaResponse response = service.listarDaSolicitacao(USUARIO_PACIENTE_ID, 50L).get(0);
+
+        assertThat(response.profissional().perfilIndisponivel()).isTrue();
+        assertThat(response.profissional().nome()).isNull();
+        assertThat(response.profissional().avatarUrl()).isNull();
+        assertThat(response.solicitacao().pacienteIndisponivel()).isFalse();
+    }
+
+    @Test
+    void comBloqueioOProfissionalNaoVeNomeNemFotoDoPacienteMesmoComPropostaAceita() {
+        mockProfissional(profissional);
+        when(propostaRepository.findByProfissionalIdOrderByCriadoEmDesc(20L)).thenReturn(List.of(
+                proposta(100L, profissional, StatusProposta.ACEITA)));
+        when(bloqueioUsuarioRepository.existsByPacienteIdAndProfissionalId(10L, 20L)).thenReturn(true);
+
+        PropostaResponse response = service.listarDoProfissional(USUARIO_PROFISSIONAL_ID).get(0);
+
+        assertThat(response.solicitacao().pacienteIndisponivel()).isTrue();
+        assertThat(response.solicitacao().pacienteId()).isNull();
+        assertThat(response.solicitacao().pacienteNome()).isNull();
+        assertThat(response.profissional().perfilIndisponivel()).isFalse();
+        assertThat(response.profissional().nome()).isNotNull();
+    }
+
+    @Test
     void editaPropostaPendente() {
         Proposta proposta = proposta(100L, profissional, StatusProposta.PENDENTE);
         mockProfissional(profissional);

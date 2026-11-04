@@ -179,6 +179,21 @@ class PerfilPublicoServiceTest {
         assertThat(perfil.contatosEmergencia()).isNull();
     }
 
+    @Test
+    void comBloqueioEmQualquerSentidoNenhumDosDoisVeOPerfilDoOutro() {
+        when(profissionalRepository.findById(PROFISSIONAL_ID)).thenReturn(Optional.of(profissional));
+        when(pacienteRepository.findByUsuarioId(USUARIO_PACIENTE_ID)).thenReturn(Optional.of(paciente));
+        when(profissionalRepository.findByUsuarioId(USUARIO_PROFISSIONAL_ID)).thenReturn(Optional.of(profissional));
+        when(propostaRepository.existsByProfissionalIdAndSolicitacaoPacienteIdAndStatus(
+                PROFISSIONAL_ID, PACIENTE_ID, StatusProposta.ACEITA)).thenReturn(true);
+        when(bloqueioUsuarioRepository.existsByPacienteIdAndProfissionalId(PACIENTE_ID, PROFISSIONAL_ID)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.buscarProfissional(USUARIO_PACIENTE_ID, PROFISSIONAL_ID))
+                .isInstanceOf(PerfilNaoEncontradoException.class);
+        assertThatThrownBy(() -> service.buscarPaciente(USUARIO_PROFISSIONAL_ID, PACIENTE_ID))
+                .isInstanceOf(PerfilNaoEncontradoException.class);
+    }
+
     private void mockPacienteComPropostaAceita() {
         when(profissionalRepository.findByUsuarioId(USUARIO_PROFISSIONAL_ID)).thenReturn(Optional.of(profissional));
         when(propostaRepository.existsByProfissionalIdAndSolicitacaoPacienteIdAndStatus(

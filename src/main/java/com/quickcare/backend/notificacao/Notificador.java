@@ -4,6 +4,7 @@ import com.quickcare.backend.atendimento.Atendimento;
 import com.quickcare.backend.atendimento.LadoAtendimento;
 import com.quickcare.backend.especialidade.Especialidade;
 import com.quickcare.backend.ocorrencia.Bloqueio;
+import com.quickcare.backend.ocorrencia.MotivoBloqueioTardio;
 import com.quickcare.backend.ocorrencia.MotivoOcorrencia;
 import com.quickcare.backend.ocorrencia.Ocorrencia;
 import com.quickcare.backend.ocorrencia.RecursoOcorrencia;
@@ -314,6 +315,16 @@ public class Notificador {
                 ocorrenciasDo(ocorrencia.getPerfil()), true);
     }
 
+    public void motivoDeBloqueioDecidido(MotivoBloqueioTardio motivo) {
+        String resultado = motivo.getStatus() == MotivoBloqueioTardio.Status.ACEITO
+                ? "Um administrador aceitou o motivo do seu bloqueio e não lançou ocorrência: "
+                : "Um administrador analisou o motivo do seu bloqueio e lançou uma ocorrência: ";
+        notificacaoService.notificar(motivo.getUsuario(), motivo.getPerfil(), TipoNotificacao.MOTIVO_BLOQUEIO_DECIDIDO,
+                "Motivo do bloqueio analisado",
+                limitar(resultado + comPontoFinal(motivo.getJustificativaDecisao())),
+                ocorrenciasDo(motivo.getPerfil()), true);
+    }
+
     public void propostaEncerradaPorBloqueio(Proposta proposta, LadoAtendimento quemBloqueou) {
         if (quemBloqueou == LadoAtendimento.PACIENTE) {
             paraProfissional(proposta, Destaque.SOLICITACAO, TipoNotificacao.PROPOSTA_RECUSADA, "Proposta recusada",
@@ -422,7 +433,8 @@ public class Notificador {
             "Você alterou uma solicitação (ou trocou o profissional) a menos de 48h do atendimento.",
             MotivoOcorrencia.NAO_COMPARECIMENTO, "Um atendimento ficou registrado como não comparecimento seu.",
             MotivoOcorrencia.DECISAO_DISPUTA, "Um administrador decidiu uma disputa contra você.",
-            MotivoOcorrencia.MANUAL, "Um administrador registrou uma ocorrência no seu perfil.");
+            MotivoOcorrencia.MANUAL, "Um administrador registrou uma ocorrência no seu perfil.",
+            MotivoOcorrencia.BLOQUEIO_TARDIO, "Você bloqueou alguém a menos de 48h de um atendimento aceito.");
 
     private static String ocorrenciasDo(TipoPerfil perfil) {
         return inicioDo(perfil) + "?" + PARAMETRO_DESTAQUE + "=ocorrencias";

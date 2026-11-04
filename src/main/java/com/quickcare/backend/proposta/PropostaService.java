@@ -30,6 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -85,7 +86,7 @@ public class PropostaService {
 
         Proposta salva = propostaRepository.save(proposta);
         notificador.propostaRecebida(salva);
-        return responder(salva);
+        return responder(salva, usuarioId);
     }
 
     @Transactional(readOnly = true)
@@ -97,7 +98,7 @@ public class PropostaService {
         if (solicitacao.ehDoUsuario(usuarioId)) {
             return responder(propostaRepository.findBySolicitacaoIdOrderByCriadoEmAsc(solicitacaoId).stream()
                     .filter(proposta -> proposta.getStatus() != StatusProposta.CANCELADA)
-                    .toList());
+                    .toList(), usuarioId);
         }
 
         Profissional profissional = profissionalRepository.findByUsuarioId(usuarioId)
@@ -109,14 +110,14 @@ public class PropostaService {
             throw new SolicitacaoNaoEncontradaException();
         }
 
-        return responder(minhas);
+        return responder(minhas, usuarioId);
     }
 
     @Transactional(readOnly = true)
     public List<PropostaResponse> listarDoProfissional(Long usuarioId) {
         atendimentoService.processarVencidos();
         Profissional profissional = buscarProfissionalAtivo(usuarioId);
-        return responder(propostaRepository.findByProfissionalIdOrderByCriadoEmDesc(profissional.getId()));
+        return responder(propostaRepository.findByProfissionalIdOrderByCriadoEmDesc(profissional.getId()), usuarioId);
     }
 
     @Transactional(readOnly = true)
@@ -126,7 +127,7 @@ public class PropostaService {
                 .filter(p -> p.ehDoUsuario(usuarioId) || p.getSolicitacao().ehDoUsuario(usuarioId))
                 .orElseThrow(PropostaNaoEncontradaException::new);
 
-        return responder(proposta);
+        return responder(proposta, usuarioId);
     }
 
     @Transactional
@@ -143,7 +144,7 @@ public class PropostaService {
         Proposta salva = propostaRepository.saveAndFlush(proposta);
         recalcularSolicitacao(salva.getSolicitacao());
         notificador.propostaAlterada(salva, estavaAceita);
-        return responder(salva);
+        return responder(salva, usuarioId);
     }
 
     @Transactional
@@ -159,7 +160,7 @@ public class PropostaService {
             notificador.propostaCancelada(proposta, false);
         }
 
-        return responder(proposta);
+        return responder(proposta, usuarioId);
     }
 
     @Transactional
@@ -175,7 +176,7 @@ public class PropostaService {
         recalcularSolicitacao(proposta.getSolicitacao());
         notificador.propostaRecusada(proposta, false);
 
-        return responder(proposta);
+        return responder(proposta, usuarioId);
     }
 
     @Transactional
@@ -190,7 +191,7 @@ public class PropostaService {
         atendimentoService.aceitarProposta(proposta);
         Proposta salva = propostaRepository.saveAndFlush(proposta);
         notificador.propostaAceita(salva);
-        return responder(salva);
+        return responder(salva, usuarioId);
     }
 
     private boolean bloqueados(Solicitacao solicitacao, Profissional profissional) {
@@ -203,11 +204,11 @@ public class PropostaService {
                 propostaRepository.existsBySolicitacaoIdAndStatus(solicitacao.getId(), StatusProposta.PENDENTE));
     }
 
-    private PropostaResponse responder(Proposta proposta) {
-        return responder(List.of(proposta)).get(0);
+    private PropostaResponse responder(Proposta proposta, Long usuarioId) {
+        return responder(List.of(proposta), usuarioId).get(0);
     }
 
-    private List<PropostaResponse> responder(List<Proposta> propostas) {
+    private List<PropostaResponse> responder(List<Proposta> propostas, Long usuarioId) {
         if (propostas.isEmpty()) {
             return List.of();
         }
@@ -216,11 +217,22 @@ public class PropostaService {
                 .collect(Collectors.toMap(atendimento -> atendimento.getProposta().getId(), Function.identity(),
                         (anterior, maisRecente) -> maisRecente));
         Instant agora = Instant.now(clock);
+        Map<List<Long>, Boolean> bloqueadosPorPar = new HashMap<>();
 
         return propostas.stream()
                 .map(proposta -> PropostaResponse.de(proposta, atendimentoPorProposta.get(proposta.getId()), agora,
-                        armazenamentoDocumentoService::urlDoAvatar))
+                        armazenamentoDocumentoService::urlDoAvatar, ocultar(proposta, usuarioId, bloqueadosPorPar)))
                 .toList();
+    }
+
+    private PropostaResponse.Ocultar ocultar(Proposta proposta, Long usuarioId, Map<List<Long>, Boolean> bloqueadosPorPar) {
+        boolean bloqueados = bloqueadosPorPar.computeIfAbsent(
+                List.of(proposta.getSolicitacao().getPaciente().getId(), proposta.getProfissional().getId()),
+                par -> bloqueioUsuarioRepository.existsByPacienteIdAndProfissionalId(par.get(0), par.get(1)));
+        if (!bloqueados) {
+            return PropostaResponse.Ocultar.NINGUEM;
+        }
+        return proposta.ehDoUsuario(usuarioId) ? PropostaResponse.Ocultar.PACIENTE : PropostaResponse.Ocultar.PROFISSIONAL;
     }
 
     private void aplicarDados(Proposta proposta, PropostaRequest request) {

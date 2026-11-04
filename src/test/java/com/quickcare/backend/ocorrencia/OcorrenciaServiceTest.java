@@ -1,6 +1,8 @@
 package com.quickcare.backend.ocorrencia;
 
+import com.quickcare.backend.atendimento.Atendimento;
 import com.quickcare.backend.notificacao.Notificador;
+import com.quickcare.backend.solicitacao.Solicitacao;
 import com.quickcare.backend.solicitacao.exception.PerfilNaoAutorizadoException;
 import com.quickcare.backend.solicitacao.exception.TransicaoStatusInvalidaException;
 import com.quickcare.backend.usuario.TipoPerfil;
@@ -40,6 +42,7 @@ class OcorrenciaServiceTest {
     @Mock private BloqueioRepository bloqueioRepository;
     @Mock private Notificador notificador;
     @Mock private RecursoOcorrenciaRepository recursoRepository;
+    @Mock private MotivoBloqueioTardioRepository motivoBloqueioRepository;
     @Mock private UsuarioRepository usuarioRepository;
 
     private OcorrenciaService service;
@@ -49,7 +52,8 @@ class OcorrenciaServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new OcorrenciaService(ocorrenciaRepository, bloqueioRepository, recursoRepository, usuarioRepository, notificador, Clock.fixed(AGORA, ZoneOffset.UTC));
+        service = new OcorrenciaService(ocorrenciaRepository, bloqueioRepository, recursoRepository, motivoBloqueioRepository,
+                usuarioRepository, notificador, Clock.fixed(AGORA, ZoneOffset.UTC));
         lenient().when(ocorrenciaRepository.save(any())).thenAnswer(invocation -> {
             Ocorrencia ocorrencia = invocation.getArgument(0);
             validas.add(ocorrencia.getCriadoEm());
@@ -73,6 +77,63 @@ class OcorrenciaServiceTest {
         assertThat(bloqueio.getValue().getFim()).isEqualTo(AGORA.plus(Duration.ofDays(7)));
         verify(notificador).ocorrenciaRegistrada(any(), eq(3));
         verify(notificador).bloqueioAplicado(bloqueio.getValue());
+    }
+
+    @Test
+    void bloqueioTardioSemMotivoLancaAOcorrenciaNaHora() {
+        when(bloqueioRepository.findFirstByUsuarioIdAndPerfilAndDesfeitoFalseOrderByInicioDesc(7L, TipoPerfil.PROFISSIONAL))
+                .thenReturn(Optional.empty());
+
+        service.bloqueioTardio(usuario, TipoPerfil.PROFISSIONAL, atendimento(), "  ");
+
+        ArgumentCaptor<Ocorrencia> ocorrencia = ArgumentCaptor.forClass(Ocorrencia.class);
+        verify(ocorrenciaRepository).save(ocorrencia.capture());
+        assertThat(ocorrencia.getValue().getMotivo()).isEqualTo(MotivoOcorrencia.BLOQUEIO_TARDIO);
+        assertThat(ocorrencia.getValue().podeRecorrer()).isFalse();
+        verify(motivoBloqueioRepository, never()).save(any());
+    }
+
+    @Test
+    void bloqueioTardioComMotivoVaiParaAnaliseSemOcorrencia() {
+        service.bloqueioTardio(usuario, TipoPerfil.PROFISSIONAL, atendimento(), " O paciente foi agressivo na mensagem. ");
+
+        ArgumentCaptor<MotivoBloqueioTardio> motivo = ArgumentCaptor.forClass(MotivoBloqueioTardio.class);
+        verify(motivoBloqueioRepository).save(motivo.capture());
+        assertThat(motivo.getValue().getStatus()).isEqualTo(MotivoBloqueioTardio.Status.EM_ANALISE);
+        assertThat(motivo.getValue().getTexto()).isEqualTo("O paciente foi agressivo na mensagem.");
+        verify(ocorrenciaRepository, never()).save(any());
+    }
+
+    @Test
+    void motivoAceitoNaoLancaOcorrenciaENegadoLanca() {
+        MotivoBloqueioTardio aceito = emAnalise(10L);
+        MotivoBloqueioTardio negado = emAnalise(11L);
+        when(motivoBloqueioRepository.findById(10L)).thenReturn(Optional.of(aceito));
+        when(motivoBloqueioRepository.findById(11L)).thenReturn(Optional.of(negado));
+        when(bloqueioRepository.findFirstByUsuarioIdAndPerfilAndDesfeitoFalseOrderByInicioDesc(7L, TipoPerfil.PROFISSIONAL))
+                .thenReturn(Optional.empty());
+
+        service.decidirMotivoDeBloqueio(admin, 10L, true, "Mensagem ofensiva comprovada.");
+        verify(ocorrenciaRepository, never()).save(any());
+        assertThat(aceito.getStatus()).isEqualTo(MotivoBloqueioTardio.Status.ACEITO);
+
+        service.decidirMotivoDeBloqueio(admin, 11L, false, "Não há indício do que foi relatado.");
+        assertThat(negado.getStatus()).isEqualTo(MotivoBloqueioTardio.Status.NEGADO);
+        assertThat(negado.getOcorrencia().getMotivo()).isEqualTo(MotivoOcorrencia.BLOQUEIO_TARDIO);
+        verify(notificador).motivoDeBloqueioDecidido(aceito);
+        verify(notificador).motivoDeBloqueioDecidido(negado);
+
+        assertThatThrownBy(() -> service.decidirMotivoDeBloqueio(admin, 11L, true, "De novo"))
+                .isInstanceOf(TransicaoStatusInvalidaException.class);
+    }
+
+    private static Atendimento atendimento() {
+        return Atendimento.builder().id(40L).solicitacao(Solicitacao.builder().id(50L).build()).build();
+    }
+
+    private MotivoBloqueioTardio emAnalise(Long id) {
+        return MotivoBloqueioTardio.builder().id(id).usuario(usuario).perfil(TipoPerfil.PROFISSIONAL)
+                .atendimento(atendimento()).texto("Motivo").status(MotivoBloqueioTardio.Status.EM_ANALISE).build();
     }
 
     @Test

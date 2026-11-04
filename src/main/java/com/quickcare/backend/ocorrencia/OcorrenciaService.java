@@ -32,6 +32,7 @@ public class OcorrenciaService {
     private final OcorrenciaRepository ocorrenciaRepository;
     private final BloqueioRepository bloqueioRepository;
     private final RecursoOcorrenciaRepository recursoRepository;
+    private final MotivoBloqueioTardioRepository motivoBloqueioRepository;
     private final UsuarioRepository usuarioRepository;
     private final Notificador notificador;
     private final Clock clock;
@@ -130,7 +131,48 @@ public class OcorrenciaService {
 
     @Transactional(readOnly = true)
     public long recursosEmAnalise() {
-        return recursoRepository.countByStatus(RecursoOcorrencia.Status.EM_ANALISE);
+        return recursoRepository.countByStatus(RecursoOcorrencia.Status.EM_ANALISE)
+                + motivoBloqueioRepository.countByStatus(MotivoBloqueioTardio.Status.EM_ANALISE);
+    }
+
+    @Transactional
+    public void bloqueioTardio(Usuario usuario, TipoPerfil perfil, Atendimento atendimento, String motivo) {
+        if (motivo == null || motivo.isBlank()) {
+            ocorrenciaDeBloqueioTardio(usuario, perfil, atendimento);
+            return;
+        }
+        motivoBloqueioRepository.save(MotivoBloqueioTardio.builder()
+                .usuario(usuario)
+                .perfil(perfil)
+                .atendimento(atendimento)
+                .texto(motivo.trim())
+                .status(MotivoBloqueioTardio.Status.EM_ANALISE)
+                .build());
+    }
+
+    @Transactional
+    public MotivoBloqueioTardio decidirMotivoDeBloqueio(Usuario admin, Long motivoId, boolean aceitar, String justificativa) {
+        MotivoBloqueioTardio motivo = motivoBloqueioRepository.findById(motivoId)
+                .orElseThrow(() -> new RecursoNaoEncontradoException("Motivo de bloqueio não encontrado."));
+        if (!motivo.emAnalise()) {
+            throw new TransicaoStatusInvalidaException("Este motivo já foi analisado.");
+        }
+        motivo.decidir(admin, aceitar, justificativa, agora());
+        if (!aceitar) {
+            motivo.gerou(ocorrenciaDeBloqueioTardio(motivo.getUsuario(), motivo.getPerfil(), motivo.getAtendimento()));
+        }
+        notificador.motivoDeBloqueioDecidido(motivo);
+        return motivo;
+    }
+
+    private Ocorrencia ocorrenciaDeBloqueioTardio(Usuario usuario, TipoPerfil perfil, Atendimento atendimento) {
+        return salvarEAvaliar(Ocorrencia.builder()
+                .usuario(usuario)
+                .perfil(perfil)
+                .motivo(MotivoOcorrencia.BLOQUEIO_TARDIO)
+                .solicitacao(atendimento.getSolicitacao())
+                .atendimento(atendimento)
+                .criadoEm(agora()));
     }
 
     @Transactional

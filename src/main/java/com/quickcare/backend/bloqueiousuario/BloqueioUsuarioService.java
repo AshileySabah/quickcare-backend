@@ -9,6 +9,7 @@ import com.quickcare.backend.bloqueiousuario.dto.BloqueioUsuarioResponse;
 import com.quickcare.backend.bloqueiousuario.dto.PreviaBloqueioResponse;
 import com.quickcare.backend.common.RecursoNaoEncontradoException;
 import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
+import com.quickcare.backend.ocorrencia.RegrasOcorrencia;
 import com.quickcare.backend.paciente.Paciente;
 import com.quickcare.backend.paciente.PacienteRepository;
 import com.quickcare.backend.profissional.Profissional;
@@ -49,10 +50,10 @@ public class BloqueioUsuarioService {
     }
 
     @Transactional
-    public BloqueioUsuarioResponse bloquearProfissional(Long usuarioId, Long profissionalId) {
+    public BloqueioUsuarioResponse bloquearProfissional(Long usuarioId, Long profissionalId, String motivo) {
         Paciente paciente = pacienteAtivo(usuarioId);
         Profissional profissional = profissionalBloqueavel(usuarioId, profissionalId);
-        return doProfissional(bloquear(paciente, profissional, AutorBloqueio.PACIENTE));
+        return doProfissional(bloquear(paciente, profissional, AutorBloqueio.PACIENTE, motivo));
     }
 
     @Transactional(readOnly = true)
@@ -63,10 +64,10 @@ public class BloqueioUsuarioService {
     }
 
     @Transactional
-    public BloqueioUsuarioResponse bloquearPaciente(Long usuarioId, Long pacienteId) {
+    public BloqueioUsuarioResponse bloquearPaciente(Long usuarioId, Long pacienteId, String motivo) {
         Profissional profissional = profissionalAtivo(usuarioId);
         Paciente paciente = pacienteBloqueavel(profissional, pacienteId);
-        return doPaciente(bloquear(paciente, profissional, AutorBloqueio.PROFISSIONAL));
+        return doPaciente(bloquear(paciente, profissional, AutorBloqueio.PROFISSIONAL, motivo));
     }
 
     @Transactional(readOnly = true)
@@ -94,12 +95,12 @@ public class BloqueioUsuarioService {
         bloqueioRepository.delete(bloqueio);
     }
 
-    private BloqueioUsuario bloquear(Paciente paciente, Profissional profissional, AutorBloqueio quemBloqueia) {
+    private BloqueioUsuario bloquear(Paciente paciente, Profissional profissional, AutorBloqueio quemBloqueia, String motivo) {
         if (bloqueioRepository.findByPacienteIdAndProfissionalIdAndBloqueadoPor(
                 paciente.getId(), profissional.getId(), quemBloqueia).isPresent()) {
             throw new TransicaoStatusInvalidaException("Você já bloqueou esta pessoa.");
         }
-        atendimentoService.encerrarPorBloqueio(paciente.getId(), profissional.getId(), lado(quemBloqueia));
+        atendimentoService.encerrarPorBloqueio(paciente.getId(), profissional.getId(), lado(quemBloqueia), motivo);
         return bloqueioRepository.save(BloqueioUsuario.builder()
                 .paciente(paciente)
                 .profissional(profissional)
@@ -113,9 +114,8 @@ public class BloqueioUsuarioService {
                 profissional.getId(), paciente.getId(), StatusAtendimento.ATIVOS);
         int pendentes = propostaRepository.findByProfissionalIdAndSolicitacaoPacienteIdAndStatus(
                 profissional.getId(), paciente.getId(), StatusProposta.PENDENTE).size();
-        boolean contaOcorrencia = vigentes.stream()
-                .anyMatch(atendimento -> AtendimentoService.ocorrenciaDoCancelamento(atendimento, agora).isPresent());
-        return new PreviaBloqueioResponse(nome, pendentes, vigentes.size(), contaOcorrencia);
+        boolean tardio = vigentes.stream().anyMatch(atendimento -> RegrasOcorrencia.bloqueioTardio(atendimento, agora));
+        return new PreviaBloqueioResponse(nome, pendentes, vigentes.size(), tardio);
     }
 
     private Paciente pacienteAtivo(Long usuarioId) {

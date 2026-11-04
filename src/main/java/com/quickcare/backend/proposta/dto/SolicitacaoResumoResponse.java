@@ -17,10 +17,20 @@ public record SolicitacaoResumoResponse(
         List<ProfissionalSolicitadoResponse> profissionais,
         ModalidadeSolicitacao modalidade,
         LocalDate prazoDesejado,
-        StatusSolicitacao status
+        StatusSolicitacao status,
+        boolean pacienteIndisponivel
 ) {
 
     public static SolicitacaoResumoResponse de(Solicitacao solicitacao, boolean revelaPaciente, String pacienteAvatarUrl) {
+        return de(solicitacao, revelaPaciente, pacienteAvatarUrl, false);
+    }
+
+    public static SolicitacaoResumoResponse comPacienteIndisponivel(Solicitacao solicitacao) {
+        return de(solicitacao, false, null, true);
+    }
+
+    private static SolicitacaoResumoResponse de(Solicitacao solicitacao, boolean revelaPaciente, String pacienteAvatarUrl,
+                                                boolean indisponivel) {
         return new SolicitacaoResumoResponse(
                 solicitacao.getId(),
                 revelaPaciente ? solicitacao.getPaciente().getId() : null,
@@ -29,7 +39,8 @@ public record SolicitacaoResumoResponse(
                 solicitacao.getProfissionais().stream().map(ProfissionalSolicitadoResponse::de).toList(),
                 solicitacao.getModalidade(),
                 solicitacao.getPrazoDesejado(),
-                solicitacao.getStatus()
+                solicitacao.getStatus(),
+                indisponivel
         );
     }
 

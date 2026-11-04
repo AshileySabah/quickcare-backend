@@ -1,6 +1,7 @@
 package com.quickcare.backend.ocorrencia;
 
 import com.quickcare.backend.administrador.dto.JustificativaRequest;
+import com.quickcare.backend.ocorrencia.dto.DecisaoMotivoBloqueioRequest;
 import com.quickcare.backend.ocorrencia.dto.DecisaoRecursoRequest;
 import com.quickcare.backend.ocorrencia.dto.PerfilAdminDetalheResponse;
 import com.quickcare.backend.ocorrencia.dto.PerfilAdminResumoResponse;
@@ -91,6 +92,15 @@ public class AdminPerfilController {
             @Valid @RequestBody DecisaoRecursoRequest request
     ) {
         return adminPerfilService.decidirRecurso(usuarioId, id, request.anular(), request.justificativa());
+    }
+
+    @PatchMapping("/motivos-de-bloqueio/{id}/decisao")
+    public PerfilAdminDetalheResponse decidirMotivoDeBloqueio(
+            @AuthenticationPrincipal Long usuarioId,
+            @PathVariable Long id,
+            @Valid @RequestBody DecisaoMotivoBloqueioRequest request
+    ) {
+        return adminPerfilService.decidirMotivoDeBloqueio(usuarioId, id, request.aceitar(), request.justificativa());
     }
 
     @GetMapping("/recursos/em-aberto")

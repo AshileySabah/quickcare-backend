@@ -2,8 +2,6 @@ package com.quickcare.backend.perfil;
 
 import com.quickcare.backend.atendimento.AtendimentoRepository;
 import com.quickcare.backend.atendimento.StatusAtendimento;
-import com.quickcare.backend.bloqueiousuario.AutorBloqueio;
-import com.quickcare.backend.bloqueiousuario.BloqueioUsuario;
 import com.quickcare.backend.bloqueiousuario.BloqueioUsuarioRepository;
 import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
 import com.quickcare.backend.especialidade.Especialidade;
@@ -44,11 +42,9 @@ public class PerfilPublicoService {
                 .filter(p -> !p.isBanido() && p.getStatusValidacao() == StatusValidacao.APROVADO)
                 .orElseThrow(PerfilNaoEncontradoException::new);
         Long pacienteId = pacienteRepository.findByUsuarioId(usuarioId).map(Paciente::getId).orElse(null);
-        if (pacienteId != null && bloqueio(pacienteId, profissional.getId(), AutorBloqueio.PROFISSIONAL) != null) {
+        if (pacienteId != null && bloqueioUsuarioRepository.existsByPacienteIdAndProfissionalId(pacienteId, profissional.getId())) {
             throw new PerfilNaoEncontradoException();
         }
-        BloqueioUsuario meuBloqueio = pacienteId == null ? null
-                : bloqueio(pacienteId, profissional.getId(), AutorBloqueio.PACIENTE);
 
         return new PerfilPublicoProfissionalResponse(
                 profissional.getId(),
@@ -68,14 +64,8 @@ public class PerfilPublicoService {
                         profissional.getId(), StatusAtendimento.REALIZADOS),
                 atendimentoIniciado(usuarioId, profissional)
                         ? ContatoEmergenciaResponse.de(profissional.getContatosEmergencia())
-                        : null,
-                meuBloqueio == null ? null : meuBloqueio.getId()
+                        : null
         );
-    }
-
-    private BloqueioUsuario bloqueio(Long pacienteId, Long profissionalId, AutorBloqueio bloqueadoPor) {
-        return bloqueioUsuarioRepository.findByPacienteIdAndProfissionalIdAndBloqueadoPor(
-                pacienteId, profissionalId, bloqueadoPor).orElse(null);
     }
 
     private boolean atendimentoIniciado(Long usuarioId, Profissional profissional) {
@@ -102,11 +92,9 @@ public class PerfilPublicoService {
 
         if (!propostaRepository.existsByProfissionalIdAndSolicitacaoPacienteIdAndStatus(
                 profissional.getId(), pacienteId, StatusProposta.ACEITA)
-                || bloqueio(pacienteId, profissional.getId(), AutorBloqueio.PACIENTE) != null
-                || bloqueio(pacienteId, profissional.getId(), AutorBloqueio.ADMIN) != null) {
+                || bloqueioUsuarioRepository.existsByPacienteIdAndProfissionalId(pacienteId, profissional.getId())) {
             throw new PerfilNaoEncontradoException();
         }
-        BloqueioUsuario meuBloqueio = bloqueio(pacienteId, profissional.getId(), AutorBloqueio.PROFISSIONAL);
 
         Paciente paciente = pacienteRepository.findById(pacienteId)
                 .orElseThrow(PerfilNaoEncontradoException::new);
@@ -125,8 +113,7 @@ public class PerfilPublicoService {
                         : null,
                 atendimentoEmAndamento(profissional, pacienteId)
                         ? ContatoEmergenciaResponse.de(paciente.getContatosEmergencia())
-                        : null,
-                meuBloqueio == null ? null : meuBloqueio.getId()
+                        : null
         );
     }
 

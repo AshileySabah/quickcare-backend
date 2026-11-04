@@ -27,15 +27,30 @@ public record PropostaResponse(
         Instant atualizadoEm
 ) {
 
+    public enum Ocultar {
+        NINGUEM,
+        PACIENTE,
+        PROFISSIONAL
+    }
+
     public static PropostaResponse de(
             Proposta proposta, Atendimento atendimento, Instant agora, Function<Usuario, String> avatarDe) {
+        return de(proposta, atendimento, agora, avatarDe, Ocultar.NINGUEM);
+    }
+
+    public static PropostaResponse de(Proposta proposta, Atendimento atendimento, Instant agora,
+                                      Function<Usuario, String> avatarDe, Ocultar ocultar) {
         boolean aceita = proposta.getStatus() == StatusProposta.ACEITA;
         return new PropostaResponse(
                 proposta.getId(),
-                SolicitacaoResumoResponse.de(proposta.getSolicitacao(), aceita,
-                        aceita ? avatarDe.apply(proposta.getSolicitacao().getPaciente().getUsuario()) : null),
-                ProfissionalPropostaResponse.de(proposta.getProfissional(),
-                        avatarDe.apply(proposta.getProfissional().getUsuario())),
+                ocultar == Ocultar.PACIENTE
+                        ? SolicitacaoResumoResponse.comPacienteIndisponivel(proposta.getSolicitacao())
+                        : SolicitacaoResumoResponse.de(proposta.getSolicitacao(), aceita,
+                                aceita ? avatarDe.apply(proposta.getSolicitacao().getPaciente().getUsuario()) : null),
+                ocultar == Ocultar.PROFISSIONAL
+                        ? ProfissionalPropostaResponse.indisponivel(proposta.getProfissional())
+                        : ProfissionalPropostaResponse.de(proposta.getProfissional(),
+                                avatarDe.apply(proposta.getProfissional().getUsuario())),
                 proposta.getValor(),
                 proposta.getAbordagem(),
                 proposta.getInicio(),
