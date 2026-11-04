@@ -13,6 +13,7 @@ import com.quickcare.backend.paciente.PacienteRepository;
 import com.quickcare.backend.profissional.Profissional;
 import com.quickcare.backend.profissional.ProfissionalRepository;
 import com.quickcare.backend.solicitacao.exception.PerfilNaoAutorizadoException;
+import com.quickcare.backend.usuario.Genero;
 import com.quickcare.backend.usuario.TipoPerfil;
 import com.quickcare.backend.usuario.Usuario;
 import com.quickcare.backend.usuario.UsuarioRepository;
@@ -21,6 +22,7 @@ import com.quickcare.backend.validacao.dto.ReenvioEtapaRequest;
 import com.quickcare.backend.validacao.dto.ValidacaoDetalheResponse;
 import com.quickcare.backend.validacao.dto.ValidacaoResumoResponse;
 import com.quickcare.backend.validacao.exception.CadastroNaoEncontradoException;
+import com.quickcare.backend.validacao.exception.CadastroNaoValidadoException;
 import com.quickcare.backend.validacao.exception.EtapaNaoEncontradaException;
 import com.quickcare.backend.validacao.exception.TransicaoEtapaInvalidaException;
 import com.quickcare.backend.validacao.exception.ValidacaoInvalidaException;
@@ -30,10 +32,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Stream;
 
@@ -53,7 +57,8 @@ public class ValidacaoService {
 
     public void iniciar(Paciente paciente, Map<TipoDocumento, Documento> documentos) {
         CadastroAvaliado cadastro = CadastroAvaliado.de(paciente);
-        etapaRepository.save(cadastro.novaEtapaPendente(TipoEtapaValidacao.IDENTIDADE, documentos.get(TipoDocumento.VALIDACAO_CPF)));
+        List.of(TipoEtapaValidacao.CPF, TipoEtapaValidacao.IDENTIDADE).forEach(tipo ->
+                etapaRepository.save(cadastro.novaEtapaPendente(tipo, documentos.get(tipo.getTipoDocumento()))));
     }
 
     public void iniciar(Profissional profissional, Map<TipoDocumento, Documento> documentos) {
@@ -65,7 +70,7 @@ public class ValidacaoService {
     private List<TipoEtapaValidacao> etapasAplicaveis(Profissional profissional) {
         return Stream.of(TipoEtapaValidacao.values())
                 .filter(tipo -> switch (tipo) {
-                    case IDENTIDADE -> true;
+                    case CPF, IDENTIDADE -> true;
                     case CNPJ -> profissional.getCnpj() != null && !profissional.getCnpj().isBlank();
                     case REGISTRO_PROFISSIONAL -> profissional.getRegistroProfissional() != null;
                 })
@@ -73,8 +78,14 @@ public class ValidacaoService {
     }
 
     @Transactional(readOnly = true)
-    public List<ValidacaoResumoResponse> listar(Long adminUsuarioId, PerfilValidado perfil, StatusValidacao status) {
+    public List<ValidacaoResumoResponse> listar(Long adminUsuarioId, PerfilValidado perfil, StatusValidacao status,
+                                                boolean somenteRevalidacao) {
         exigirAdministrador(adminUsuarioId);
+        if (somenteRevalidacao) {
+            return listar(adminUsuarioId, perfil, StatusValidacao.APROVADO, false).stream()
+                    .filter(ValidacaoResumoResponse::emRevalidacao)
+                    .toList();
+        }
 
         List<CadastroAvaliado> cadastros = perfil == PerfilValidado.PACIENTE
                 ? (status == null ? pacienteRepository.findAllByOrderByCriadoEmAsc() : pacienteRepository.findByStatusValidacaoOrderByCriadoEmAsc(status))
@@ -129,8 +140,9 @@ public class ValidacaoService {
         etapa.setAvaliadoEm(Instant.now());
 
         StatusValidacao anterior = cadastro.statusValidacao();
+        boolean revalidando = anterior == StatusValidacao.APROVADO;
         recalcularStatus(cadastro, todas);
-        avisarDecisao(cadastro, etapa, anterior);
+        avisarDecisao(cadastro, etapa, anterior, revalidando && EtapasAtuais.todasAprovadas(EtapasAtuais.de(todas).values()));
         return responses.detalhe(cadastro, todas, true);
     }
 
@@ -150,80 +162,131 @@ public class ValidacaoService {
     ) {
         CadastroAvaliado cadastro = carregarDoUsuario(usuarioId, perfil);
         List<EtapaValidacao> todas = etapas(cadastro);
-        EtapaValidacao atual = Optional.ofNullable(EtapasAtuais.de(todas).get(tipo))
-                .orElseThrow(EtapaNaoEncontradaException::new);
+        EtapaValidacao atual = EtapasAtuais.de(todas).get(tipo);
+        boolean novoArquivo = arquivo != null && !arquivo.isEmpty();
 
-        if (atual.getStatus() != StatusEtapa.REPROVADA) {
-            throw new TransicaoEtapaInvalidaException("Só é possível reenviar uma etapa reprovada.");
-        }
-        if (arquivo == null || arquivo.isEmpty()) {
-            throw new ValidacaoInvalidaException("Envie o documento atualizado desta etapa.");
+        if (atual == null && !(tipo == TipoEtapaValidacao.CNPJ && cadastro.profissional() != null)) {
+            throw new EtapaNaoEncontradaException();
         }
 
-        boolean identidadeAlterada = switch (tipo) {
-            case IDENTIDADE -> aplicarIdentidade(cadastro.usuario(), request);
-            case CNPJ -> {
-                aplicarCnpj(cadastro.profissional(), request);
-                yield false;
-            }
-            case REGISTRO_PROFISSIONAL -> {
-                aplicarRegistro(cadastro.profissional(), request);
-                yield false;
-            }
+        Alteracao alteracao = switch (tipo) {
+            case CPF -> aplicarCpf(cadastro.usuario(), request);
+            case IDENTIDADE -> aplicarIdentidade(cadastro, request);
+            case CNPJ -> aplicarCnpj(cadastro.profissional(), request);
+            case REGISTRO_PROFISSIONAL -> aplicarRegistro(cadastro.profissional(), request);
         };
+        if (!novoArquivo) {
+            throw new ValidacaoInvalidaException(alteracao.dados()
+                    ? "Você alterou dados desta etapa: envie o documento que os comprova."
+                    : "Altere algum dado ou envie um novo documento.");
+        }
 
         Documento documento = salvarDocumento(tipo.getTipoDocumento(), arquivo, cadastro);
-        EtapaValidacao nova = etapaRepository.save(cadastro.novaEtapaPendente(tipo, documento));
-        todas.add(nova);
+        if (atual != null && atual.getStatus() == StatusEtapa.PENDENTE) {
+            atual.setDocumento(documento);
+        } else {
+            todas.add(etapaRepository.save(cadastro.novaEtapaPendente(tipo, documento)));
+        }
         recalcularStatus(cadastro, todas);
 
-        if (identidadeAlterada) {
-            outroPerfil(cadastro).ifPresent(outro -> reabrirIdentidade(outro, documento));
+        if (alteracao.contaCompartilhada()) {
+            outroPerfil(cadastro).ifPresent(outro -> reabrir(outro, tipo, documento));
         }
 
         return responses.detalhe(cadastro, todas, false);
     }
 
-    private boolean aplicarIdentidade(Usuario usuario, ReenvioEtapaRequest request) {
-        if (request.nome() == null || request.nome().isBlank() || request.cpf() == null) {
-            throw new ValidacaoInvalidaException("Informe nome e CPF.");
-        }
+    @Transactional(readOnly = true)
+    public boolean emRevalidacao(Paciente paciente) {
+        return emRevalidacao(CadastroAvaliado.de(paciente));
+    }
 
+    @Transactional(readOnly = true)
+    public boolean emRevalidacao(Profissional profissional) {
+        return emRevalidacao(CadastroAvaliado.de(profissional));
+    }
+
+    @Transactional(readOnly = true)
+    public void exigirLiberadoParaCriar(Paciente paciente) {
+        if (emRevalidacao(paciente)) {
+            throw new CadastroNaoValidadoException("Seus dados estão em revalidação. Até o administrador concluir, "
+                    + "você não pode criar novas solicitações; o que já está em andamento continua normalmente.");
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public void exigirLiberadoParaCriar(Profissional profissional) {
+        if (emRevalidacao(profissional)) {
+            throw new CadastroNaoValidadoException("Seus dados estão em revalidação. Até o administrador concluir, "
+                    + "você não pode enviar novas propostas; o que já está em andamento continua normalmente.");
+        }
+    }
+
+    boolean emRevalidacao(CadastroAvaliado cadastro) {
+        return ValidacaoResponses.emRevalidacao(cadastro, etapas(cadastro));
+    }
+
+    private record Alteracao(boolean dados, boolean contaCompartilhada) {
+    }
+
+    private Alteracao aplicarCpf(Usuario usuario, ReenvioEtapaRequest request) {
+        if (request.cpf() == null) {
+            throw new ValidacaoInvalidaException("Informe o CPF.");
+        }
+        boolean alterado = !request.cpf().equals(usuario.getCpf());
+        if (alterado && usuarioRepository.findByCpf(request.cpf()).isPresent()) {
+            throw new CpfJaCadastradoException();
+        }
+        usuario.setCpf(request.cpf());
+        return new Alteracao(alterado, alterado);
+    }
+
+    private Alteracao aplicarIdentidade(CadastroAvaliado cadastro, ReenvioEtapaRequest request) {
+        Usuario usuario = cadastro.usuario();
         DocumentoIdentidade identidade = DocumentoIdentidade.validar(
                 request.documentoIdentidadeTipo(), request.documentoIdentidadeNumero(), request.documentoIdentidadeUf());
 
-        String nome = request.nome().trim();
-        boolean cpfAlterado = !request.cpf().equals(usuario.getCpf());
-        if (cpfAlterado && usuarioRepository.findByCpf(request.cpf()).isPresent()) {
-            throw new CpfJaCadastradoException();
-        }
-        boolean alterada = cpfAlterado || !nome.equals(usuario.getNome());
+        String nome = request.nome() == null || request.nome().isBlank() ? usuario.getNome() : request.nome().trim();
+        boolean contaAlterada = !nome.equals(usuario.getNome())
+                || identidade.tipo() != usuario.getDocumentoIdentidadeTipo()
+                || !Objects.equals(identidade.numero(), usuario.getDocumentoIdentidadeNumero())
+                || !Objects.equals(identidade.uf(), usuario.getDocumentoIdentidadeUf());
+
+        LocalDate dataNascimento = request.dataNascimento() == null ? cadastro.dataNascimento() : request.dataNascimento();
+        Genero genero = request.genero() == null ? cadastro.genero() : request.genero();
+        boolean pessoaisAlterados = !Objects.equals(dataNascimento, cadastro.dataNascimento()) || genero != cadastro.genero();
 
         usuario.setNome(nome);
-        usuario.setCpf(request.cpf());
         usuario.setDocumentoIdentidadeTipo(identidade.tipo());
         usuario.setDocumentoIdentidadeNumero(identidade.numero());
         usuario.setDocumentoIdentidadeUf(identidade.uf());
-        return alterada;
+        cadastro.definirDadosPessoais(dataNascimento, genero);
+        return new Alteracao(contaAlterada || pessoaisAlterados, contaAlterada);
     }
 
-    private void aplicarCnpj(Profissional profissional, ReenvioEtapaRequest request) {
+    private Alteracao aplicarCnpj(Profissional profissional, ReenvioEtapaRequest request) {
         if (request.cnpj() == null) {
             throw new ValidacaoInvalidaException("Informe o CNPJ.");
         }
         if (profissionalRepository.existsByCnpjAndIdNot(request.cnpj(), profissional.getId())) {
             throw new ValidacaoInvalidaException("CNPJ já cadastrado para outro profissional.");
         }
+        boolean alterado = !request.cnpj().equals(profissional.getCnpj());
         profissional.setCnpj(request.cnpj());
+        return new Alteracao(alterado, false);
     }
 
-    private void aplicarRegistro(Profissional profissional, ReenvioEtapaRequest request) {
+    private Alteracao aplicarRegistro(Profissional profissional, ReenvioEtapaRequest request) {
         if (request.registroProfissional() == null || request.registroProfissional().isBlank()
                 || request.registroProfissionalUf() == null) {
             throw new ValidacaoInvalidaException("Informe o número e a UF do registro profissional.");
         }
-        profissional.setRegistroProfissional(request.registroProfissional().trim());
-        profissional.setRegistroProfissionalUf(request.registroProfissionalUf().toUpperCase(Locale.ROOT));
+        String numero = request.registroProfissional().trim();
+        String uf = request.registroProfissionalUf().toUpperCase(Locale.ROOT);
+        boolean alterado = !numero.equals(profissional.getRegistroProfissional()) || !uf.equals(profissional.getRegistroProfissionalUf());
+        profissional.setRegistroProfissional(numero);
+        profissional.setRegistroProfissionalUf(uf);
+        return new Alteracao(alterado, false);
     }
 
     private Optional<CadastroAvaliado> outroPerfil(CadastroAvaliado cadastro) {
@@ -233,13 +296,13 @@ public class ValidacaoService {
                 : pacienteRepository.findByUsuarioId(usuarioId).map(CadastroAvaliado::de);
     }
 
-    private void reabrirIdentidade(CadastroAvaliado cadastro, Documento documento) {
+    private void reabrir(CadastroAvaliado cadastro, TipoEtapaValidacao tipo, Documento documento) {
         List<EtapaValidacao> todas = etapas(cadastro);
-        EtapaValidacao atual = EtapasAtuais.de(todas).get(TipoEtapaValidacao.IDENTIDADE);
+        EtapaValidacao atual = EtapasAtuais.de(todas).get(tipo);
         if (atual != null && atual.getStatus() == StatusEtapa.PENDENTE) {
             return;
         }
-        todas.add(etapaRepository.save(cadastro.novaEtapaPendente(TipoEtapaValidacao.IDENTIDADE, documento)));
+        todas.add(etapaRepository.save(cadastro.novaEtapaPendente(tipo, documento)));
         recalcularStatus(cadastro, todas);
     }
 
@@ -285,11 +348,14 @@ public class ValidacaoService {
                 "Você não possui um perfil de " + (perfil == PerfilValidado.PACIENTE ? "paciente" : "profissional") + " ativo."));
     }
 
-    private void avisarDecisao(CadastroAvaliado cadastro, EtapaValidacao etapa, StatusValidacao anterior) {
+    private void avisarDecisao(CadastroAvaliado cadastro, EtapaValidacao etapa, StatusValidacao anterior,
+                               boolean revalidacaoConcluida) {
         TipoPerfil perfil = cadastro.perfil() == PerfilValidado.PACIENTE ? TipoPerfil.PACIENTE : TipoPerfil.PROFISSIONAL;
 
         if (etapa.getStatus() == StatusEtapa.REPROVADA) {
             notificador.etapaReprovada(cadastro.usuario(), perfil, etapa.getTipo(), etapa.getJustificativa());
+        } else if (revalidacaoConcluida) {
+            notificador.revalidacaoAprovada(cadastro.usuario(), perfil);
         } else if (cadastro.statusValidacao() == StatusValidacao.APROVADO && anterior != StatusValidacao.APROVADO) {
             notificador.cadastroAprovado(cadastro.usuario(), perfil);
         }

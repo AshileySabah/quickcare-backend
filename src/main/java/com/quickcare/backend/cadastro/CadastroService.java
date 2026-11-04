@@ -249,8 +249,11 @@ public class CadastroService {
     }
 
     private void exigirDocumentoCpf(List<DocumentoParaSalvar> documentos) {
+        if (documentos.stream().noneMatch(doc -> doc.tipo() == TipoDocumento.COMPROVANTE_CPF)) {
+            throw new DocumentoObrigatorioException("Envie um documento que comprove seu CPF.");
+        }
         if (documentos.stream().noneMatch(doc -> doc.tipo() == TipoDocumento.VALIDACAO_CPF)) {
-            throw new DocumentoObrigatorioException("Envie um documento que valide seu CPF.");
+            throw new DocumentoObrigatorioException("Envie seu documento de identidade (RG ou CNH).");
         }
     }
 

@@ -32,6 +32,7 @@ import com.quickcare.backend.solicitacao.exception.SolicitacaoNaoEncontradaExcep
 import com.quickcare.backend.solicitacao.exception.TransicaoStatusInvalidaException;
 import com.quickcare.backend.usuario.TipoPerfil;
 import com.quickcare.backend.validacao.StatusValidacao;
+import com.quickcare.backend.validacao.ValidacaoService;
 import com.quickcare.backend.validacao.exception.CadastroNaoValidadoException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -62,6 +63,7 @@ public class SolicitacaoService {
     private final BloqueioUsuarioRepository bloqueioUsuarioRepository;
     private final AtendimentoRepository atendimentoRepository;
     private final OcorrenciaService ocorrenciaService;
+    private final ValidacaoService validacaoService;
 
     @Transactional
     public SolicitacaoResponse criar(Long usuarioId, SolicitacaoRequest request) {
@@ -71,6 +73,7 @@ public class SolicitacaoService {
             throw new CadastroNaoValidadoException(
                     "Seu cadastro ainda não foi aprovado. Você poderá criar solicitações assim que ele for validado.");
         }
+        validacaoService.exigirLiberadoParaCriar(paciente);
         ocorrenciaService.exigirSemBloqueio(usuarioId, TipoPerfil.PACIENTE);
 
         Solicitacao solicitacao = Solicitacao.builder()

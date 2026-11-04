@@ -32,7 +32,7 @@ public class ValidacaoController {
             @PathVariable String perfil,
             @PathVariable TipoEtapaValidacao tipo,
             @Valid @RequestPart("dados") ReenvioEtapaRequest request,
-            @RequestPart("documento") MultipartFile documento
+            @RequestPart(value = "documento", required = false) MultipartFile documento
     ) {
         return validacaoService.reenviar(usuarioId, PerfilNaUrl.ler(perfil), tipo, request, documento);
     }

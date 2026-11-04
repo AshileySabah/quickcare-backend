@@ -22,6 +22,7 @@ import com.quickcare.backend.solicitacao.exception.SolicitacaoNaoEncontradaExcep
 import com.quickcare.backend.solicitacao.exception.TransicaoStatusInvalidaException;
 import com.quickcare.backend.usuario.TipoPerfil;
 import com.quickcare.backend.validacao.StatusValidacao;
+import com.quickcare.backend.validacao.ValidacaoService;
 import com.quickcare.backend.validacao.exception.CadastroNaoValidadoException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -51,6 +52,7 @@ public class PropostaService {
     private final Notificador notificador;
     private final OcorrenciaService ocorrenciaService;
     private final BloqueioUsuarioRepository bloqueioUsuarioRepository;
+    private final ValidacaoService validacaoService;
     private final Clock clock;
 
     @Transactional
@@ -59,6 +61,7 @@ public class PropostaService {
         if (profissional.getStatusValidacao() != StatusValidacao.APROVADO) {
             throw new CadastroNaoValidadoException("Só profissionais com cadastro aprovado podem enviar propostas.");
         }
+        validacaoService.exigirLiberadoParaCriar(profissional);
         ocorrenciaService.exigirSemBloqueio(usuarioId, TipoPerfil.PROFISSIONAL);
         Solicitacao solicitacao = solicitacaoRepository.findById(solicitacaoId)
                 .filter(s -> !s.ehDoUsuario(usuarioId))

@@ -29,6 +29,7 @@ import com.quickcare.backend.solicitacao.exception.SolicitacaoNaoEncontradaExcep
 import com.quickcare.backend.solicitacao.exception.TransicaoStatusInvalidaException;
 import com.quickcare.backend.usuario.Usuario;
 import com.quickcare.backend.validacao.StatusValidacao;
+import com.quickcare.backend.validacao.ValidacaoService;
 import com.quickcare.backend.validacao.exception.CadastroNaoValidadoException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -51,6 +52,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -91,6 +93,8 @@ class PropostaServiceTest {
     private OcorrenciaService ocorrenciaService;
     @Mock
     private BloqueioUsuarioRepository bloqueioUsuarioRepository;
+    @Mock
+    private ValidacaoService validacaoService;
 
     private PropostaService service;
 
@@ -102,7 +106,7 @@ class PropostaServiceTest {
     void setUp() {
         service = new PropostaService(propostaRepository, solicitacaoRepository, profissionalRepository,
                 armazenamentoDocumentoService, atendimentoService, atendimentoRepository, notificador,
-                ocorrenciaService, bloqueioUsuarioRepository, Clock.fixed(AGORA, ZoneOffset.UTC));
+                ocorrenciaService, bloqueioUsuarioRepository, validacaoService, Clock.fixed(AGORA, ZoneOffset.UTC));
 
         curativos = Especialidade.builder().id(5L).nome("Curativos").categoria(CategoriaProfissional.ENFERMEIRO).build();
 
@@ -149,6 +153,18 @@ class PropostaServiceTest {
         assertThat(response.solicitacao().pacienteId()).isNull();
         assertThat(solicitacao.getStatus()).isEqualTo(StatusSolicitacao.RECEBENDO_PROPOSTAS);
         verify(notificador).propostaRecebida(any());
+    }
+
+    @Test
+    void emRevalidacaoNaoEnviaNovaProposta() {
+        mockProfissional(profissional);
+        doThrow(new CadastroNaoValidadoException("Seus dados estão em revalidação."))
+                .when(validacaoService).exigirLiberadoParaCriar(profissional);
+
+        assertThatThrownBy(() -> service.enviar(USUARIO_PROFISSIONAL_ID, 50L, REQUEST))
+                .isInstanceOf(CadastroNaoValidadoException.class)
+                .hasMessageContaining("revalidação");
+        verify(propostaRepository, never()).save(any());
     }
 
     @Test

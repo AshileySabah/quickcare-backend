@@ -386,6 +386,14 @@ public class Notificador {
                 "Cadastro aprovado", mensagem, inicioDo(perfil), true);
     }
 
+    public void revalidacaoAprovada(Usuario usuario, TipoPerfil perfil) {
+        String mensagem = perfil == TipoPerfil.PACIENTE
+                ? "Seus dados foram revalidados. Você já pode criar novas solicitações."
+                : "Seus dados foram revalidados. Você já pode enviar novas propostas.";
+        notificacaoService.notificar(usuario, perfil, TipoNotificacao.CADASTRO_APROVADO,
+                "Revalidação aprovada", mensagem, inicioDo(perfil), true);
+    }
+
     public void etapaReprovada(Usuario usuario, TipoPerfil perfil, TipoEtapaValidacao etapa, String justificativa) {
         notificacaoService.notificar(usuario, perfil, TipoNotificacao.ETAPA_REPROVADA,
                 "Cadastro precisa de ajustes",

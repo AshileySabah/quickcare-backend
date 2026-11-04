@@ -197,10 +197,13 @@ JOIN especialidade e ON (u.email = 'profissional.pendente@quickcare.dev' AND e.n
 ON CONFLICT DO NOTHING;
 
 WITH pendentes (email, perfil, tipo_documento, tipo_etapa, nome_arquivo) AS (
-    VALUES ('paciente.pendente@quickcare.dev', 'PACIENTE', 'VALIDACAO_CPF', 'IDENTIDADE', 'rg-rone.pdf'),
+    VALUES ('paciente.pendente@quickcare.dev', 'PACIENTE', 'COMPROVANTE_CPF', 'CPF', 'cpf-rone.pdf'),
+           ('paciente.pendente@quickcare.dev', 'PACIENTE', 'VALIDACAO_CPF', 'IDENTIDADE', 'rg-rone.pdf'),
+           ('profissional.pendente@quickcare.dev', 'PROFISSIONAL', 'COMPROVANTE_CPF', 'CPF', 'cpf-suderland.pdf'),
            ('profissional.pendente@quickcare.dev', 'PROFISSIONAL', 'VALIDACAO_CPF', 'IDENTIDADE', 'cnh-suderland.pdf'),
            ('profissional.pendente@quickcare.dev', 'PROFISSIONAL', 'VALIDACAO_CNPJ', 'CNPJ', 'cartao-cnpj.pdf'),
            ('profissional.pendente@quickcare.dev', 'PROFISSIONAL', 'REGISTRO_PROFISSIONAL', 'REGISTRO_PROFISSIONAL', 'coren.pdf'),
+           ('cuidador.pendente@quickcare.dev', 'PROFISSIONAL', 'COMPROVANTE_CPF', 'CPF', 'cpf-matheus.pdf'),
            ('cuidador.pendente@quickcare.dev', 'PROFISSIONAL', 'VALIDACAO_CPF', 'IDENTIDADE', 'rg-matheus.pdf')
 ),
 donos AS (

@@ -2,23 +2,18 @@ package com.quickcare.backend.perfil.dto;
 
 import com.quickcare.backend.cadastro.dto.ContatoEmergenciaRequest;
 import com.quickcare.backend.profissional.ModalidadeAtendimento;
-import com.quickcare.backend.usuario.Genero;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Past;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.List;
 
 public record AtualizarPerfilProfissionalRequest(
         @NotBlank String nome,
         String telefone,
-        @NotNull @Past LocalDate dataNascimento,
-        @NotNull Genero genero,
         @Valid List<ContatoEmergenciaRequest> contatosEmergencia,
         boolean possuiSeguroResponsabilidadeCivil,
         @NotNull ModalidadeAtendimento modalidadeAtendimento,

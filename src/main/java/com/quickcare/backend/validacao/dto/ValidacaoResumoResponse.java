@@ -13,6 +13,7 @@ public record ValidacaoResumoResponse(
         String email,
         CategoriaProfissional categoria,
         StatusValidacao statusValidacao,
+        boolean emRevalidacao,
         Instant cadastradoEm,
         long etapasPendentes
 ) {

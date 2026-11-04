@@ -78,6 +78,9 @@ class CadastroServiceTest {
         return new MockMultipartFile("documentos", nome, "application/pdf", new byte[]{1, 2, 3});
     }
 
+    private static final List<MultipartFile> DOCUMENTOS_PESSOAIS = List.of(arquivo("cpf.pdf"), arquivo("rg.pdf"));
+    private static final List<TipoDocumento> TIPOS_PESSOAIS = List.of(TipoDocumento.COMPROVANTE_CPF, TipoDocumento.VALIDACAO_CPF);
+
     private static NovoPerfilPacienteRequest pacienteRequest() {
         return new NovoPerfilPacienteRequest(LocalDate.of(1990, 1, 1), Genero.FEMININO, List.of(), true, true,
                 null, null, null, "01310100", "Avenida Paulista", "1000", null, "Bela Vista", "São Paulo", "sp");
@@ -103,7 +106,7 @@ class CadastroServiceTest {
         when(pacienteRepository.save(any(Paciente.class))).thenAnswer(invocacao -> invocacao.getArgument(0));
         documentosSalvos();
 
-        service.criarPerfilPaciente(1L, pacienteRequest(), List.of(arquivo("rg.pdf")), List.of(TipoDocumento.VALIDACAO_CPF));
+        service.criarPerfilPaciente(1L, pacienteRequest(), DOCUMENTOS_PESSOAIS, TIPOS_PESSOAIS);
 
         ArgumentCaptor<Paciente> paciente = ArgumentCaptor.forClass(Paciente.class);
         @SuppressWarnings("unchecked")
@@ -113,7 +116,7 @@ class CadastroServiceTest {
         assertThat(paciente.getValue().getUsuario()).isSameAs(usuario);
         assertThat(paciente.getValue().getStatusValidacao()).isEqualTo(StatusValidacao.PENDENTE);
         assertThat(paciente.getValue().getUf()).isEqualTo("SP");
-        assertThat(documentos.getValue()).containsOnlyKeys(TipoDocumento.VALIDACAO_CPF);
+        assertThat(documentos.getValue()).containsOnlyKeys(TipoDocumento.COMPROVANTE_CPF, TipoDocumento.VALIDACAO_CPF);
         assertThat(usuario.getUltimoPerfil()).isEqualTo(TipoPerfil.PACIENTE);
     }
 
@@ -129,7 +132,7 @@ class CadastroServiceTest {
         documentosSalvos();
 
         service.criarPerfilProfissional(1L, profissionalRequest(CategoriaProfissional.CUIDADOR, List.of(7L), null, null),
-                List.of(arquivo("rg.pdf")), List.of(TipoDocumento.VALIDACAO_CPF));
+                DOCUMENTOS_PESSOAIS, TIPOS_PESSOAIS);
 
         ArgumentCaptor<Profissional> profissional = ArgumentCaptor.forClass(Profissional.class);
         verify(validacaoService).iniciar(profissional.capture(), anyMap());
@@ -143,11 +146,11 @@ class CadastroServiceTest {
         when(administradorRepository.existsByUsuarioId(1L)).thenReturn(true);
 
         assertThatThrownBy(() -> service.criarPerfilPaciente(1L, pacienteRequest(),
-                List.of(arquivo("rg.pdf")), List.of(TipoDocumento.VALIDACAO_CPF)))
+                DOCUMENTOS_PESSOAIS, TIPOS_PESSOAIS))
                 .isInstanceOf(PerfilNaoAutorizadoException.class);
         assertThatThrownBy(() -> service.criarPerfilProfissional(1L,
                 profissionalRequest(CategoriaProfissional.CUIDADOR, List.of(7L), null, null),
-                List.of(arquivo("rg.pdf")), List.of(TipoDocumento.VALIDACAO_CPF)))
+                DOCUMENTOS_PESSOAIS, TIPOS_PESSOAIS))
                 .isInstanceOf(PerfilNaoAutorizadoException.class);
 
         verify(pacienteRepository, never()).save(any());
@@ -160,7 +163,7 @@ class CadastroServiceTest {
         when(pacienteRepository.existsByUsuarioId(1L)).thenReturn(true);
 
         assertThatThrownBy(() -> service.criarPerfilPaciente(1L, pacienteRequest(),
-                List.of(arquivo("rg.pdf")), List.of(TipoDocumento.VALIDACAO_CPF)))
+                DOCUMENTOS_PESSOAIS, TIPOS_PESSOAIS))
                 .isInstanceOf(PerfilJaExistenteException.class);
         verify(pacienteRepository, never()).save(any());
     }
@@ -176,12 +179,23 @@ class CadastroServiceTest {
     }
 
     @Test
+    void soODocumentoDeIdentidadeNaoBasta() {
+        when(usuarioRepository.findById(1L)).thenReturn(Optional.of(usuario));
+
+        assertThatThrownBy(() -> service.criarPerfilPaciente(1L, pacienteRequest(),
+                List.of(arquivo("rg.pdf")), List.of(TipoDocumento.VALIDACAO_CPF)))
+                .isInstanceOf(DocumentoObrigatorioException.class)
+                .hasMessageContaining("comprove seu CPF");
+        verify(pacienteRepository, never()).save(any());
+    }
+
+    @Test
     void profissionalComRegistroObrigatorioPrecisaDoDocumentoDoRegistro() {
         when(usuarioRepository.findById(1L)).thenReturn(Optional.of(usuario));
 
         assertThatThrownBy(() -> service.criarPerfilProfissional(1L,
                 profissionalRequest(CategoriaProfissional.ENFERMEIRO, List.of(1L), "123456", "SP"),
-                List.of(arquivo("rg.pdf")), List.of(TipoDocumento.VALIDACAO_CPF)))
+                DOCUMENTOS_PESSOAIS, TIPOS_PESSOAIS))
                 .isInstanceOf(DocumentoObrigatorioException.class)
                 .hasMessageContaining("registro profissional");
         verify(profissionalRepository, never()).save(any());

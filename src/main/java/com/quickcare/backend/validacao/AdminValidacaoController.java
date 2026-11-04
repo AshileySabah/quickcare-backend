@@ -31,9 +31,10 @@ public class AdminValidacaoController {
     public List<ValidacaoResumoResponse> listar(
             @AuthenticationPrincipal Long usuarioId,
             @PathVariable String perfil,
-            @RequestParam(required = false) StatusValidacao status
+            @RequestParam(required = false) StatusValidacao status,
+            @RequestParam(defaultValue = "false") boolean emRevalidacao
     ) {
-        return validacaoService.listar(usuarioId, PerfilNaUrl.ler(perfil), status);
+        return validacaoService.listar(usuarioId, PerfilNaUrl.ler(perfil), status, emRevalidacao);
     }
 
     @GetMapping("/{perfil}/{id}")

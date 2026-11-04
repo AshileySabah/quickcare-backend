@@ -16,14 +16,18 @@ final class EtapasAtuais {
         return atuais;
     }
 
+    static boolean todasAprovadas(Collection<EtapaValidacao> atuais) {
+        return atuais.stream().allMatch(etapa -> etapa.getStatus() == StatusEtapa.APROVADA);
+    }
+
     static StatusValidacao statusDo(Collection<EtapaValidacao> atuais, StatusValidacao statusAtual) {
-        if (atuais.isEmpty()) {
+        if (atuais.isEmpty() || statusAtual == StatusValidacao.APROVADO) {
             return statusAtual;
         }
         if (atuais.stream().anyMatch(etapa -> etapa.getStatus() == StatusEtapa.REPROVADA)) {
             return StatusValidacao.REPROVADO;
         }
-        if (atuais.stream().allMatch(etapa -> etapa.getStatus() == StatusEtapa.APROVADA)) {
+        if (todasAprovadas(atuais)) {
             return StatusValidacao.APROVADO;
         }
         return StatusValidacao.PENDENTE;

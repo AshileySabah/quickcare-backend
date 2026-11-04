@@ -32,6 +32,7 @@ import com.quickcare.backend.solicitacao.exception.SolicitacaoNaoEncontradaExcep
 import com.quickcare.backend.solicitacao.exception.TransicaoStatusInvalidaException;
 import com.quickcare.backend.usuario.Usuario;
 import com.quickcare.backend.validacao.StatusValidacao;
+import com.quickcare.backend.validacao.ValidacaoService;
 import com.quickcare.backend.validacao.exception.CadastroNaoValidadoException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -56,6 +57,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
@@ -96,6 +98,9 @@ class SolicitacaoServiceTest {
 
     @Mock
     private BloqueioUsuarioRepository bloqueioUsuarioRepository;
+
+    @Mock
+    private ValidacaoService validacaoService;
 
     @InjectMocks
     private SolicitacaoService service;
@@ -149,6 +154,19 @@ class SolicitacaoServiceTest {
                 request(ModalidadeSolicitacao.ONLINE, ENDERECO, pedido(CategoriaProfissional.OUTRO, 1, nutricao)));
 
         assertThat(response.endereco()).isNull();
+    }
+
+    @Test
+    void emRevalidacaoNaoCriaNovaSolicitacao() {
+        mockPaciente();
+        doThrow(new CadastroNaoValidadoException("Seus dados estão em revalidação."))
+                .when(validacaoService).exigirLiberadoParaCriar(paciente);
+
+        assertThatThrownBy(() -> service.criar(USUARIO_PACIENTE_ID, request(ModalidadeSolicitacao.ONLINE, null,
+                pedido(CategoriaProfissional.ENFERMEIRO, 1, curativos))))
+                .isInstanceOf(CadastroNaoValidadoException.class)
+                .hasMessageContaining("revalidação");
+        verify(solicitacaoRepository, never()).save(any());
     }
 
     @Test

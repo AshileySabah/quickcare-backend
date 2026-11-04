@@ -40,7 +40,8 @@ public class PreValidacaoService {
         }
 
         List<VerificacaoExterna> verificacoes = switch (tipo) {
-            case IDENTIDADE -> List.of(verificarCpf(cadastro), verificarDocumentoIdentidade(cadastro.usuario()));
+            case CPF -> List.of(verificarCpf(cadastro));
+            case IDENTIDADE -> List.of(verificarDocumentoIdentidade(cadastro.usuario()));
             case CNPJ -> List.of(consultaCnpjService.verificar(cadastro.profissional().getCnpj(), cadastro.usuario().getNome()));
             case REGISTRO_PROFISSIONAL -> List.of(verificarRegistro(cadastro.profissional()));
         };

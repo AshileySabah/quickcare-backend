@@ -31,6 +31,7 @@ class ValidacaoResponses {
                 cadastro.id(),
                 cadastro.perfil(),
                 cadastro.statusValidacao(),
+                emRevalidacao(cadastro, todasEtapas),
                 cadastro.criadoEm(),
                 dados(cadastro),
                 etapas(todasEtapas, exibirAvaliador)
@@ -50,9 +51,15 @@ class ValidacaoResponses {
                 usuario.getEmail(),
                 cadastro.profissional() != null ? cadastro.profissional().getCategoria() : null,
                 cadastro.statusValidacao(),
+                emRevalidacao(cadastro, todasEtapas),
                 cadastro.criadoEm(),
                 pendentes
         );
+    }
+
+    static boolean emRevalidacao(CadastroAvaliado cadastro, List<EtapaValidacao> todasEtapas) {
+        return cadastro.statusValidacao() == StatusValidacao.APROVADO
+                && !EtapasAtuais.todasAprovadas(EtapasAtuais.de(todasEtapas).values());
     }
 
     private DadosCadastraisResponse dados(CadastroAvaliado cadastro) {
