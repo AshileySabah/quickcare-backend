@@ -15,11 +15,6 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 
-/**
- * Lê o access token do cookie HttpOnly emitido no login e autentica a requisição
- * com o id do usuário como principal. Token ausente ou inválido segue anônimo —
- * as rotas protegidas é que respondem 401.
- */
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
@@ -39,7 +34,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 SecurityContextHolder.getContext()
                         .setAuthentication(new UsernamePasswordAuthenticationToken(usuarioId, null, List.of()));
             } catch (TokenInvalidoException | NumberFormatException ignored) {
-                // segue anônimo
             }
         }
 

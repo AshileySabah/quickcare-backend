@@ -1,6 +1,7 @@
 package com.quickcare.backend.ocorrencia;
 
 import com.quickcare.backend.atendimento.Atendimento;
+import com.quickcare.backend.problema.ProblemaAtendimento;
 import com.quickcare.backend.solicitacao.Solicitacao;
 import com.quickcare.backend.usuario.TipoPerfil;
 import com.quickcare.backend.usuario.Usuario;
@@ -14,6 +15,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
@@ -23,7 +25,6 @@ import lombok.NoArgsConstructor;
 
 import java.time.Instant;
 
-/** Uma desistência que conta contra o perfil (a contagem e o bloqueio vêm na branch 4b). */
 @Entity
 @Table(name = "ocorrencia")
 @Getter
@@ -49,21 +50,63 @@ public class Ocorrencia {
     private MotivoOcorrencia motivo;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "solicitacao_id", nullable = false)
+    @JoinColumn(name = "solicitacao_id")
     private Solicitacao solicitacao;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "atendimento_id")
     private Atendimento atendimento;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "problema_id")
+    private ProblemaAtendimento problema;
+
+    @Column(length = 1000)
+    private String justificativa;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "criado_por_usuario_id")
+    private Usuario criadoPor;
+
+    @Column(name = "anulada_em")
+    private Instant anuladaEm;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "anulada_por_usuario_id")
+    private Usuario anuladaPor;
+
+    @Column(name = "justificativa_anulacao", length = 1000)
+    private String justificativaAnulacao;
+
     @Column(name = "criado_em", nullable = false, updatable = false)
     private Instant criadoEm;
+
+    @OneToOne(mappedBy = "ocorrencia", fetch = FetchType.LAZY)
+    private RecursoOcorrencia recurso;
 
     @PrePersist
     private void aoPersistir() {
         if (criadoEm == null) {
             criadoEm = Instant.now();
         }
+    }
+
+    public boolean anulada() {
+        return anuladaEm != null;
+    }
+
+    public boolean podeRecorrer() {
+        return !anulada() && recurso == null && motivo.recorrivel();
+    }
+
+    void setRecurso(RecursoOcorrencia recurso) {
+        this.recurso = recurso;
+    }
+
+    public void anular(Usuario admin, String justificativa, Instant agora) {
+        anuladaEm = agora;
+        anuladaPor = admin;
+        justificativaAnulacao = justificativa.trim();
     }
 
 }

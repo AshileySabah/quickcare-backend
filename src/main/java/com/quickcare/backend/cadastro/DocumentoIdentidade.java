@@ -7,10 +7,6 @@ import com.quickcare.backend.usuario.TipoDocumentoIdentidade;
 
 import java.util.Locale;
 
-/**
- * Número do RG/CNH já normalizado (só dígitos e X maiúsculo) e conferido pelo
- * algoritmo. Usado no cadastro e no reenvio da etapa de identidade.
- */
 public record DocumentoIdentidade(TipoDocumentoIdentidade tipo, String numero, String uf) {
 
     public static DocumentoIdentidade validar(TipoDocumentoIdentidade tipo, String numero, String uf) {

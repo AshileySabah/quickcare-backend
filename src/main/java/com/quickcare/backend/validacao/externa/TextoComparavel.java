@@ -8,7 +8,6 @@ final class TextoComparavel {
     private TextoComparavel() {
     }
 
-    /** Ignora acentos, caixa e espaços extras ao comparar nomes. */
     static String normalizar(String texto) {
         if (texto == null) {
             return "";

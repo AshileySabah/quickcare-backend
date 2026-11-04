@@ -1,26 +1,6 @@
--- Massa de dados para desenvolvimento local. Só é carregada no perfil "dev"
--- (ver spring.flyway.locations em application-dev.yml); nunca roda em produção.
--- Migration repetível: roda de novo sempre que este arquivo mudar, por isso
--- tudo aqui precisa ser idempotente.
---
--- Login do paciente:     paciente@quickcare.dev / Senha@123
--- Login do profissional: profissional@quickcare.dev / Senha@123
--- Login do admin:        admin@quickcare.dev / Senha@123
--- Paciente e profissional (alternância de perfil): ambos@quickcare.dev / Senha@123
--- Propostas de exemplo: profissional@ (pendente) e ambos@ (aceita) na solicitação presencial do paciente@;
---   nutricionista@quickcare.dev (pendente) na online do paciente@; maria@quickcare.dev em andamento com o profissional@.
---
--- Cadastros aguardando validação (mesma senha), com CPFs do ambiente de
--- demonstração da Serpro para testar a pré-validação do admin:
---   paciente.pendente@quickcare.dev      Rone Pereira (CPF regular, dados conferem)
---   profissional.pendente@quickcare.dev  Suderland Meneses (CPF regular + CNPJ ativo + COREN)
---   cuidador.pendente@quickcare.dev      Matheus Lima (CPF cancelado na Receita)
--- Os documentos desses cadastros não existem no storage: o admin vê o nome do
--- arquivo, mas sem pré-visualização.
-
 INSERT INTO usuario (nome, email, senha_hash, cpf, telefone)
 VALUES ('Paciente Teste', 'paciente@quickcare.dev',
-        '$2a$10$ZgmQejKpnZ53yyHq49/Ey.D/MF1qIcHNerLZC7U1L2sh.ZS6xV3aq', -- BCrypt de "Senha@123"
+        '$2a$10$ZgmQejKpnZ53yyHq49/Ey.D/MF1qIcHNerLZC7U1L2sh.ZS6xV3aq',
         '52998224725', '11987654321')
 ON CONFLICT DO NOTHING;
 
@@ -32,9 +12,6 @@ FROM usuario
 WHERE email = 'paciente@quickcare.dev'
 ON CONFLICT DO NOTHING;
 
--- Duas solicitações de exemplo, criadas só se o paciente ainda não tiver nenhuma:
---   presencial: 2 enfermeiros que façam curativos E sondagem + 1 cuidador de idosos
---   online:     1 nutricionista
 WITH paciente_teste AS (
     SELECT p.id
     FROM paciente p
@@ -56,8 +33,6 @@ novas AS (
     FROM paciente_teste
     RETURNING id, modalidade
 ),
--- Uma linha por especialidade; linhas da mesma solicitação e categoria formam
--- um único profissional pedido.
 pedidos (modalidade, categoria, quantidade, especialidade) AS (
     VALUES ('PRESENCIAL', 'ENFERMEIRO', 2, 'Curativos'),
            ('PRESENCIAL', 'ENFERMEIRO', 2, 'Sondagem'),
@@ -78,11 +53,9 @@ JOIN novas n ON n.id = sp.solicitacao_id
 JOIN pedidos p ON p.modalidade = n.modalidade AND p.categoria = sp.categoria
 JOIN especialidade e ON e.nome = p.especialidade;
 
--- Enfermeiro(a) que atende presencial e online, com Curativos e Sondagem:
--- compatível com a solicitação presencial do paciente de teste.
 INSERT INTO usuario (nome, email, senha_hash, cpf, telefone)
 VALUES ('Profissional Teste', 'profissional@quickcare.dev',
-        '$2a$10$ZgmQejKpnZ53yyHq49/Ey.D/MF1qIcHNerLZC7U1L2sh.ZS6xV3aq', -- BCrypt de "Senha@123"
+        '$2a$10$ZgmQejKpnZ53yyHq49/Ey.D/MF1qIcHNerLZC7U1L2sh.ZS6xV3aq',
         '11144477735', '11912345678')
 ON CONFLICT DO NOTHING;
 
@@ -103,7 +76,6 @@ JOIN usuario u ON u.id = p.usuario_id
 JOIN especialidade e ON e.nome IN ('Curativos', 'Sondagem')
 WHERE u.email = 'profissional@quickcare.dev'
 ON CONFLICT DO NOTHING;
--- Coordenadas dos dados de teste (no app real vêm da geocodificação do endereço).
 UPDATE profissional p
 SET latitude = -23.552300, longitude = -46.647000
 FROM usuario u
@@ -116,12 +88,6 @@ JOIN usuario u ON u.id = pa.usuario_id
 WHERE s.paciente_id = pa.id AND u.email = 'paciente@quickcare.dev'
   AND s.modalidade = 'PRESENCIAL' AND s.latitude IS NULL;
 
--- ---------------------------------------------------------------------------
--- Validação cadastral
--- ---------------------------------------------------------------------------
-
--- Os usuários de teste acima continuam aprovados (sem etapas, como os
--- cadastros anteriores à validação).
 UPDATE usuario
 SET documento_identidade_tipo = 'RG', documento_identidade_numero = '246781312', documento_identidade_uf = 'SP'
 WHERE email IN ('paciente@quickcare.dev', 'profissional@quickcare.dev') AND documento_identidade_numero IS NULL;
@@ -138,11 +104,10 @@ FROM usuario u
 WHERE u.id = p.usuario_id AND u.email = 'profissional@quickcare.dev'
   AND NOT EXISTS (SELECT 1 FROM etapa_validacao e WHERE e.profissional_id = p.id);
 
--- Usuário com os dois perfis aprovados, para testar a alternância de perfil.
 INSERT INTO usuario (nome, email, senha_hash, cpf, telefone,
                      documento_identidade_tipo, documento_identidade_numero, documento_identidade_uf)
 VALUES ('Ana Duplo Perfil', 'ambos@quickcare.dev',
-        '$2a$10$ZgmQejKpnZ53yyHq49/Ey.D/MF1qIcHNerLZC7U1L2sh.ZS6xV3aq', -- BCrypt de "Senha@123"
+        '$2a$10$ZgmQejKpnZ53yyHq49/Ey.D/MF1qIcHNerLZC7U1L2sh.ZS6xV3aq',
         '39053344705', '11977776666', 'RG', '246781312', 'SP')
 ON CONFLICT DO NOTHING;
 
@@ -173,10 +138,9 @@ JOIN especialidade e ON e.nome = 'Cuidador de Idosos'
 WHERE u.email = 'ambos@quickcare.dev'
 ON CONFLICT DO NOTHING;
 
--- Admin
 INSERT INTO usuario (nome, email, senha_hash, cpf)
 VALUES ('Admin QuickCare', 'admin@quickcare.dev',
-        '$2a$10$ZgmQejKpnZ53yyHq49/Ey.D/MF1qIcHNerLZC7U1L2sh.ZS6xV3aq', -- BCrypt de "Senha@123"
+        '$2a$10$ZgmQejKpnZ53yyHq49/Ey.D/MF1qIcHNerLZC7U1L2sh.ZS6xV3aq',
         '87748248800')
 ON CONFLICT DO NOTHING;
 
@@ -184,7 +148,6 @@ INSERT INTO administrador (usuario_id)
 SELECT id FROM usuario WHERE email = 'admin@quickcare.dev'
 ON CONFLICT DO NOTHING;
 
--- Cadastros pendentes
 INSERT INTO usuario (nome, email, senha_hash, cpf, telefone,
                      documento_identidade_tipo, documento_identidade_numero, documento_identidade_uf)
 VALUES ('Rone Pereira', 'paciente.pendente@quickcare.dev',
@@ -233,7 +196,6 @@ JOIN especialidade e ON (u.email = 'profissional.pendente@quickcare.dev' AND e.n
                      OR (u.email = 'cuidador.pendente@quickcare.dev' AND e.nome = 'Cuidador de Idosos')
 ON CONFLICT DO NOTHING;
 
--- Documentos (fictícios) e etapas pendentes, criados só na primeira vez.
 WITH pendentes (email, perfil, tipo_documento, tipo_etapa, nome_arquivo) AS (
     VALUES ('paciente.pendente@quickcare.dev', 'PACIENTE', 'VALIDACAO_CPF', 'IDENTIDADE', 'rg-rone.pdf'),
            ('profissional.pendente@quickcare.dev', 'PROFISSIONAL', 'VALIDACAO_CPF', 'IDENTIDADE', 'cnh-suderland.pdf'),
@@ -269,11 +231,6 @@ JOIN donos dn ON dn.paciente_id IS NOT DISTINCT FROM d.paciente_id
              AND dn.profissional_id IS NOT DISTINCT FROM d.profissional_id
              AND dn.tipo_documento = d.tipo_documento;
 
--- ---------------------------------------------------------------------------
--- Propostas na solicitação presencial do paciente de teste
--- ---------------------------------------------------------------------------
--- profissional@ (enfermeiro): pendente — vê o perfil do paciente sem a saúde.
--- ambos@ (cuidadora): aceita na vaga de cuidador — vê também saúde e contatos.
 WITH presencial AS (
     SELECT s.id
     FROM solicitacao s
@@ -305,7 +262,6 @@ WHERE NOT EXISTS (
     WHERE x.solicitacao_id = presencial.id AND x.profissional_id = pr.id AND x.status <> 'CANCELADA'
 );
 
--- A vaga de cuidador fica ocupada pela proposta aceita, e a solicitação passa a receber propostas.
 UPDATE solicitacao_profissional sp
 SET vagas_preenchidas = 1
 FROM proposta p
@@ -315,10 +271,6 @@ UPDATE solicitacao s
 SET status = 'RECEBENDO_PROPOSTAS'
 WHERE s.status = 'ABERTA' AND EXISTS (SELECT 1 FROM proposta p WHERE p.solicitacao_id = s.id AND p.status <> 'CANCELADA');
 
--- ---------------------------------------------------------------------------
--- Perfis para conferir (telas de perfil de paciente e de profissional)
--- ---------------------------------------------------------------------------
--- paciente@: dados de saúde completos e contatos de emergência.
 UPDATE paciente p
 SET condicoes_saude = 'Hipertensão controlada',
     medicamentos_em_uso = 'Losartana 50 mg, 1x ao dia'
@@ -333,11 +285,10 @@ CROSS JOIN (VALUES ('Lúcia Teste (filha)', '11988887777'), ('Pedro Teste (irmã
 WHERE u.email = 'paciente@quickcare.dev'
   AND NOT EXISTS (SELECT 1 FROM paciente_contato_emergencia x WHERE x.paciente_id = p.id);
 
--- nutricionista@: só online, com proposta pendente na solicitação online do paciente@.
 INSERT INTO usuario (nome, email, senha_hash, cpf, telefone,
                      documento_identidade_tipo, documento_identidade_numero, documento_identidade_uf)
 VALUES ('Carla Mendes', 'nutricionista@quickcare.dev',
-        '$2a$10$ZgmQejKpnZ53yyHq49/Ey.D/MF1qIcHNerLZC7U1L2sh.ZS6xV3aq', -- BCrypt de "Senha@123"
+        '$2a$10$ZgmQejKpnZ53yyHq49/Ey.D/MF1qIcHNerLZC7U1L2sh.ZS6xV3aq',
         '71460238001', '19966665544', 'RG', '246781312', 'SP')
 ON CONFLICT DO NOTHING;
 
@@ -375,12 +326,10 @@ UPDATE solicitacao s
 SET status = 'RECEBENDO_PROPOSTAS'
 WHERE s.status = 'ABERTA' AND EXISTS (SELECT 1 FROM proposta p WHERE p.solicitacao_id = s.id AND p.status <> 'CANCELADA');
 
--- maria@: paciente com saúde e contatos, solicitação presencial em andamento com
--- a proposta do profissional@ aceita — ele vê os dados de saúde dela.
 INSERT INTO usuario (nome, email, senha_hash, cpf, telefone,
                      documento_identidade_tipo, documento_identidade_numero, documento_identidade_uf)
 VALUES ('Maria Oliveira', 'maria@quickcare.dev',
-        '$2a$10$ZgmQejKpnZ53yyHq49/Ey.D/MF1qIcHNerLZC7U1L2sh.ZS6xV3aq', -- BCrypt de "Senha@123"
+        '$2a$10$ZgmQejKpnZ53yyHq49/Ey.D/MF1qIcHNerLZC7U1L2sh.ZS6xV3aq',
         '38522147698', '11955553322', 'RG', '246781312', 'SP')
 ON CONFLICT DO NOTHING;
 
@@ -434,8 +383,6 @@ FROM linha
 JOIN usuario u ON u.email = 'profissional@quickcare.dev'
 JOIN profissional pr ON pr.usuario_id = u.id;
 
--- Contatos de emergência dos profissionais de teste: a Maria (atendimento em
--- andamento com o profissional@) vê os dele no perfil.
 INSERT INTO profissional_contato_emergencia (profissional_id, nome, telefone)
 SELECT p.id, c.nome, c.telefone
 FROM profissional p
@@ -445,12 +392,48 @@ JOIN (VALUES ('profissional@quickcare.dev', 'Marcos Teste (cônjuge)', '11933334
   ON c.email = u.email
 WHERE NOT EXISTS (SELECT 1 FROM profissional_contato_emergencia x WHERE x.profissional_id = p.id);
 
--- ---------------------------------------------------------------------------
--- Mais solicitações e propostas para a ambos@ (paciente e cuidadora), para
--- testar os filtros de Minhas solicitações, Histórico e Minhas propostas.
--- ---------------------------------------------------------------------------
--- Cria a solicitação (uma linha de profissional) se o paciente ainda não tem
--- uma com a mesma descrição; devolve o id de qualquer forma.
+INSERT INTO usuario (nome, email, senha_hash, cpf, telefone,
+                     documento_identidade_tipo, documento_identidade_numero, documento_identidade_uf)
+VALUES ('Lúcia Alves', 'lucia@quickcare.dev', '$2a$10$ZgmQejKpnZ53yyHq49/Ey.D/MF1qIcHNerLZC7U1L2sh.ZS6xV3aq',
+        '61328045790', '11951112233', 'RG', '246781312', 'SP'),
+       ('Roberto Dias', 'roberto@quickcare.dev', '$2a$10$ZgmQejKpnZ53yyHq49/Ey.D/MF1qIcHNerLZC7U1L2sh.ZS6xV3aq',
+        '74219536809', '11952223344', 'RG', '246781312', 'SP'),
+       ('Sônia Ramos', 'sonia@quickcare.dev', '$2a$10$ZgmQejKpnZ53yyHq49/Ey.D/MF1qIcHNerLZC7U1L2sh.ZS6xV3aq',
+        '80637125444', '11953334455', 'RG', '246781312', 'SP'),
+       ('Fernanda Rocha', 'fernanda@quickcare.dev', '$2a$10$ZgmQejKpnZ53yyHq49/Ey.D/MF1qIcHNerLZC7U1L2sh.ZS6xV3aq',
+        '93514862737', '11954445566', 'RG', '246781312', 'SP'),
+       ('Gustavo Prado', 'gustavo@quickcare.dev', '$2a$10$ZgmQejKpnZ53yyHq49/Ey.D/MF1qIcHNerLZC7U1L2sh.ZS6xV3aq',
+        '46802731940', '11955556677', 'RG', '246781312', 'SP')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO paciente (usuario_id, status_validacao, data_nascimento, genero, confirmacao_informacoes_verdadeiras,
+                      consentimento_lgpd, cep, logradouro, numero, bairro, cidade, uf)
+SELECT u.id, 'APROVADO', p.nascimento, p.genero, TRUE, TRUE,
+       '01311200', 'Rua Haddock Lobo', p.numero, 'Cerqueira César', 'São Paulo', 'SP'
+FROM (VALUES ('lucia@quickcare.dev', DATE '1960-05-12', 'FEMININO', '120'),
+             ('roberto@quickcare.dev', DATE '1955-11-02', 'MASCULINO', '140'),
+             ('sonia@quickcare.dev', DATE '1970-01-25', 'FEMININO', '160')) AS p (email, nascimento, genero, numero)
+JOIN usuario u ON u.email = p.email
+ON CONFLICT DO NOTHING;
+
+INSERT INTO profissional (usuario_id, status_validacao, categoria, registro_profissional, registro_profissional_uf,
+                          data_nascimento, genero, confirmacao_informacoes_verdadeiras, consentimento_lgpd,
+                          possui_seguro_responsabilidade_civil, modalidade_atendimento, raio_atendimento_km,
+                          cep, logradouro, numero, bairro, cidade, uf, latitude, longitude)
+SELECT u.id, 'APROVADO', 'ENFERMEIRO', p.registro, 'SP', p.nascimento, p.genero, TRUE, TRUE, TRUE, 'AMBOS', 20,
+       '01311000', 'Rua Augusta', p.numero, 'Consolação', 'São Paulo', 'SP', -23.555000, -46.655000
+FROM (VALUES ('fernanda@quickcare.dev', '234567', DATE '1990-07-18', 'FEMININO', '1000'),
+             ('gustavo@quickcare.dev', '345678', DATE '1986-02-09', 'MASCULINO', '1100')) AS p (email, registro, nascimento, genero, numero)
+JOIN usuario u ON u.email = p.email
+ON CONFLICT DO NOTHING;
+
+INSERT INTO profissional_especialidade (profissional_id, especialidade_id)
+SELECT pr.id, e.id
+FROM profissional pr
+JOIN usuario u ON u.id = pr.usuario_id AND u.email IN ('fernanda@quickcare.dev', 'gustavo@quickcare.dev')
+JOIN especialidade e ON e.nome = 'Curativos'
+ON CONFLICT DO NOTHING;
+
 CREATE OR REPLACE FUNCTION pg_temp.seed_solicitacao(
     p_email TEXT, p_descricao TEXT, p_modalidade TEXT, p_categoria TEXT, p_especialidade TEXT,
     p_status TEXT, p_prazo_dias INT, p_dias_atras INT
@@ -489,8 +472,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Cria a proposta se o profissional ainda não tem uma nessa solicitação; a
--- aceita ocupa a vaga da linha.
 CREATE OR REPLACE FUNCTION pg_temp.seed_proposta(
     p_solicitacao BIGINT, p_email TEXT, p_valor NUMERIC, p_abordagem TEXT, p_status TEXT, p_dias_atras INT
 ) RETURNS VOID AS $$
@@ -518,7 +499,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- ambos@ como paciente: ativas e encerradas, com propostas de outros profissionais.
 SELECT pg_temp.seed_proposta(pg_temp.seed_solicitacao('ambos@quickcare.dev',
            'Acompanhamento nutricional para controle do colesterol.', 'ONLINE', 'OUTRO', 'Nutrição',
            'RECEBENDO_PROPOSTAS', 20, 2),
@@ -538,7 +518,6 @@ SELECT pg_temp.seed_solicitacao('ambos@quickcare.dev',
        'Avaliação nutricional para ganho de massa.', 'ONLINE', 'OUTRO', 'Nutrição',
        'CANCELADA', -5, 25);
 
--- ambos@ como cuidadora: abertas para ela, pendente, aceita e encerradas.
 SELECT pg_temp.seed_solicitacao('maria@quickcare.dev',
        'Cuidadora para acompanhar minha mãe nas tardes de semana.', 'PRESENCIAL', 'CUIDADOR', 'Cuidador de Idosos',
        'ABERTA', 12, 1);
@@ -559,8 +538,40 @@ SELECT pg_temp.seed_proposta(pg_temp.seed_solicitacao('paciente@quickcare.dev',
            'CANCELADA', -2, 20),
        'ambos@quickcare.dev', 2400.00, 'Plantão noturno de 12h, cinco noites por semana.', 'RECUSADA', 19);
 
--- Atendimentos: toda proposta aceita tem um, no estado que as datas indicam
--- (como a migration V21 faz com as que já existiam).
+SELECT pg_temp.seed_proposta(pg_temp.seed_solicitacao('paciente@quickcare.dev',
+           'Curativo na perna depois de uma queda, uma visita.', 'PRESENCIAL', 'ENFERMEIRO', 'Curativos',
+           'EM_ANDAMENTO', -1, 6),
+       'profissional@quickcare.dev', 150.00, 'Limpeza e curativo da ferida com orientação para os próximos dias.', 'ACEITA', 5);
+SELECT pg_temp.seed_proposta(pg_temp.seed_solicitacao('maria@quickcare.dev',
+           'Curativo semanal na perna, com relatório para a médica.', 'PRESENCIAL', 'ENFERMEIRO', 'Curativos',
+           'EM_ANDAMENTO', -2, 8),
+       'profissional@quickcare.dev', 170.00, 'Curativo com registro fotográfico e relatório para a médica.', 'ACEITA', 7);
+
+SELECT pg_temp.seed_proposta(pg_temp.seed_solicitacao('lucia@quickcare.dev',
+           'Teste de bloqueio: curativo no braço daqui a 10 dias.', 'PRESENCIAL', 'ENFERMEIRO', 'Curativos',
+           'EM_ANDAMENTO', 10, 6),
+       'fernanda@quickcare.dev', 150.00, 'Curativo no braço com orientação de cuidados em casa.', 'ACEITA', 5);
+SELECT pg_temp.seed_proposta(pg_temp.seed_solicitacao('lucia@quickcare.dev',
+           'Teste de bloqueio: curativo na perna em menos de 48h.', 'PRESENCIAL', 'ENFERMEIRO', 'Curativos',
+           'EM_ANDAMENTO', 2, 8),
+       'gustavo@quickcare.dev', 160.00, 'Curativo na perna e troca do curativo oclusivo.', 'ACEITA', 7);
+SELECT pg_temp.seed_proposta(pg_temp.seed_solicitacao('roberto@quickcare.dev',
+           'Teste de bloqueio: curativo no pé daqui a 10 dias.', 'PRESENCIAL', 'ENFERMEIRO', 'Curativos',
+           'EM_ANDAMENTO', 10, 6),
+       'fernanda@quickcare.dev', 170.00, 'Curativo no pé diabético com registro fotográfico.', 'ACEITA', 5);
+SELECT pg_temp.seed_proposta(pg_temp.seed_solicitacao('roberto@quickcare.dev',
+           'Teste de bloqueio: curativo nas costas em menos de 48h.', 'PRESENCIAL', 'ENFERMEIRO', 'Curativos',
+           'EM_ANDAMENTO', 2, 8),
+       'gustavo@quickcare.dev', 180.00, 'Curativo de escara com mudança de decúbito orientada.', 'ACEITA', 7);
+SELECT pg_temp.seed_proposta(pg_temp.seed_solicitacao('sonia@quickcare.dev',
+           'Teste de bloqueio: curativo na mão, aceito em cima da hora.', 'PRESENCIAL', 'ENFERMEIRO', 'Curativos',
+           'EM_ANDAMENTO', 2, 1),
+       'fernanda@quickcare.dev', 140.00, 'Curativo na mão com retorno no dia seguinte.', 'ACEITA', 0);
+SELECT pg_temp.seed_proposta(pg_temp.seed_solicitacao('sonia@quickcare.dev',
+           'Teste de bloqueio: curativo no ombro em menos de 48h.', 'PRESENCIAL', 'ENFERMEIRO', 'Curativos',
+           'EM_ANDAMENTO', 2, 8),
+       'gustavo@quickcare.dev', 155.00, 'Curativo no ombro com avaliação da cicatrização.', 'ACEITA', 6);
+
 INSERT INTO atendimento (proposta_id, solicitacao_id, status, inicio, termino, aceito_em, criado_em)
 SELECT p.id, p.solicitacao_id,
        CASE
@@ -576,7 +587,6 @@ JOIN solicitacao s ON s.id = p.solicitacao_id
 WHERE p.status = 'ACEITA'
   AND NOT EXISTS (SELECT 1 FROM atendimento a WHERE a.proposta_id = p.id);
 
--- Os de solicitações concluídas aconteceram no dia desejado delas (no passado).
 UPDATE proposta p
 SET inicio = (s.prazo_desejado + TIME '08:00') AT TIME ZONE 'America/Sao_Paulo',
     termino = (s.prazo_desejado + TIME '18:00') AT TIME ZONE 'America/Sao_Paulo'
@@ -592,9 +602,6 @@ FROM proposta p, solicitacao s
 WHERE a.proposta_id = p.id AND s.id = p.solicitacao_id AND s.status = 'CONCLUIDA'
   AND a.inicio <> p.inicio;
 
--- Um em andamento agora (ambos@ cuidando da mãe da Maria no fim de semana):
--- contatos de emergência liberados dos dois lados. A cada recarga da massa,
--- o período volta a cercar o horário atual.
 UPDATE atendimento a
 SET status = 'EM_ANDAMENTO',
     inicio = date_trunc('hour', now()) - INTERVAL '2 hours',
@@ -606,8 +613,6 @@ WHERE a.proposta_id = p.id AND s.id = p.solicitacao_id
   AND s.descricao LIKE 'Cuidadora para os fins de semana%'
   AND a.status IN ('AGENDADO', 'EM_ANDAMENTO', 'FINALIZADO', 'CONCLUIDO');
 
--- Uma remarcação pendente: o paciente@ pediu para adiantar um dia o
--- atendimento da ambos@ (ela aceita ou recusa como profissional).
 UPDATE atendimento a
 SET remarcacao_inicio = a.inicio - INTERVAL '1 day',
     remarcacao_termino = a.termino - INTERVAL '1 day',
@@ -618,18 +623,101 @@ WHERE a.proposta_id = p.id AND s.id = p.solicitacao_id AND pr.id = p.profissiona
   AND s.descricao LIKE 'Minha mãe precisa de curativos diários%' AND u.email = 'ambos@quickcare.dev'
   AND a.status = 'AGENDADO' AND a.remarcacao_por IS NULL;
 
--- Notificações de exemplo (sino): ambos@ tem não lidas nos dois perfis, para
--- ver o indicador do outro perfil no seletor; paciente@ e profissional@ têm
--- lidas e não lidas. Os links apontam para solicitações e propostas reais da
--- massa, com o item a destacar (?destaque=), como o back gera.
+WITH horarios AS (
+    SELECT s.id AS solicitacao_id, h.inicio, h.aceito_em
+    FROM (VALUES ('Teste de bloqueio: curativo na perna em menos de 48h.', date_trunc('hour', now()) + INTERVAL '30 hours', now() - INTERVAL '5 days'),
+                 ('Teste de bloqueio: curativo nas costas em menos de 48h.', date_trunc('hour', now()) + INTERVAL '30 hours', now() - INTERVAL '4 days'),
+                 ('Teste de bloqueio: curativo no ombro em menos de 48h.', date_trunc('hour', now()) + INTERVAL '30 hours', now() - INTERVAL '3 days'),
+                 ('Teste de bloqueio: curativo na mão, aceito em cima da hora.', date_trunc('hour', now()) + INTERVAL '40 hours', now() - INTERVAL '2 hours'))
+         AS h (descricao, inicio, aceito_em)
+    JOIN solicitacao s ON s.descricao = h.descricao
+),
+propostas AS (
+    UPDATE proposta p
+    SET inicio = h.inicio, termino = h.inicio + INTERVAL '8 hours'
+    FROM horarios h
+    WHERE p.solicitacao_id = h.solicitacao_id AND p.status = 'ACEITA'
+    RETURNING p.id
+)
+UPDATE atendimento a
+SET inicio = h.inicio, termino = h.inicio + INTERVAL '8 hours', aceito_em = h.aceito_em,
+    lembrete_24h_em = NULL, lembrete_30min_em = NULL, lembrete_inicio_em = NULL
+FROM horarios h
+WHERE a.solicitacao_id = h.solicitacao_id AND a.status = 'AGENDADO';
 
--- Versão anterior desta massa: links sem destaque (só dev).
+CREATE OR REPLACE FUNCTION pg_temp.seed_problema(
+    p_descricao TEXT, p_relatado_por TEXT, p_relato TEXT, p_horas_atras INT, p_contestacao TEXT
+) RETURNS VOID AS $$
+DECLARE
+    v_atendimento atendimento%ROWTYPE;
+BEGIN
+    SELECT a.* INTO v_atendimento
+    FROM atendimento a JOIN solicitacao s ON s.id = a.solicitacao_id
+    WHERE s.descricao = p_descricao
+    ORDER BY a.id DESC LIMIT 1;
+    IF v_atendimento.id IS NULL OR EXISTS (SELECT 1 FROM problema_atendimento WHERE atendimento_id = v_atendimento.id) THEN
+        RETURN;
+    END IF;
+
+    INSERT INTO problema_atendimento (atendimento_id, relatado_por, motivo, descricao, status, prazo_resposta,
+                                      status_anterior, respondido_em, contestacao, contestado_em, criado_em, atualizado_em)
+    VALUES (v_atendimento.id, p_relatado_por, 'OUTRO_NAO_COMPARECEU', p_relato,
+            CASE WHEN p_contestacao IS NULL THEN 'AGUARDANDO_RESPOSTA' ELSE 'EM_DISPUTA' END,
+            now() - make_interval(hours => p_horas_atras) + INTERVAL '7 days',
+            'FINALIZADO',
+            CASE WHEN p_contestacao IS NOT NULL THEN now() - make_interval(hours => p_horas_atras / 2) END,
+            p_contestacao,
+            CASE WHEN p_contestacao IS NOT NULL THEN now() - make_interval(hours => p_horas_atras / 2) END,
+            now() - make_interval(hours => p_horas_atras), now());
+
+    UPDATE atendimento
+    SET status = CASE WHEN p_contestacao IS NULL THEN 'PROBLEMA_RELATADO' ELSE 'EM_DISPUTA' END,
+        lembrete_24h_em = inicio, lembrete_30min_em = inicio, lembrete_inicio_em = inicio
+    WHERE id = v_atendimento.id;
+    UPDATE solicitacao SET status = 'EM_ANDAMENTO' WHERE id = v_atendimento.solicitacao_id;
+END;
+$$ LANGUAGE plpgsql;
+
+SELECT pg_temp.seed_problema('Curativo na perna depois de uma queda, uma visita.', 'PACIENTE',
+       'Esperei a tarde toda e o profissional não apareceu nem avisou.', 48, NULL);
+SELECT pg_temp.seed_problema('Curativo semanal na perna, com relatório para a médica.', 'PROFISSIONAL',
+       'Cheguei no horário, toquei várias vezes e ninguém atendeu. Esperei 40 minutos.', 30,
+       'Fiquei em casa o dia todo e a campainha não tocou. Minha vizinha pode confirmar.');
+
+INSERT INTO ocorrencia (usuario_id, perfil, motivo, justificativa, criado_por_usuario_id, criado_em,
+                        anulada_em, anulada_por_usuario_id, justificativa_anulacao)
+SELECT u.id, 'PROFISSIONAL', o.motivo, o.justificativa,
+       CASE WHEN o.motivo = 'MANUAL' THEN adm.id END,
+       now() - make_interval(days => o.dias_atras),
+       CASE WHEN o.anulada THEN now() - make_interval(days => o.dias_atras - 1) END,
+       CASE WHEN o.anulada THEN adm.id END,
+       CASE WHEN o.anulada THEN 'Cancelamento por motivo de saúde comprovado.' END
+FROM (VALUES ('profissional@quickcare.dev', 'CANCELAMENTO_ATENDIMENTO', NULL, 20, FALSE),
+             ('nutricionista@quickcare.dev', 'CANCELAMENTO_ATENDIMENTO', NULL, 40, TRUE),
+             ('nutricionista@quickcare.dev', 'CANCELAMENTO_ATENDIMENTO', NULL, 25, FALSE),
+             ('nutricionista@quickcare.dev', 'NAO_COMPARECIMENTO', NULL, 9, FALSE),
+             ('nutricionista@quickcare.dev', 'MANUAL', 'Não compareceu a duas consultas por vídeo seguidas, confirmado com o paciente.', 2, FALSE))
+     AS o (email, motivo, justificativa, dias_atras, anulada)
+JOIN usuario u ON u.email = o.email
+CROSS JOIN (SELECT usuario_id AS id FROM administrador ORDER BY id LIMIT 1) adm
+WHERE NOT EXISTS (SELECT 1 FROM ocorrencia x WHERE x.usuario_id = u.id AND x.perfil = 'PROFISSIONAL');
+
+INSERT INTO bloqueio (usuario_id, perfil, nivel, inicio, fim)
+SELECT o.usuario_id, 'PROFISSIONAL', 1, o.criado_em, o.criado_em + INTERVAL '7 days'
+FROM ocorrencia o JOIN usuario u ON u.id = o.usuario_id
+WHERE u.email = 'nutricionista@quickcare.dev' AND o.motivo = 'MANUAL'
+  AND NOT EXISTS (SELECT 1 FROM bloqueio b WHERE b.usuario_id = o.usuario_id);
+
+INSERT INTO recurso_ocorrencia (ocorrencia_id, texto, status, criado_em)
+SELECT o.id, 'Cancelei porque o paciente pediu por mensagem para trocar o dia; tenho o print da conversa.',
+       'EM_ANALISE', now() - INTERVAL '1 day'
+FROM ocorrencia o JOIN usuario u ON u.id = o.usuario_id
+WHERE u.email = 'nutricionista@quickcare.dev' AND o.motivo = 'CANCELAMENTO_ATENDIMENTO' AND o.anulada_em IS NULL
+  AND NOT EXISTS (SELECT 1 FROM recurso_ocorrencia r JOIN ocorrencia x ON x.id = r.ocorrencia_id WHERE x.usuario_id = u.id);
+
 DELETE FROM notificacao
 WHERE link IN ('/patient', '/professional/propostas', '/professional/historico') AND tipo <> 'CADASTRO_APROVADO';
 
--- p_descricao identifica a solicitação; p_email_profissional, a proposta (a
--- ativa dele, ou a mais recente). p_destaque: PROPOSTA, SOLICITACAO ou nulo
--- (sem solicitação: p_link_fixo).
 CREATE OR REPLACE FUNCTION pg_temp.seed_notificacao(
     p_email TEXT, p_perfil TEXT, p_tipo TEXT, p_titulo TEXT, p_mensagem TEXT,
     p_descricao TEXT, p_email_profissional TEXT, p_destaque TEXT, p_link_fixo TEXT,
@@ -679,7 +767,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- ambos@ como paciente
 SELECT pg_temp.seed_notificacao('ambos@quickcare.dev', 'PACIENTE', 'PROPOSTA_RECEBIDA', 'Nova proposta',
        'Profissional Teste enviou uma proposta para a sua solicitação de Curativos.',
        'Curativo pós-cirúrgico no joelho', 'profissional@quickcare.dev', 'PROPOSTA', NULL, 3, FALSE);
@@ -687,7 +774,6 @@ SELECT pg_temp.seed_notificacao('ambos@quickcare.dev', 'PACIENTE', 'PROPOSTA_REC
        'Carla Mendes enviou uma proposta para a sua solicitação de Nutrição.',
        'Acompanhamento nutricional para controle do colesterol', 'nutricionista@quickcare.dev', 'PROPOSTA', NULL, 26, TRUE);
 
--- ambos@ como cuidadora
 SELECT pg_temp.seed_notificacao('ambos@quickcare.dev', 'PROFISSIONAL', 'PROPOSTA_ACEITA', 'Proposta aceita',
        'O paciente aceitou a sua proposta para Cuidador de Idosos.',
        'Cuidadora para os fins de semana', 'ambos@quickcare.dev', 'PROPOSTA', NULL, 5, FALSE);
@@ -695,7 +781,6 @@ SELECT pg_temp.seed_notificacao('ambos@quickcare.dev', 'PROFISSIONAL', 'SOLICITA
        'O paciente cancelou a solicitação de Cuidador de Idosos.',
        'Cuidadora noturna por um mês', 'ambos@quickcare.dev', 'SOLICITACAO', NULL, 48, FALSE);
 
--- paciente@
 SELECT pg_temp.seed_notificacao('paciente@quickcare.dev', 'PACIENTE', 'CADASTRO_APROVADO', 'Cadastro aprovado',
        'Seu cadastro de paciente foi aprovado. Você já pode criar solicitações.',
        NULL, NULL, NULL, '/patient', 240, TRUE);
@@ -703,7 +788,6 @@ SELECT pg_temp.seed_notificacao('paciente@quickcare.dev', 'PACIENTE', 'PROPOSTA_
        'Profissional Teste enviou uma proposta para a sua solicitação de Curativos.',
        'Minha mãe precisa de curativos diários', 'profissional@quickcare.dev', 'PROPOSTA', NULL, 2, FALSE);
 
--- profissional@
 SELECT pg_temp.seed_notificacao('profissional@quickcare.dev', 'PROFISSIONAL', 'CADASTRO_APROVADO', 'Cadastro aprovado',
        'Seu cadastro de profissional foi aprovado. Você já pode enviar propostas.',
        NULL, NULL, NULL, '/professional', 240, TRUE);

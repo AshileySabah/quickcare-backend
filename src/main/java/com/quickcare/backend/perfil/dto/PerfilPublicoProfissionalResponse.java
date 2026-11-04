@@ -7,12 +7,6 @@ import com.quickcare.backend.profissional.ModalidadeAtendimento;
 import java.time.Instant;
 import java.util.List;
 
-/**
- * O que outros usuários veem do profissional. Sem telefone, e-mail nem
- * endereço: só cidade e UF. Só profissionais aprovados têm perfil visível,
- * então o registro informado já foi conferido. `contatosEmergencia` só vem
- * para o paciente cujo atendimento com ele já começou.
- */
 public record PerfilPublicoProfissionalResponse(
         Long id,
         String nome,

@@ -2,7 +2,6 @@ package com.quickcare.backend.validacao;
 
 import com.quickcare.backend.validacao.exception.CadastroNaoEncontradoException;
 
-/** Converte o segmento da URL ("paciente(s)"/"profissional(is)") no perfil. */
 final class PerfilNaUrl {
 
     private PerfilNaUrl() {

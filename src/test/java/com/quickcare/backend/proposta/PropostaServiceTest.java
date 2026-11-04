@@ -5,6 +5,8 @@ import com.quickcare.backend.atendimento.AtendimentoRepository;
 import com.quickcare.backend.atendimento.AtendimentoService;
 import com.quickcare.backend.atendimento.StatusAtendimento;
 import com.quickcare.backend.notificacao.Notificador;
+import com.quickcare.backend.ocorrencia.OcorrenciaService;
+import com.quickcare.backend.bloqueiousuario.BloqueioUsuarioRepository;
 import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
 import com.quickcare.backend.especialidade.CategoriaProfissional;
 import com.quickcare.backend.especialidade.Especialidade;
@@ -59,10 +61,8 @@ class PropostaServiceTest {
     private static final Long USUARIO_PACIENTE_ID = 1L;
     private static final Long USUARIO_PROFISSIONAL_ID = 2L;
     private static final Long USUARIO_OUTRO_PROFISSIONAL_ID = 3L;
-    /** ~1,4 km uma da outra. */
     private static final Coordenadas AV_PAULISTA = new Coordenadas(new BigDecimal("-23.564100"), new BigDecimal("-46.652400"));
     private static final Coordenadas RUA_AUGUSTA = new Coordenadas(new BigDecimal("-23.552300"), new BigDecimal("-46.647000"));
-    /** ~70 km da Paulista. */
     private static final Coordenadas CAMPINAS = new Coordenadas(new BigDecimal("-22.905600"), new BigDecimal("-47.060800"));
 
     private static final Instant AGORA = Instant.parse("2026-11-02T12:00:00Z");
@@ -87,6 +87,10 @@ class PropostaServiceTest {
     private AtendimentoService atendimentoService;
     @Mock
     private AtendimentoRepository atendimentoRepository;
+    @Mock
+    private OcorrenciaService ocorrenciaService;
+    @Mock
+    private BloqueioUsuarioRepository bloqueioUsuarioRepository;
 
     private PropostaService service;
 
@@ -98,7 +102,7 @@ class PropostaServiceTest {
     void setUp() {
         service = new PropostaService(propostaRepository, solicitacaoRepository, profissionalRepository,
                 armazenamentoDocumentoService, atendimentoService, atendimentoRepository, notificador,
-                Clock.fixed(AGORA, ZoneOffset.UTC));
+                ocorrenciaService, bloqueioUsuarioRepository, Clock.fixed(AGORA, ZoneOffset.UTC));
 
         curativos = Especialidade.builder().id(5L).nome("Curativos").categoria(CategoriaProfissional.ENFERMEIRO).build();
 
@@ -141,7 +145,6 @@ class PropostaServiceTest {
         assertThat(response.status()).isEqualTo(StatusProposta.PENDENTE);
         assertThat(response.abordagem()).isEqualTo("Curativos diários com relatório semanal de evolução.");
         assertThat(response.profissional().nome()).isEqualTo("Profissional 20");
-        // Pendente: o profissional ainda não sabe quem é o paciente.
         assertThat(response.solicitacao().pacienteNome()).isNull();
         assertThat(response.solicitacao().pacienteId()).isNull();
         assertThat(solicitacao.getStatus()).isEqualTo(StatusSolicitacao.RECEBENDO_PROPOSTAS);
@@ -241,7 +244,6 @@ class PropostaServiceTest {
 
         PropostaResponse response = service.enviar(USUARIO_PROFISSIONAL_ID, 50L, REQUEST);
 
-        // Só as ativas bloqueiam: recusada e cancelada não entram na checagem.
         assertThat(StatusProposta.ATIVAS).doesNotContain(StatusProposta.RECUSADA, StatusProposta.CANCELADA);
         verify(propostaRepository).existsBySolicitacaoIdAndProfissionalIdAndStatusIn(50L, 20L, StatusProposta.ATIVAS);
         assertThat(response.status()).isEqualTo(StatusProposta.PENDENTE);
@@ -276,6 +278,37 @@ class PropostaServiceTest {
 
         assertThat(service.listarDaSolicitacao(USUARIO_PROFISSIONAL_ID, 50L))
                 .extracting(PropostaResponse::id).containsExactly(100L);
+    }
+
+    @Test
+    void comBloqueioOPacienteNaoVeNomeNemFotoDoProfissionalNoHistorico() {
+        when(solicitacaoRepository.findById(50L)).thenReturn(Optional.of(solicitacao));
+        when(propostaRepository.findBySolicitacaoIdOrderByCriadoEmAsc(50L)).thenReturn(List.of(
+                proposta(100L, profissional, StatusProposta.RECUSADA)));
+        when(bloqueioUsuarioRepository.existsByPacienteIdAndProfissionalId(10L, 20L)).thenReturn(true);
+
+        PropostaResponse response = service.listarDaSolicitacao(USUARIO_PACIENTE_ID, 50L).get(0);
+
+        assertThat(response.profissional().perfilIndisponivel()).isTrue();
+        assertThat(response.profissional().nome()).isNull();
+        assertThat(response.profissional().avatarUrl()).isNull();
+        assertThat(response.solicitacao().pacienteIndisponivel()).isFalse();
+    }
+
+    @Test
+    void comBloqueioOProfissionalNaoVeNomeNemFotoDoPacienteMesmoComPropostaAceita() {
+        mockProfissional(profissional);
+        when(propostaRepository.findByProfissionalIdOrderByCriadoEmDesc(20L)).thenReturn(List.of(
+                proposta(100L, profissional, StatusProposta.ACEITA)));
+        when(bloqueioUsuarioRepository.existsByPacienteIdAndProfissionalId(10L, 20L)).thenReturn(true);
+
+        PropostaResponse response = service.listarDoProfissional(USUARIO_PROFISSIONAL_ID).get(0);
+
+        assertThat(response.solicitacao().pacienteIndisponivel()).isTrue();
+        assertThat(response.solicitacao().pacienteId()).isNull();
+        assertThat(response.solicitacao().pacienteNome()).isNull();
+        assertThat(response.profissional().perfilIndisponivel()).isFalse();
+        assertThat(response.profissional().nome()).isNotNull();
     }
 
     @Test
@@ -357,7 +390,6 @@ class PropostaServiceTest {
         verify(notificador).propostaAceita(escolhida);
     }
 
-    /** Editou a aceita: deixa de estar aceita e o paciente precisa aceitar (ou recusar) de novo. */
     @Test
     void editarPropostaAceitaTiraDoAceiteEVoltaParaOPaciente() {
         solicitacao.setStatus(StatusSolicitacao.EM_ANDAMENTO);

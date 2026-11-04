@@ -17,7 +17,6 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
-/** Só os dados do perfil de profissional, para quem já tem conta (ver {@link NovoPerfilPacienteRequest}). */
 public record NovoPerfilProfissionalRequest(
         @Pattern(regexp = "\\d{14}") @Cnpj String cnpj,
         @NotNull CategoriaProfissional categoria,

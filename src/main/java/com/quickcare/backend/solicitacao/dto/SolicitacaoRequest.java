@@ -11,11 +11,6 @@ import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
 
-/**
- * Usado tanto na criação quanto na edição. {@code endereco} é obrigatório
- * apenas quando a modalidade é PRESENCIAL — regra checada no service, assim
- * como a de não repetir especialidade em {@code profissionais}.
- */
 public record SolicitacaoRequest(
         @NotEmpty @Size(max = 10) List<@NotNull @Valid ProfissionalSolicitadoRequest> profissionais,
         @NotBlank @Size(min = 20, max = 1000) String descricao,

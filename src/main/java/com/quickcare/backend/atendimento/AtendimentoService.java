@@ -35,21 +35,13 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
-/**
- * Regras do atendimento: ocupar a vaga no aceite (inclusive tomando a reservada
- * de quem não reaceitou), reaceite depois que o paciente edita, remarcação,
- * cancelamento (com as ocorrências da regra das 48h) e as mudanças que
- * acontecem sozinhas no horário (início, término, conclusão e lembretes).
- */
 @Slf4j
 @Service
 public class AtendimentoService {
 
-    /** Depois do término, a janela para reportar problema (branch 4b) antes de concluir. */
-    static final Duration JANELA_CONCLUSAO = Duration.ofHours(72);
+    public static final Duration JANELA_CONCLUSAO = Duration.ofHours(72);
     static final Duration ANTECEDENCIA_VESPERA = Duration.ofHours(24);
     static final Duration ANTECEDENCIA_LEMBRETE = Duration.ofMinutes(30);
-    /** Até quanto depois do início ainda vale avisar "começou agora" (o servidor pode ter dormido). */
     static final Duration TOLERANCIA_LEMBRETE_INICIO = Duration.ofMinutes(30);
     static final Duration DURACAO_MAXIMA = Duration.ofDays(366);
     private static final ZoneId FUSO = ZoneId.of("America/Sao_Paulo");
@@ -80,17 +72,9 @@ public class AtendimentoService {
         this.notificador = notificador;
         this.clock = clock;
         this.transacao = new TransactionTemplate(transactionManager);
-        // Independente de quem chama (as leituras são read-only): cada atendimento confirma sozinho.
         this.transacao.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
-    // ================================================= chamados pelas propostas
-
-    /**
-     * O paciente aceitou: a proposta ocupa uma vaga livre da linha dela ou,
-     * sem livre, a reservada de um profissional que ainda não reaceitou (ele é
-     * substituído). Pendentes que não cabem em mais nada são recusadas.
-     */
     @Transactional
     public Atendimento aceitarProposta(Proposta proposta) {
         Instant agora = Instant.now(clock);
@@ -113,17 +97,11 @@ public class AtendimentoService {
         return atendimento;
     }
 
-    /** Atendimento ativo da proposta, se houver. */
     @Transactional(readOnly = true)
     public Optional<Atendimento> ativoDa(Proposta proposta) {
         return atendimentoRepository.findFirstByPropostaIdAndStatusIn(proposta.getId(), StatusAtendimento.ATIVOS);
     }
 
-    /**
-     * O profissional alterou a proposta aceita: ela deixa de estar aceita e o
-     * paciente precisa aceitá-la de novo. Só antes do início — depois, ele
-     * remarca ou cancela.
-     */
     @Transactional
     public void cancelarPorAlteracaoDaProposta(Proposta proposta) {
         ativoDa(proposta).ifPresent(atendimento -> {
@@ -134,7 +112,6 @@ public class AtendimentoService {
         });
     }
 
-    /** O profissional cancelou a proposta aceita: é cancelar o atendimento (ou recusar o reaceite). */
     @Transactional
     public void cancelarPeloProfissional(Proposta proposta) {
         ativoDa(proposta).ifPresent(atendimento -> {
@@ -146,24 +123,17 @@ public class AtendimentoService {
         });
     }
 
-    // ============================================== chamados pelas solicitações
-
-    /** A edição troca as linhas; antes, as propostas aceitas saem das antigas (que serão apagadas). */
     @Transactional
     public void prepararEdicao(Solicitacao solicitacao) {
         exigir(!atendimentoRepository.existsBySolicitacaoIdAndStatusIn(
                         solicitacao.getId(), Set.of(StatusAtendimento.EM_ANDAMENTO)),
                 "Há um atendimento em andamento nesta solicitação. Remarque ou cancele o atendimento em vez de editar.");
+        exigir(!atendimentoRepository.existsBySolicitacaoIdAndStatusIn(solicitacao.getId(), StatusAtendimento.EM_PROBLEMA),
+                "Há um problema relatado em um atendimento desta solicitação. Espere ele ser resolvido para editar.");
         propostaRepository.findBySolicitacaoIdAndStatus(solicitacao.getId(), StatusProposta.ACEITA)
                 .forEach(proposta -> proposta.setVaga(null));
     }
 
-    /**
-     * Depois da edição (linhas novas já salvas): os já realizados voltam às
-     * vagas; os que ainda vão acontecer reservam uma e aguardam o reaceite do
-     * profissional. Quem não cabe mais na nova versão é cancelado (sem
-     * penalidade para ele). Devolve as propostas que aguardam reaceite.
-     */
     @Transactional
     public List<Proposta> solicitacaoEditada(Solicitacao solicitacao) {
         Instant agora = Instant.now(clock);
@@ -193,7 +163,6 @@ public class AtendimentoService {
                         registrar(atendimento, TipoEventoAtendimento.REACEITE_SOLICITADO, LadoAtendimento.PACIENTE, null);
                         aguardandoReaceite.add(proposta);
                     } else {
-                        // Já está fora da vaga (prepararEdicao); só encerra.
                         boolean tardia = RegrasOcorrencia.alteracaoTardia(atendimento, agora);
                         atendimento.cancelar(LadoAtendimento.SISTEMA, MotivoCancelamento.EDICAO_INCOMPATIVEL, agora);
                         proposta.setStatus(StatusProposta.RECUSADA);
@@ -210,11 +179,6 @@ public class AtendimentoService {
         return aguardandoReaceite;
     }
 
-    /**
-     * O paciente cancelou a solicitação: os atendimentos que ainda iam
-     * acontecer caem. Conta no máximo uma ocorrência para ele, se algum desses
-     * cancelamentos contaria pela regra das 48h.
-     */
     @Transactional
     public void solicitacaoCancelada(Solicitacao solicitacao) {
         Instant agora = Instant.now(clock);
@@ -230,8 +194,6 @@ public class AtendimentoService {
             }
         }
     }
-
-    // ================================================= ações dos dois lados
 
     @Transactional
     public AtendimentoResponse reaceitar(Long usuarioId, Long id) {
@@ -257,7 +219,6 @@ public class AtendimentoService {
         return responder(atendimento);
     }
 
-    /** Recusar a nova versão não penaliza o profissional; o paciente responde se editou em cima da hora. */
     private void recusarReaceite(Atendimento atendimento) {
         boolean tardia = RegrasOcorrencia.alteracaoTardia(atendimento, atendimento.getReaceiteSolicitadoEm());
         encerrar(atendimento, LadoAtendimento.PROFISSIONAL, MotivoCancelamento.REACEITE_RECUSADO,
@@ -299,7 +260,6 @@ public class AtendimentoService {
         return responder(atendimento);
     }
 
-    /** A qualquer momento até o término; a regra das 48h decide se conta como ocorrência. */
     @Transactional
     public AtendimentoResponse cancelar(Long usuarioId, Long id) {
         Atendimento atendimento = buscarDoUsuario(usuarioId, id);
@@ -315,29 +275,93 @@ public class AtendimentoService {
 
     private void cancelar(Atendimento atendimento, LadoAtendimento lado) {
         Instant agora = Instant.now(clock);
-        boolean aguardavaReaceite = atendimento.getStatus() == StatusAtendimento.AGUARDANDO_REACEITE;
-        // O paciente que cancela depois de editar em cima da hora prejudicou o profissional.
-        MotivoOcorrencia ocorrencia = aguardavaReaceite
-                ? (RegrasOcorrencia.alteracaoTardia(atendimento, atendimento.getReaceiteSolicitadoEm())
-                        ? MotivoOcorrencia.ALTERACAO_TARDIA_SOLICITACAO : null)
-                : (RegrasOcorrencia.cancelamentoConta(atendimento, agora) ? MotivoOcorrencia.CANCELAMENTO_ATENDIMENTO : null);
-
-        encerrar(atendimento, lado, MotivoCancelamento.DESISTENCIA,
-                lado == LadoAtendimento.PROFISSIONAL ? StatusProposta.CANCELADA : StatusProposta.RECUSADA, agora, true);
+        MotivoOcorrencia ocorrencia = ocorrenciaDoCancelamento(atendimento, agora).orElse(null);
+        encerrarPorDesistencia(atendimento, lado, agora);
         if (ocorrencia != null) {
             ocorrenciaService.registrar(usuarioDo(atendimento, lado), perfilDo(lado), ocorrencia, atendimento);
         }
+    }
+
+    public static Optional<MotivoOcorrencia> ocorrenciaDoCancelamento(Atendimento atendimento, Instant agora) {
+        if (atendimento.getStatus() == StatusAtendimento.AGUARDANDO_REACEITE) {
+            return RegrasOcorrencia.alteracaoTardia(atendimento, atendimento.getReaceiteSolicitadoEm())
+                    ? Optional.of(MotivoOcorrencia.ALTERACAO_TARDIA_SOLICITACAO) : Optional.empty();
+        }
+        return RegrasOcorrencia.cancelamentoConta(atendimento, agora)
+                ? Optional.of(MotivoOcorrencia.CANCELAMENTO_ATENDIMENTO) : Optional.empty();
+    }
+
+    private void encerrarPorDesistencia(Atendimento atendimento, LadoAtendimento lado, Instant agora) {
+        encerrar(atendimento, lado, MotivoCancelamento.DESISTENCIA,
+                lado == LadoAtendimento.PROFISSIONAL ? StatusProposta.CANCELADA : StatusProposta.RECUSADA, agora, true);
         notificador.atendimentoCancelado(atendimento, lado);
     }
 
-    // ===================================================== mudanças no horário
+    @Transactional
+    public void encerrarPorBloqueio(Long pacienteId, Long profissionalId, LadoAtendimento quemBloqueou) {
+        encerrarPorBloqueio(pacienteId, profissionalId, quemBloqueou, null);
+    }
 
-    /**
-     * Aplica o que já venceu: início, término, conclusão, reaceite não feito e
-     * lembretes. Roda pelo job a cada minuto e antes das leituras (o Render
-     * free pode ter dormido). Cada atendimento numa transação própria, para uma
-     * falha não travar os outros.
-     */
+    @Transactional
+    public void encerrarPorBloqueio(Long pacienteId, Long profissionalId, LadoAtendimento quemBloqueou, String motivo) {
+        if (quemBloqueou == LadoAtendimento.SISTEMA) {
+            encerrarPorBloqueioDoAdmin(pacienteId, profissionalId);
+            return;
+        }
+        Instant agora = Instant.now(clock);
+        List<Atendimento> vigentes = atendimentoRepository.findByPropostaProfissionalIdAndSolicitacaoPacienteIdAndStatusIn(
+                profissionalId, pacienteId, StatusAtendimento.ATIVOS);
+        Atendimento tardio = vigentes.stream()
+                .filter(atendimento -> RegrasOcorrencia.bloqueioTardio(atendimento, agora))
+                .findFirst()
+                .orElse(null);
+        for (Atendimento atendimento : vigentes) {
+            encerrar(atendimento, quemBloqueou, MotivoCancelamento.DESISTENCIA, StatusProposta.RECUSADA, agora, true);
+            notificador.atendimentoCancelado(atendimento, quemBloqueou);
+        }
+        if (tardio != null) {
+            ocorrenciaService.bloqueioTardio(usuarioDo(tardio, quemBloqueou), perfilDo(quemBloqueou), tardio, motivo);
+        }
+
+        for (Proposta pendente : propostaRepository.findByProfissionalIdAndSolicitacaoPacienteIdAndStatus(
+                profissionalId, pacienteId, StatusProposta.PENDENTE)) {
+            pendente.setStatus(quemBloqueou == LadoAtendimento.PACIENTE ? StatusProposta.RECUSADA : StatusProposta.CANCELADA);
+            propostaRepository.saveAndFlush(pendente);
+            recalcularSolicitacao(pendente.getSolicitacao());
+            notificador.propostaEncerradaPorBloqueio(pendente, quemBloqueou);
+        }
+    }
+
+    private void encerrarPorBloqueioDoAdmin(Long pacienteId, Long profissionalId) {
+        Instant agora = Instant.now(clock);
+        for (Atendimento atendimento : atendimentoRepository.findByPropostaProfissionalIdAndSolicitacaoPacienteIdAndStatusIn(
+                profissionalId, pacienteId, StatusAtendimento.ATIVOS)) {
+            encerrar(atendimento, LadoAtendimento.SISTEMA, MotivoCancelamento.ADMIN, StatusProposta.CANCELADA, agora, false);
+            notificador.vinculoEncerrado(atendimento.getProposta(), true);
+        }
+        for (Proposta pendente : propostaRepository.findByProfissionalIdAndSolicitacaoPacienteIdAndStatus(
+                profissionalId, pacienteId, StatusProposta.PENDENTE)) {
+            pendente.setStatus(StatusProposta.RECUSADA);
+            propostaRepository.saveAndFlush(pendente);
+            recalcularSolicitacao(pendente.getSolicitacao());
+            notificador.vinculoEncerrado(pendente, false);
+        }
+    }
+
+    @Transactional
+    public void cancelarPeloAdmin(Proposta proposta) {
+        Atendimento atendimento = ativoDa(proposta)
+                .orElseThrow(() -> new TransicaoStatusInvalidaException(
+                        "Esta proposta não tem atendimento em curso para cancelar."));
+        encerrar(atendimento, LadoAtendimento.SISTEMA, MotivoCancelamento.ADMIN, StatusProposta.CANCELADA,
+                Instant.now(clock), false);
+    }
+
+    @Transactional
+    public void recalcularDepoisDoAdmin(Solicitacao solicitacao) {
+        recalcularSolicitacao(solicitacao);
+    }
+
     public void processarVencidos() {
         Instant agora = Instant.now(clock);
         for (Long id : atendimentoRepository.findIdsComTransicaoVencida(
@@ -354,7 +378,6 @@ public class AtendimentoService {
         try {
             transacao.executeWithoutResult(status -> tarefa.run());
         } catch (RuntimeException ex) {
-            // Outra execução (job ou leitura) pode ter mexido nele primeiro (versão); tenta na próxima.
             log.warn("Não foi possível processar o atendimento {}: {}", id, ex.getMessage());
         }
     }
@@ -405,10 +428,6 @@ public class AtendimentoService {
         concluirSolicitacaoSeTerminou(atendimento.getSolicitacao());
     }
 
-    /**
-     * Na véspera (24h antes) e 30 minutos antes; o do horário sai junto com o
-     * início. Quem aceitou já dentro da janela não recebe o lembrete dela.
-     */
     private void lembrar(Long id, Instant agora) {
         Atendimento atendimento = atendimentoRepository.findWithPartesById(id).orElse(null);
         if (atendimento == null || atendimento.getStatus() != StatusAtendimento.AGENDADO) {
@@ -446,16 +465,11 @@ public class AtendimentoService {
         }
     }
 
-    /**
-     * A solicitação conclui sozinha quando nada mais vai acontecer: nenhum
-     * atendimento ativo, ao menos um realizado e, ou todas as vagas foram
-     * preenchidas, ou o prazo desejado já passou. Pendentes que sobrarem são
-     * recusadas.
-     */
-    private void concluirSolicitacaoSeTerminou(Solicitacao solicitacao) {
+    void concluirSolicitacaoSeTerminou(Solicitacao solicitacao) {
         if (!StatusSolicitacao.EM_CURSO.contains(solicitacao.getStatus())
                 || atendimentoRepository.existsBySolicitacaoIdAndStatusIn(solicitacao.getId(), StatusAtendimento.ATIVOS)
-                || !atendimentoRepository.existsBySolicitacaoIdAndStatusIn(solicitacao.getId(), StatusAtendimento.REALIZADOS)) {
+                || atendimentoRepository.existsBySolicitacaoIdAndStatusIn(solicitacao.getId(), StatusAtendimento.EM_PROBLEMA)
+                || !atendimentoRepository.existsBySolicitacaoIdAndStatusIn(solicitacao.getId(), StatusAtendimento.ENCERRADOS)) {
             return;
         }
         boolean prazoPassou = solicitacao.getPrazoDesejado().isBefore(LocalDate.now(clock.withZone(FUSO)));
@@ -464,18 +478,72 @@ public class AtendimentoService {
         }
 
         solicitacao.setStatus(StatusSolicitacao.CONCLUIDA);
+        recusarPendentes(solicitacao);
+    }
+
+    private void recusarPendentes(Solicitacao solicitacao) {
         propostaRepository.findBySolicitacaoIdAndStatus(solicitacao.getId(), StatusProposta.PENDENTE).forEach(pendente -> {
             pendente.setStatus(StatusProposta.RECUSADA);
             notificador.propostaRecusada(pendente, true);
         });
     }
 
-    // ================================================================= apoio
+    @Transactional
+    public void encerrarComoNaoRealizado(Atendimento atendimento, LadoAtendimento ausente, Instant agora) {
+        atendimento.marcarNaoRealizado();
+        Proposta proposta = atendimento.getProposta();
+        if (agora.isBefore(atendimento.getTermino()) && proposta.getVaga() != null) {
+            proposta.liberarVaga(false);
+            proposta.setStatus(ausente == LadoAtendimento.PACIENTE ? StatusProposta.RECUSADA : StatusProposta.CANCELADA);
+            recalcularSolicitacao(atendimento.getSolicitacao());
+        }
+        concluirSolicitacaoSeTerminou(atendimento.getSolicitacao());
+    }
 
-    /**
-     * Encerra o atendimento ativo: sai da vaga (reservada ou não), a proposta
-     * fica com o status dado e a solicitação recalcula o próprio status.
-     */
+    @Transactional
+    public void retomarComoRealizado(Atendimento atendimento, Instant agora) {
+        Proposta proposta = atendimento.getProposta();
+        Solicitacao solicitacao = atendimento.getSolicitacao();
+        if (proposta.getVaga() == null) {
+            solicitacao.vagaDisponivelPara(proposta.getProfissional()).ifPresent(linha -> {
+                linha.preencherVaga();
+                proposta.setVaga(linha);
+            });
+        }
+        proposta.setStatus(StatusProposta.ACEITA);
+        atendimento.retomarComoRealizado(agora);
+        recalcularSolicitacao(solicitacao);
+        concluirSolicitacaoSeTerminou(solicitacao);
+    }
+
+    @Transactional
+    public void registrarEvento(Atendimento atendimento, TipoEventoAtendimento tipo, LadoAtendimento lado, String detalhe) {
+        registrar(atendimento, tipo, lado, detalhe);
+    }
+
+    @Transactional
+    public List<Proposta> encerrarPeloAdmin(Solicitacao solicitacao, StatusSolicitacao novoStatus) {
+        Instant agora = Instant.now(clock);
+        List<Proposta> afetadas = new ArrayList<>();
+        for (Atendimento atendimento : atendimentoRepository.findBySolicitacaoIdAndStatusIn(
+                solicitacao.getId(), StatusAtendimento.ATIVOS)) {
+            encerrar(atendimento, LadoAtendimento.SISTEMA, MotivoCancelamento.ADMIN, StatusProposta.CANCELADA, agora, false);
+            afetadas.add(atendimento.getProposta());
+        }
+        for (Proposta pendente : propostaRepository.findBySolicitacaoIdAndStatus(solicitacao.getId(), StatusProposta.PENDENTE)) {
+            pendente.setStatus(StatusProposta.RECUSADA);
+            afetadas.add(pendente);
+        }
+        solicitacao.setStatus(novoStatus);
+        return afetadas;
+    }
+
+    @Transactional
+    public void reabrirPeloAdmin(Solicitacao solicitacao) {
+        solicitacao.setStatus(StatusSolicitacao.ABERTA);
+        recalcularSolicitacao(solicitacao);
+    }
+
     private void encerrar(Atendimento atendimento, LadoAtendimento lado, MotivoCancelamento motivo,
                           StatusProposta statusDaProposta, Instant agora, boolean manual) {
         boolean reservada = atendimento.getStatus() == StatusAtendimento.AGUARDANDO_REACEITE;
@@ -489,11 +557,6 @@ public class AtendimentoService {
         recalcularSolicitacao(atendimento.getSolicitacao());
     }
 
-    /**
-     * Sem vaga livre, toma a reservada mais antiga de um profissional que ainda
-     * não reaceitou. Se a edição ou a troca é a menos de 48h do atendimento,
-     * conta ocorrência para o paciente.
-     */
     private SolicitacaoProfissional tomarVagaReservada(Proposta proposta, Instant agora) {
         Solicitacao solicitacao = proposta.getSolicitacao();
         Set<SolicitacaoProfissional> linhas = Set.copyOf(solicitacao.linhasQueRecebem(proposta.getProfissional()).toList());
@@ -515,7 +578,6 @@ public class AtendimentoService {
         return linha;
     }
 
-    /** Pendentes (fora a recém-aceita) que não cabem em vaga livre nem reservada são recusadas. */
     private void recusarPendentesSemVaga(Solicitacao solicitacao, Proposta aceita) {
         propostaRepository.findBySolicitacaoIdAndStatus(solicitacao.getId(), StatusProposta.PENDENTE).stream()
                 .filter(pendente -> aceita == null || !pendente.getId().equals(aceita.getId()))

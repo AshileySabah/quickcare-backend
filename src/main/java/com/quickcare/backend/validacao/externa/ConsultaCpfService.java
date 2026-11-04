@@ -16,10 +16,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-/**
- * Confere na Serpro (base da Receita Federal) se o CPF existe, está regular e
- * pertence à pessoa cadastrada (nome e data de nascimento).
- */
 @Slf4j
 @Service
 public class ConsultaCpfService {

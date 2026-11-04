@@ -3,7 +3,9 @@ package com.quickcare.backend.solicitacao;
 import com.quickcare.backend.atendimento.AtendimentoRepository;
 import com.quickcare.backend.atendimento.AtendimentoService;
 import com.quickcare.backend.notificacao.Notificador;
+import com.quickcare.backend.ocorrencia.OcorrenciaService;
 import com.quickcare.backend.cadastro.exception.EspecialidadeInvalidaException;
+import com.quickcare.backend.bloqueiousuario.BloqueioUsuarioRepository;
 import com.quickcare.backend.especialidade.CategoriaProfissional;
 import com.quickcare.backend.especialidade.Especialidade;
 import com.quickcare.backend.especialidade.EspecialidadeRepository;
@@ -88,6 +90,12 @@ class SolicitacaoServiceTest {
 
     @Mock
     private AtendimentoRepository atendimentoRepository;
+
+    @Mock
+    private OcorrenciaService ocorrenciaService;
+
+    @Mock
+    private BloqueioUsuarioRepository bloqueioUsuarioRepository;
 
     @InjectMocks
     private SolicitacaoService service;
@@ -276,7 +284,6 @@ class SolicitacaoServiceTest {
         assertThat(salva.getValue().getLongitude()).isEqualByComparingTo("-46.652400");
     }
 
-    /** Os aceitos não voltam para o paciente: reservam vaga e o profissional reaceita ou recusa. */
     @Test
     void editarComAceitosPedeReaceiteAosProfissionais() {
         Solicitacao solicitacao = mockSolicitacaoDoPaciente(StatusSolicitacao.EM_ANDAMENTO);
@@ -483,7 +490,6 @@ class SolicitacaoServiceTest {
         return solicitacao(StatusSolicitacao.ABERTA, CategoriaProfissional.ENFERMEIRO, curativos, sondagem);
     }
 
-    /** Solicitação online de outro usuário que pede 1 profissional com as especialidades informadas. */
     private Solicitacao solicitacao(StatusSolicitacao status, CategoriaProfissional categoria, Especialidade... especialidades) {
         Solicitacao solicitacao = Solicitacao.builder()
                 .id(50L)

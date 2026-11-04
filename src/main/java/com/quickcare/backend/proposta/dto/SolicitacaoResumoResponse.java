@@ -9,11 +9,6 @@ import com.quickcare.backend.solicitacao.dto.ProfissionalSolicitadoResponse;
 import java.time.LocalDate;
 import java.util.List;
 
-/**
- * O que o profissional vê da solicitação na lista das suas propostas. Quem é o
- * paciente (id, nome e foto) só vem depois que a proposta é aceita; antes
- * disso esses campos nem aparecem no JSON.
- */
 public record SolicitacaoResumoResponse(
         Long id,
         @JsonInclude(JsonInclude.Include.NON_NULL) Long pacienteId,
@@ -22,10 +17,20 @@ public record SolicitacaoResumoResponse(
         List<ProfissionalSolicitadoResponse> profissionais,
         ModalidadeSolicitacao modalidade,
         LocalDate prazoDesejado,
-        StatusSolicitacao status
+        StatusSolicitacao status,
+        boolean pacienteIndisponivel
 ) {
 
     public static SolicitacaoResumoResponse de(Solicitacao solicitacao, boolean revelaPaciente, String pacienteAvatarUrl) {
+        return de(solicitacao, revelaPaciente, pacienteAvatarUrl, false);
+    }
+
+    public static SolicitacaoResumoResponse comPacienteIndisponivel(Solicitacao solicitacao) {
+        return de(solicitacao, false, null, true);
+    }
+
+    private static SolicitacaoResumoResponse de(Solicitacao solicitacao, boolean revelaPaciente, String pacienteAvatarUrl,
+                                                boolean indisponivel) {
         return new SolicitacaoResumoResponse(
                 solicitacao.getId(),
                 revelaPaciente ? solicitacao.getPaciente().getId() : null,
@@ -34,7 +39,8 @@ public record SolicitacaoResumoResponse(
                 solicitacao.getProfissionais().stream().map(ProfissionalSolicitadoResponse::de).toList(),
                 solicitacao.getModalidade(),
                 solicitacao.getPrazoDesejado(),
-                solicitacao.getStatus()
+                solicitacao.getStatus(),
+                indisponivel
         );
     }
 

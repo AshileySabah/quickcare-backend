@@ -1,0 +1,165 @@
+package com.quickcare.backend.bloqueiousuario;
+
+import com.quickcare.backend.atendimento.Atendimento;
+import com.quickcare.backend.atendimento.AtendimentoRepository;
+import com.quickcare.backend.atendimento.AtendimentoService;
+import com.quickcare.backend.atendimento.LadoAtendimento;
+import com.quickcare.backend.atendimento.StatusAtendimento;
+import com.quickcare.backend.bloqueiousuario.dto.BloqueioUsuarioResponse;
+import com.quickcare.backend.bloqueiousuario.dto.PreviaBloqueioResponse;
+import com.quickcare.backend.common.RecursoNaoEncontradoException;
+import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
+import com.quickcare.backend.ocorrencia.RegrasOcorrencia;
+import com.quickcare.backend.paciente.Paciente;
+import com.quickcare.backend.paciente.PacienteRepository;
+import com.quickcare.backend.profissional.Profissional;
+import com.quickcare.backend.profissional.ProfissionalRepository;
+import com.quickcare.backend.proposta.PropostaRepository;
+import com.quickcare.backend.proposta.StatusProposta;
+import com.quickcare.backend.solicitacao.exception.PerfilNaoAutorizadoException;
+import com.quickcare.backend.solicitacao.exception.TransicaoStatusInvalidaException;
+import com.quickcare.backend.usuario.TipoPerfil;
+import com.quickcare.backend.validacao.StatusValidacao;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Clock;
+import java.time.Instant;
+import java.util.List;
+import java.util.Set;
+
+@Service
+@RequiredArgsConstructor
+public class BloqueioUsuarioService {
+
+    private final BloqueioUsuarioRepository bloqueioRepository;
+    private final PacienteRepository pacienteRepository;
+    private final ProfissionalRepository profissionalRepository;
+    private final PropostaRepository propostaRepository;
+    private final AtendimentoRepository atendimentoRepository;
+    private final AtendimentoService atendimentoService;
+    private final ArmazenamentoDocumentoService armazenamentoDocumentoService;
+    private final Clock clock;
+
+    @Transactional(readOnly = true)
+    public PreviaBloqueioResponse previaDoProfissional(Long usuarioId, Long profissionalId) {
+        Paciente paciente = pacienteAtivo(usuarioId);
+        Profissional profissional = profissionalBloqueavel(usuarioId, profissionalId);
+        return previa(paciente, profissional, profissional.getUsuario().getNome());
+    }
+
+    @Transactional
+    public BloqueioUsuarioResponse bloquearProfissional(Long usuarioId, Long profissionalId, String motivo) {
+        Paciente paciente = pacienteAtivo(usuarioId);
+        Profissional profissional = profissionalBloqueavel(usuarioId, profissionalId);
+        return doProfissional(bloquear(paciente, profissional, AutorBloqueio.PACIENTE, motivo));
+    }
+
+    @Transactional(readOnly = true)
+    public PreviaBloqueioResponse previaDoPaciente(Long usuarioId, Long pacienteId) {
+        Profissional profissional = profissionalAtivo(usuarioId);
+        Paciente paciente = pacienteBloqueavel(profissional, pacienteId);
+        return previa(paciente, profissional, paciente.getUsuario().getNome());
+    }
+
+    @Transactional
+    public BloqueioUsuarioResponse bloquearPaciente(Long usuarioId, Long pacienteId, String motivo) {
+        Profissional profissional = profissionalAtivo(usuarioId);
+        Paciente paciente = pacienteBloqueavel(profissional, pacienteId);
+        return doPaciente(bloquear(paciente, profissional, AutorBloqueio.PROFISSIONAL, motivo));
+    }
+
+    @Transactional(readOnly = true)
+    public List<BloqueioUsuarioResponse> listar(Long usuarioId, TipoPerfil perfil) {
+        if (perfil == TipoPerfil.PACIENTE) {
+            return pacienteRepository.findByUsuarioId(usuarioId)
+                    .map(paciente -> bloqueioRepository.findByPacienteIdAndBloqueadoPorOrderByCriadoEmDesc(
+                            paciente.getId(), AutorBloqueio.PACIENTE).stream().map(this::doProfissional).toList())
+                    .orElse(List.of());
+        }
+        return profissionalRepository.findByUsuarioId(usuarioId)
+                .map(profissional -> bloqueioRepository.findByProfissionalIdAndBloqueadoPorOrderByCriadoEmDesc(
+                        profissional.getId(), AutorBloqueio.PROFISSIONAL).stream().map(this::doPaciente).toList())
+                .orElse(List.of());
+    }
+
+    @Transactional
+    public void desbloquear(Long usuarioId, Long id) {
+        BloqueioUsuario bloqueio = bloqueioRepository.findById(id)
+                .filter(encontrado -> encontrado.getBloqueadoPor() != AutorBloqueio.ADMIN)
+                .filter(encontrado -> (encontrado.getBloqueadoPor() == AutorBloqueio.PACIENTE
+                        ? encontrado.getPaciente().getUsuario()
+                        : encontrado.getProfissional().getUsuario()).getId().equals(usuarioId))
+                .orElseThrow(() -> new RecursoNaoEncontradoException("Bloqueio não encontrado."));
+        bloqueioRepository.delete(bloqueio);
+    }
+
+    private BloqueioUsuario bloquear(Paciente paciente, Profissional profissional, AutorBloqueio quemBloqueia, String motivo) {
+        if (bloqueioRepository.findByPacienteIdAndProfissionalIdAndBloqueadoPor(
+                paciente.getId(), profissional.getId(), quemBloqueia).isPresent()) {
+            throw new TransicaoStatusInvalidaException("Você já bloqueou esta pessoa.");
+        }
+        atendimentoService.encerrarPorBloqueio(paciente.getId(), profissional.getId(), lado(quemBloqueia), motivo);
+        return bloqueioRepository.save(BloqueioUsuario.builder()
+                .paciente(paciente)
+                .profissional(profissional)
+                .bloqueadoPor(quemBloqueia)
+                .build());
+    }
+
+    private PreviaBloqueioResponse previa(Paciente paciente, Profissional profissional, String nome) {
+        Instant agora = Instant.now(clock);
+        List<Atendimento> vigentes = atendimentoRepository.findByPropostaProfissionalIdAndSolicitacaoPacienteIdAndStatusIn(
+                profissional.getId(), paciente.getId(), StatusAtendimento.ATIVOS);
+        int pendentes = propostaRepository.findByProfissionalIdAndSolicitacaoPacienteIdAndStatus(
+                profissional.getId(), paciente.getId(), StatusProposta.PENDENTE).size();
+        boolean tardio = vigentes.stream().anyMatch(atendimento -> RegrasOcorrencia.bloqueioTardio(atendimento, agora));
+        return new PreviaBloqueioResponse(nome, pendentes, vigentes.size(), tardio);
+    }
+
+    private Paciente pacienteAtivo(Long usuarioId) {
+        return pacienteRepository.findByUsuarioId(usuarioId)
+                .filter(paciente -> !paciente.isBanido())
+                .orElseThrow(() -> new PerfilNaoAutorizadoException("Apenas pacientes podem bloquear profissionais."));
+    }
+
+    private Profissional profissionalAtivo(Long usuarioId) {
+        return profissionalRepository.findByUsuarioId(usuarioId)
+                .filter(profissional -> !profissional.isBanido())
+                .orElseThrow(() -> new PerfilNaoAutorizadoException("Apenas profissionais podem bloquear pacientes."));
+    }
+
+    private Profissional profissionalBloqueavel(Long usuarioId, Long profissionalId) {
+        return profissionalRepository.findById(profissionalId)
+                .filter(profissional -> profissional.getStatusValidacao() == StatusValidacao.APROVADO)
+                .filter(profissional -> !profissional.getUsuario().getId().equals(usuarioId))
+                .orElseThrow(() -> new RecursoNaoEncontradoException("Profissional não encontrado."));
+    }
+
+    private Paciente pacienteBloqueavel(Profissional profissional, Long pacienteId) {
+        if (!atendimentoRepository.existsByPropostaProfissionalIdAndSolicitacaoPacienteIdAndStatusIn(
+                profissional.getId(), pacienteId, Set.of(StatusAtendimento.values()))) {
+            throw new RecursoNaoEncontradoException("Paciente não encontrado.");
+        }
+        return pacienteRepository.findById(pacienteId)
+                .orElseThrow(() -> new RecursoNaoEncontradoException("Paciente não encontrado."));
+    }
+
+    private static LadoAtendimento lado(AutorBloqueio autor) {
+        return autor == AutorBloqueio.PACIENTE ? LadoAtendimento.PACIENTE : LadoAtendimento.PROFISSIONAL;
+    }
+
+    private BloqueioUsuarioResponse doProfissional(BloqueioUsuario bloqueio) {
+        Profissional profissional = bloqueio.getProfissional();
+        return new BloqueioUsuarioResponse(bloqueio.getId(), profissional.getId(), profissional.getUsuario().getNome(),
+                armazenamentoDocumentoService.urlDoAvatar(profissional.getUsuario()), bloqueio.getCriadoEm());
+    }
+
+    private BloqueioUsuarioResponse doPaciente(BloqueioUsuario bloqueio) {
+        Paciente paciente = bloqueio.getPaciente();
+        return new BloqueioUsuarioResponse(bloqueio.getId(), paciente.getId(), paciente.getUsuario().getNome(),
+                armazenamentoDocumentoService.urlDoAvatar(paciente.getUsuario()), bloqueio.getCriadoEm());
+    }
+
+}

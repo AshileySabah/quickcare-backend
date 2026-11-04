@@ -12,11 +12,6 @@ import org.springframework.web.util.UriComponentsBuilder;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * Entrega a notificação já gravada: pelo WebSocket (se o usuário estiver
- * conectado) e, quando pedido, por e-mail. Falha na entrega não desfaz nada:
- * a notificação continua no banco e aparece na próxima carga do sino.
- */
 @Slf4j
 @Component
 @RequiredArgsConstructor

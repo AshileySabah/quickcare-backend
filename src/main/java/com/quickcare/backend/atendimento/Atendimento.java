@@ -1,5 +1,6 @@
 package com.quickcare.backend.atendimento;
 
+import com.quickcare.backend.problema.ProblemaAtendimento;
 import com.quickcare.backend.proposta.Proposta;
 import com.quickcare.backend.solicitacao.Solicitacao;
 import com.quickcare.backend.solicitacao.exception.TransicaoStatusInvalidaException;
@@ -13,6 +14,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
@@ -23,13 +25,10 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 
-/**
- * O atendimento de uma proposta aceita: quando acontece e em que pé está. As
- * datas começam iguais às da proposta e mudam por remarcação aceita.
- */
 @Entity
 @Table(name = "atendimento")
 @Getter
@@ -61,11 +60,9 @@ public class Atendimento {
     @Column(nullable = false)
     private Instant termino;
 
-    /** Última aceitação (aceite, reaceite ou remarcação aceita): base da regra das 48h. */
     @Column(name = "aceito_em", nullable = false)
     private Instant aceitoEm;
 
-    /** Quando o paciente editou a solicitação e pediu o reaceite. */
     @Column(name = "reaceite_solicitado_em")
     private Instant reaceiteSolicitadoEm;
 
@@ -102,6 +99,9 @@ public class Atendimento {
     @Column(name = "lembrete_inicio_em")
     private Instant lembreteInicioEm;
 
+    @OneToOne(mappedBy = "atendimento", fetch = FetchType.LAZY)
+    private ProblemaAtendimento problema;
+
     @Version
     @Column(nullable = false)
     private long versao;
@@ -126,7 +126,6 @@ public class Atendimento {
         atualizadoEm = Instant.now();
     }
 
-    /** O paciente aceitou a proposta: o atendimento fica marcado nas datas dela. */
     public static Atendimento agendar(Proposta proposta, Instant agora) {
         return Atendimento.builder()
                 .proposta(proposta)
@@ -138,7 +137,6 @@ public class Atendimento {
                 .build();
     }
 
-    /** De que lado o usuário está neste atendimento, se estiver. */
     public Optional<LadoAtendimento> ladoDe(Long usuarioId) {
         if (solicitacao.ehDoUsuario(usuarioId)) {
             return Optional.of(LadoAtendimento.PACIENTE);
@@ -148,8 +146,6 @@ public class Atendimento {
         }
         return Optional.empty();
     }
-
-    // ------------------------------------------------------------ reaceite
 
     public void solicitarReaceite(Instant agora) {
         exigir(status == StatusAtendimento.AGENDADO || status == StatusAtendimento.AGUARDANDO_REACEITE,
@@ -166,12 +162,6 @@ public class Atendimento {
         aceitoEm = agora;
     }
 
-    // ---------------------------------------------------------- remarcação
-
-    /**
-     * Antes do início, propõe outro período; em andamento, só outro término. O
-     * outro lado aceita ou recusa (a recusa mantém o período atual).
-     */
     public void solicitarRemarcacao(LadoAtendimento lado, Instant novoInicio, Instant novoTermino, Instant agora) {
         exigir(status.podeSerAlterado(), "Este atendimento não pode mais ser remarcado.");
         exigir(remarcacaoPor == null || remarcacaoPor == lado,
@@ -195,7 +185,6 @@ public class Atendimento {
         return remarcacaoPor != null;
     }
 
-    /** Só o outro lado responde; aceitar conta como nova aceitação (48h) e refaz os lembretes. */
     public void aceitarRemarcacao(LadoAtendimento quemResponde, Instant agora) {
         exigirRemarcacaoDoOutroLado(quemResponde);
         exigir(status != StatusAtendimento.AGENDADO || remarcacaoInicio.isAfter(agora),
@@ -221,8 +210,6 @@ public class Atendimento {
         remarcacaoSolicitadaEm = null;
     }
 
-    // ------------------------------------------------------- ciclo de vida
-
     public void cancelar(LadoAtendimento lado, MotivoCancelamento motivo, Instant agora) {
         exigir(status.ativo(), "Este atendimento já foi encerrado.");
         status = StatusAtendimento.CANCELADO;
@@ -235,7 +222,6 @@ public class Atendimento {
     public void iniciar() {
         status = StatusAtendimento.EM_ANDAMENTO;
         if (remarcacaoPor != null && remarcacaoInicio != null && !remarcacaoInicio.equals(inicio)) {
-            // Uma remarcação do início não respondida a tempo deixa de valer.
             limparRemarcacao();
         }
     }
@@ -247,6 +233,28 @@ public class Atendimento {
 
     public void concluir() {
         status = StatusAtendimento.CONCLUIDO;
+    }
+
+    public void relatarProblema(Instant agora, Duration janelaDepoisDoTermino) {
+        exigir(status.aceitaRelatoDeProblema(), status == StatusAtendimento.AGENDADO
+                ? "O atendimento ainda não começou. Remarque ou cancele." : "Este atendimento não aceita mais relato de problema.");
+        exigir(agora.isBefore(termino.plus(janelaDepoisDoTermino)), "O prazo para relatar problema já passou.");
+        status = StatusAtendimento.PROBLEMA_RELATADO;
+        limparRemarcacao();
+    }
+
+    public void entrarEmDisputa() {
+        exigir(status == StatusAtendimento.PROBLEMA_RELATADO || status == StatusAtendimento.NAO_REALIZADO,
+                "Este atendimento não pode ser contestado.");
+        status = StatusAtendimento.EM_DISPUTA;
+    }
+
+    public void marcarNaoRealizado() {
+        status = StatusAtendimento.NAO_REALIZADO;
+    }
+
+    public void retomarComoRealizado(Instant agora) {
+        status = agora.isBefore(termino) ? StatusAtendimento.EM_ANDAMENTO : StatusAtendimento.CONCLUIDO;
     }
 
     private void exigirRemarcacaoDoOutroLado(LadoAtendimento quemResponde) {

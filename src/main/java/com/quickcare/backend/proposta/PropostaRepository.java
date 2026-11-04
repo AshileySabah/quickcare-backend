@@ -27,18 +27,15 @@ public interface PropostaRepository extends JpaRepository<Proposta, Long> {
 
     boolean existsBySolicitacaoIdAndStatus(Long solicitacaoId, StatusProposta status);
 
-    /** O profissional tem proposta com o status informado em alguma solicitação do paciente. */
     boolean existsByProfissionalIdAndSolicitacaoPacienteIdAndStatus(
             Long profissionalId, Long pacienteId, StatusProposta status);
 
-    /** Proposta do profissional aceita numa solicitação do paciente ainda em curso. */
     boolean existsByProfissionalIdAndSolicitacaoPacienteIdAndStatusAndSolicitacaoStatusIn(
             Long profissionalId, Long pacienteId, StatusProposta status, Collection<StatusSolicitacao> statusSolicitacao);
 
     long countByProfissionalIdAndStatusAndSolicitacaoStatus(
             Long profissionalId, StatusProposta status, StatusSolicitacao statusSolicitacao);
 
-    /** Solicitações em que o profissional tem proposta com um destes status. */
     @Query("""
             select distinct p.solicitacao.id
             from Proposta p
@@ -51,7 +48,13 @@ public interface PropostaRepository extends JpaRepository<Proposta, Long> {
 
     List<Proposta> findBySolicitacaoIdAndStatus(Long solicitacaoId, StatusProposta status);
 
-    /** Propostas não canceladas por solicitação — o que o paciente vê como "propostas recebidas". */
+    @EntityGraph(attributePaths = {"profissional", "profissional.usuario", "solicitacao", "solicitacao.paciente",
+            "solicitacao.paciente.usuario"})
+    List<Proposta> findAllByOrderByCriadoEmDesc();
+
+    List<Proposta> findByProfissionalIdAndSolicitacaoPacienteIdAndStatus(
+            Long profissionalId, Long pacienteId, StatusProposta status);
+
     @Query("""
             select p.solicitacao.id as solicitacaoId, count(p) as total
             from Proposta p

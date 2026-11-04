@@ -11,10 +11,8 @@ public enum StatusSolicitacao {
 
     public static final Set<StatusSolicitacao> RECEBENDO_PROPOSTAS_STATUS = Set.of(ABERTA, RECEBENDO_PROPOSTAS);
 
-    /** Ainda não encerrada (nem concluída nem cancelada). */
     public static final Set<StatusSolicitacao> EM_CURSO = Set.of(ABERTA, RECEBENDO_PROPOSTAS, EM_ANDAMENTO);
 
-    /** Em curso, o paciente edita mesmo com aceitos (eles reaceitam ou recusam a nova versão). */
     public boolean podeSerEditada() {
         return EM_CURSO.contains(this);
     }

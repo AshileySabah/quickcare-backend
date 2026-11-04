@@ -3,8 +3,10 @@ package com.quickcare.backend.proposta;
 import com.quickcare.backend.atendimento.Atendimento;
 import com.quickcare.backend.atendimento.AtendimentoRepository;
 import com.quickcare.backend.atendimento.AtendimentoService;
+import com.quickcare.backend.bloqueiousuario.BloqueioUsuarioRepository;
 import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
 import com.quickcare.backend.notificacao.Notificador;
+import com.quickcare.backend.ocorrencia.OcorrenciaService;
 import com.quickcare.backend.profissional.Profissional;
 import com.quickcare.backend.profissional.ProfissionalRepository;
 import com.quickcare.backend.proposta.dto.PropostaRequest;
@@ -18,6 +20,7 @@ import com.quickcare.backend.solicitacao.exception.PerfilNaoAutorizadoException;
 import com.quickcare.backend.solicitacao.exception.SolicitacaoInvalidaException;
 import com.quickcare.backend.solicitacao.exception.SolicitacaoNaoEncontradaException;
 import com.quickcare.backend.solicitacao.exception.TransicaoStatusInvalidaException;
+import com.quickcare.backend.usuario.TipoPerfil;
 import com.quickcare.backend.validacao.StatusValidacao;
 import com.quickcare.backend.validacao.exception.CadastroNaoValidadoException;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -36,7 +40,6 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class PropostaService {
 
-    /** Um atendimento proposto não passa de um ano. */
     private static final Duration DURACAO_MAXIMA = Duration.ofDays(366);
 
     private final PropostaRepository propostaRepository;
@@ -46,26 +49,23 @@ public class PropostaService {
     private final AtendimentoService atendimentoService;
     private final AtendimentoRepository atendimentoRepository;
     private final Notificador notificador;
+    private final OcorrenciaService ocorrenciaService;
+    private final BloqueioUsuarioRepository bloqueioUsuarioRepository;
     private final Clock clock;
 
-    /**
-     * O profissional só envia proposta para solicitação compatível com ele e
-     * que ainda recebe propostas — nunca para a que ele mesmo abriu no perfil
-     * de paciente. Depois de uma recusada ou cancelada, pode enviar outra. A
-     * primeira proposta move a solicitação de ABERTA para RECEBENDO_PROPOSTAS.
-     */
     @Transactional
     public PropostaResponse enviar(Long usuarioId, Long solicitacaoId, PropostaRequest request) {
         Profissional profissional = buscarProfissionalAtivo(usuarioId);
         if (profissional.getStatusValidacao() != StatusValidacao.APROVADO) {
             throw new CadastroNaoValidadoException("Só profissionais com cadastro aprovado podem enviar propostas.");
         }
+        ocorrenciaService.exigirSemBloqueio(usuarioId, TipoPerfil.PROFISSIONAL);
         Solicitacao solicitacao = solicitacaoRepository.findById(solicitacaoId)
                 .filter(s -> !s.ehDoUsuario(usuarioId))
                 .filter(s -> s.atendidaPor(profissional))
                 .orElseThrow(SolicitacaoNaoEncontradaException::new);
 
-        if (!solicitacao.getStatus().recebePropostas()) {
+        if (!solicitacao.getStatus().recebePropostas() || bloqueados(solicitacao, profissional)) {
             throw new TransicaoStatusInvalidaException("Esta solicitação não está mais recebendo propostas.");
         }
         if (propostaRepository.existsBySolicitacaoIdAndProfissionalIdAndStatusIn(
@@ -86,13 +86,9 @@ public class PropostaService {
 
         Proposta salva = propostaRepository.save(proposta);
         notificador.propostaRecebida(salva);
-        return responder(salva);
+        return responder(salva, usuarioId);
     }
 
-    /**
-     * O paciente dono vê todas as propostas não canceladas; o profissional vê
-     * só as suas. Para os demais a solicitação "não existe".
-     */
     @Transactional(readOnly = true)
     public List<PropostaResponse> listarDaSolicitacao(Long usuarioId, Long solicitacaoId) {
         atendimentoService.processarVencidos();
@@ -102,7 +98,7 @@ public class PropostaService {
         if (solicitacao.ehDoUsuario(usuarioId)) {
             return responder(propostaRepository.findBySolicitacaoIdOrderByCriadoEmAsc(solicitacaoId).stream()
                     .filter(proposta -> proposta.getStatus() != StatusProposta.CANCELADA)
-                    .toList());
+                    .toList(), usuarioId);
         }
 
         Profissional profissional = profissionalRepository.findByUsuarioId(usuarioId)
@@ -114,17 +110,16 @@ public class PropostaService {
             throw new SolicitacaoNaoEncontradaException();
         }
 
-        return responder(minhas);
+        return responder(minhas, usuarioId);
     }
 
     @Transactional(readOnly = true)
     public List<PropostaResponse> listarDoProfissional(Long usuarioId) {
         atendimentoService.processarVencidos();
         Profissional profissional = buscarProfissionalAtivo(usuarioId);
-        return responder(propostaRepository.findByProfissionalIdOrderByCriadoEmDesc(profissional.getId()));
+        return responder(propostaRepository.findByProfissionalIdOrderByCriadoEmDesc(profissional.getId()), usuarioId);
     }
 
-    /** Visível para o profissional autor e para o paciente dono da solicitação. */
     @Transactional(readOnly = true)
     public PropostaResponse buscar(Long usuarioId, Long id) {
         atendimentoService.processarVencidos();
@@ -132,13 +127,9 @@ public class PropostaService {
                 .filter(p -> p.ehDoUsuario(usuarioId) || p.getSolicitacao().ehDoUsuario(usuarioId))
                 .orElseThrow(PropostaNaoEncontradaException::new);
 
-        return responder(proposta);
+        return responder(proposta, usuarioId);
     }
 
-    /**
-     * Editar a proposta já aceita a tira do aceite: o atendimento cai, a vaga
-     * reabre e o paciente aceita de novo (ou escolhe outra).
-     */
     @Transactional
     public PropostaResponse atualizar(Long usuarioId, Long id, PropostaRequest request) {
         Proposta proposta = buscarAlteravelDoProfissional(usuarioId, id, "editada");
@@ -153,13 +144,9 @@ public class PropostaService {
         Proposta salva = propostaRepository.saveAndFlush(proposta);
         recalcularSolicitacao(salva.getSolicitacao());
         notificador.propostaAlterada(salva, estavaAceita);
-        return responder(salva);
+        return responder(salva, usuarioId);
     }
 
-    /**
-     * Exclusão lógica. A aceita é o mesmo que cancelar o atendimento (a vaga
-     * reabre e a regra das 48h decide se conta ocorrência).
-     */
     @Transactional
     public PropostaResponse cancelar(Long usuarioId, Long id) {
         Proposta proposta = buscarAlteravelDoProfissional(usuarioId, id, "cancelada");
@@ -173,13 +160,9 @@ public class PropostaService {
             notificador.propostaCancelada(proposta, false);
         }
 
-        return responder(proposta);
+        return responder(proposta, usuarioId);
     }
 
-    /**
-     * O paciente recusa uma proposta pendente; para o profissional ela aparece
-     * como recusada (diferente de cancelada, que é quando ele mesmo desiste).
-     */
     @Transactional
     public PropostaResponse recusar(Long usuarioId, Long id) {
         Proposta proposta = buscarDoPaciente(usuarioId, id);
@@ -193,25 +176,27 @@ public class PropostaService {
         recalcularSolicitacao(proposta.getSolicitacao());
         notificador.propostaRecusada(proposta, false);
 
-        return responder(proposta);
+        return responder(proposta, usuarioId);
     }
 
-    /**
-     * O paciente aceita uma proposta: ela ocupa uma vaga (livre, ou a reservada
-     * de quem ainda não reaceitou) e vira um atendimento agendado.
-     */
     @Transactional
     public PropostaResponse aceitar(Long usuarioId, Long id) {
         Proposta proposta = buscarDoPaciente(usuarioId, id);
 
-        if (!proposta.getStatus().pendente() || !proposta.getSolicitacao().getStatus().recebePropostas()) {
+        if (!proposta.getStatus().pendente() || !proposta.getSolicitacao().getStatus().recebePropostas()
+                || bloqueados(proposta.getSolicitacao(), proposta.getProfissional())) {
             throw new TransicaoStatusInvalidaException("Esta proposta não está mais disponível para aceite.");
         }
 
         atendimentoService.aceitarProposta(proposta);
         Proposta salva = propostaRepository.saveAndFlush(proposta);
         notificador.propostaAceita(salva);
-        return responder(salva);
+        return responder(salva, usuarioId);
+    }
+
+    private boolean bloqueados(Solicitacao solicitacao, Profissional profissional) {
+        return bloqueioUsuarioRepository.existsByPacienteIdAndProfissionalId(
+                solicitacao.getPaciente().getId(), profissional.getId());
     }
 
     private void recalcularSolicitacao(Solicitacao solicitacao) {
@@ -219,12 +204,11 @@ public class PropostaService {
                 propostaRepository.existsBySolicitacaoIdAndStatus(solicitacao.getId(), StatusProposta.PENDENTE));
     }
 
-    private PropostaResponse responder(Proposta proposta) {
-        return responder(List.of(proposta)).get(0);
+    private PropostaResponse responder(Proposta proposta, Long usuarioId) {
+        return responder(List.of(proposta), usuarioId).get(0);
     }
 
-    /** Uma consulta para os atendimentos da lista toda; de cada proposta, o mais recente. */
-    private List<PropostaResponse> responder(List<Proposta> propostas) {
+    private List<PropostaResponse> responder(List<Proposta> propostas, Long usuarioId) {
         if (propostas.isEmpty()) {
             return List.of();
         }
@@ -233,11 +217,22 @@ public class PropostaService {
                 .collect(Collectors.toMap(atendimento -> atendimento.getProposta().getId(), Function.identity(),
                         (anterior, maisRecente) -> maisRecente));
         Instant agora = Instant.now(clock);
+        Map<List<Long>, Boolean> bloqueadosPorPar = new HashMap<>();
 
         return propostas.stream()
                 .map(proposta -> PropostaResponse.de(proposta, atendimentoPorProposta.get(proposta.getId()), agora,
-                        armazenamentoDocumentoService::urlDoAvatar))
+                        armazenamentoDocumentoService::urlDoAvatar, ocultar(proposta, usuarioId, bloqueadosPorPar)))
                 .toList();
+    }
+
+    private PropostaResponse.Ocultar ocultar(Proposta proposta, Long usuarioId, Map<List<Long>, Boolean> bloqueadosPorPar) {
+        boolean bloqueados = bloqueadosPorPar.computeIfAbsent(
+                List.of(proposta.getSolicitacao().getPaciente().getId(), proposta.getProfissional().getId()),
+                par -> bloqueioUsuarioRepository.existsByPacienteIdAndProfissionalId(par.get(0), par.get(1)));
+        if (!bloqueados) {
+            return PropostaResponse.Ocultar.NINGUEM;
+        }
+        return proposta.ehDoUsuario(usuarioId) ? PropostaResponse.Ocultar.PACIENTE : PropostaResponse.Ocultar.PROFISSIONAL;
     }
 
     private void aplicarDados(Proposta proposta, PropostaRequest request) {
@@ -259,7 +254,6 @@ public class PropostaService {
                 .orElseThrow(() -> new PerfilNaoAutorizadoException("Apenas profissionais podem gerenciar propostas."));
     }
 
-    /** Proposta recebida numa solicitação do paciente, que precisa estar ativo. */
     private Proposta buscarDoPaciente(Long usuarioId, Long id) {
         Proposta proposta = propostaRepository.findById(id)
                 .filter(p -> p.getSolicitacao().ehDoUsuario(usuarioId))
@@ -271,7 +265,6 @@ public class PropostaService {
         return proposta;
     }
 
-    /** Pendente ou aceita, numa solicitação ainda em curso. */
     private Proposta buscarAlteravelDoProfissional(Long usuarioId, Long id, String acao) {
         Proposta proposta = buscarDoProfissional(usuarioId, id);
 

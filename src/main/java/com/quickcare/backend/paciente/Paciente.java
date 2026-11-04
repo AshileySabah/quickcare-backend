@@ -66,10 +66,6 @@ public class Paciente {
     @Builder.Default
     private List<ContatoEmergencia> contatosEmergencia = new ArrayList<>();
 
-    /**
-     * Declaração de que os dados informados no cadastro são verdadeiros —
-     * exigida junto do consentimento LGPD, ambas obrigatórias no cadastro.
-     */
     @Column(name = "confirmacao_informacoes_verdadeiras", nullable = false)
     private boolean confirmacaoInformacoesVerdadeiras;
 

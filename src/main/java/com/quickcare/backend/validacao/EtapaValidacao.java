@@ -24,10 +24,6 @@ import lombok.Setter;
 
 import java.time.Instant;
 
-/**
- * Uma avaliação de uma etapa do cadastro. A etapa "atual" de cada tipo é a
- * mais recente; as anteriores (reprovadas e depois reenviadas) são histórico.
- */
 @Entity
 @Table(name = "etapa_validacao")
 @Getter

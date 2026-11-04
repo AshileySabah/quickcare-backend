@@ -13,11 +13,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Confere na BrasilAPI (dados públicos da Receita) se o CNPJ existe e está
- * ativo. Se o nome do profissional aparece entre os sócios é só informativo:
- * ele pode atender por uma clínica da qual não é sócio.
- */
 @Slf4j
 @Service
 public class ConsultaCnpjService {

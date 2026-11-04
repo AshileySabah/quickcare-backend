@@ -8,7 +8,6 @@ import jakarta.validation.constraints.NotNull;
 
 import java.util.Set;
 
-/** O profissional precisa atender todas as {@code especialidadeIds}, que devem ser da {@code categoria}. */
 public record ProfissionalSolicitadoRequest(
         @NotNull CategoriaProfissional categoria,
         @NotEmpty Set<@NotNull Long> especialidadeIds,

@@ -17,11 +17,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
-/**
- * CRUD de propostas do profissional. Envio e listagem por solicitação ficam
- * sob {@code /solicitacoes/{id}/propostas}; a exclusão é lógica via
- * {@code /cancelar}, e o paciente responde com {@code /aceitar} ou {@code /recusar}.
- */
 @RestController
 @RequiredArgsConstructor
 public class PropostaController {

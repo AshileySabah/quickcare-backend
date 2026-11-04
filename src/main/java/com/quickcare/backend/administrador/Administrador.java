@@ -19,7 +19,6 @@ import lombok.Setter;
 
 import java.time.Instant;
 
-/** Perfil de quem valida os cadastros. Não há cadastro público: é criado direto no banco. */
 @Entity
 @Table(name = "administrador")
 @Getter

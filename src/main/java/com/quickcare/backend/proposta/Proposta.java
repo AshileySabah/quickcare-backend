@@ -46,7 +46,6 @@ public class Proposta {
     @JoinColumn(name = "profissional_id", nullable = false)
     private Profissional profissional;
 
-    /** Linha (vaga) da solicitação ocupada quando a proposta é aceita. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "solicitacao_profissional_id")
     private SolicitacaoProfissional vaga;
@@ -57,7 +56,6 @@ public class Proposta {
     @Column(nullable = false, length = 1000)
     private String abordagem;
 
-    /** Período oferecido; o do atendimento começa igual e muda por remarcação. */
     @Column(nullable = false)
     private Instant inicio;
 
@@ -68,7 +66,6 @@ public class Proposta {
     @Column(nullable = false, length = 20)
     private StatusProposta status;
 
-    /** Preenchido quando a proposta já aceita voltou a aguardar o aceite do paciente. */
     @Enumerated(EnumType.STRING)
     @Column(name = "motivo_reaceite", length = 30)
     private MotivoReaceite motivoReaceite;
@@ -93,16 +90,11 @@ public class Proposta {
         atualizadoEm = Instant.now();
     }
 
-    /**
-     * A proposta aceita que o profissional alterou volta a pendente: o paciente
-     * precisa aceitá-la de novo (ou outra). A vaga é liberada pelo atendimento.
-     */
     public void voltarParaReaceite(MotivoReaceite motivo) {
         status = StatusProposta.PENDENTE;
         motivoReaceite = motivo;
     }
 
-    /** Sai da vaga que ocupava; {@code reservada} se ela aguardava o reaceite dele. */
     public void liberarVaga(boolean reservada) {
         if (vaga == null) {
             return;

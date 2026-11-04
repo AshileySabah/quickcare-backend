@@ -14,7 +14,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
-/** Notificações do usuário logado, sempre de um perfil por vez. */
 @RestController
 @RequestMapping("/notificacoes")
 @RequiredArgsConstructor
@@ -22,7 +21,6 @@ public class NotificacaoController {
 
     private final NotificacaoService notificacaoService;
 
-    /** As mais recentes primeiro. */
     @GetMapping
     public List<NotificacaoResponse> listar(
             @AuthenticationPrincipal Long usuarioId,

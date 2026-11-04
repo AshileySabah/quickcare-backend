@@ -25,29 +25,28 @@ public class ArmazenamentoDocumentoService {
     private final SupabaseStorageProperties properties;
     private final RestClient.Builder restClientBuilder;
 
-    /**
-     * Envia o arquivo para o bucket e devolve sua storage key. A chave usa um
-     * UUID em vez do id da entidade dona porque o upload acontece durante o
-     * cadastro, antes do paciente/profissional existir no banco.
-     */
     public String enviar(TipoDocumento tipo, MultipartFile arquivo) {
         validar(arquivo, TIPOS_ACEITOS, "Envie um arquivo PDF, JPG ou PNG.");
         return enviarParaPasta(tipo.name().toLowerCase(), arquivo);
     }
 
-    /**
-     * Fotos de perfil não têm um TipoDocumento associado (não são documentos de
-     * validação cadastral), então vivem em sua própria pasta dentro do mesmo bucket.
-     */
     public String enviarAvatar(MultipartFile arquivo) {
         validar(arquivo, TIPOS_IMAGEM_ACEITOS, "Envie uma imagem JPG ou PNG.");
         return enviarParaPasta("avatares", arquivo);
     }
 
-    /** Evidência anexada pelo admin ao aprovar/reprovar uma etapa da validação cadastral. */
     public String enviarAnexoValidacao(MultipartFile arquivo) {
         validar(arquivo, TIPOS_ACEITOS, "Envie um arquivo PDF, JPG ou PNG.");
         return enviarParaPasta("anexos-validacao", arquivo);
+    }
+
+    public String enviarAnexoProblema(MultipartFile arquivo) {
+        validar(arquivo, TIPOS_ACEITOS, "Envie um arquivo PDF, JPG ou PNG.");
+        return enviarParaPasta("anexos-problema", arquivo);
+    }
+
+    public void validarAnexo(MultipartFile arquivo) {
+        validar(arquivo, TIPOS_ACEITOS, "Envie um arquivo PDF, JPG ou PNG.");
     }
 
     private String enviarParaPasta(String pasta, MultipartFile arquivo) {
@@ -72,15 +71,10 @@ public class ArmazenamentoDocumentoService {
         return pasta + "/" + nomeArquivo;
     }
 
-    /** URL temporária do avatar do usuário; nula se ele não tem foto. */
     public String urlDoAvatar(Usuario usuario) {
         return usuario.getAvatarStorageKey() != null ? gerarUrlAssinada(usuario.getAvatarStorageKey()) : null;
     }
 
-    /**
-     * Gera uma URL assinada e temporária para leitura de um objeto privado, já que
-     * o bucket de documentos/avatares não é público.
-     */
     public String gerarUrlAssinada(String storageKey) {
         try {
             SignedUrlResponse resposta = restClientBuilder.build()
