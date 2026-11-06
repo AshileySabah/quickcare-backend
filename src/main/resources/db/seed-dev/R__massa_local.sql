@@ -437,6 +437,59 @@ JOIN usuario u ON u.id = pr.usuario_id AND u.email IN ('fernanda@quickcare.dev',
 JOIN especialidade e ON e.nome = 'Curativos'
 ON CONFLICT DO NOTHING;
 
+WITH avaliadas (email, perfil, tipo_documento, tipo_etapa, nome_arquivo, status, justificativa, dias_atras) AS (
+    VALUES ('paciente@quickcare.dev', 'PACIENTE', 'COMPROVANTE_CPF', 'CPF', 'cpf-paciente.pdf', 'APROVADA',
+            'CPF regular na Receita e igual ao do documento.', 30),
+           ('paciente@quickcare.dev', 'PACIENTE', 'VALIDACAO_CPF', 'IDENTIDADE', 'rg-paciente.pdf', 'APROVADA',
+            'RG legível, dados conferem com o cadastro.', 30),
+           ('profissional@quickcare.dev', 'PROFISSIONAL', 'COMPROVANTE_CPF', 'CPF', 'cpf-profissional.pdf', 'APROVADA',
+            'CPF regular na Receita.', 30),
+           ('profissional@quickcare.dev', 'PROFISSIONAL', 'VALIDACAO_CPF', 'IDENTIDADE', 'cnh-profissional.pdf', 'APROVADA',
+            'CNH válida, dados conferem.', 30),
+           ('profissional@quickcare.dev', 'PROFISSIONAL', 'REGISTRO_PROFISSIONAL', 'REGISTRO_PROFISSIONAL', 'coren-profissional.pdf',
+            'APROVADA', 'COREN ativo no portal do conselho.', 30),
+           ('fernanda@quickcare.dev', 'PROFISSIONAL', 'COMPROVANTE_CPF', 'CPF', 'cpf-fernanda.pdf', 'APROVADA',
+            'CPF regular na Receita.', 20),
+           ('fernanda@quickcare.dev', 'PROFISSIONAL', 'VALIDACAO_CPF', 'IDENTIDADE', 'rg-fernanda.pdf', 'APROVADA',
+            'RG legível, dados conferem.', 20),
+           ('fernanda@quickcare.dev', 'PROFISSIONAL', 'REGISTRO_PROFISSIONAL', 'REGISTRO_PROFISSIONAL', 'coren-fernanda.pdf',
+            'APROVADA', 'COREN ativo no portal do conselho.', 20),
+           ('roberto@quickcare.dev', 'PACIENTE', 'COMPROVANTE_CPF', 'CPF', 'cpf-roberto.pdf', 'APROVADA',
+            'CPF regular na Receita.', 40),
+           ('roberto@quickcare.dev', 'PACIENTE', 'VALIDACAO_CPF', 'IDENTIDADE', 'rg-roberto-novo.pdf', 'REPROVADA',
+            'A foto do RG novo está cortada e não dá para ler a data de nascimento. Envie de novo, inteiro e legível.', 1)
+),
+donos AS (
+    SELECT av.*, pa.id AS paciente_id, pr.id AS profissional_id
+    FROM avaliadas av
+    JOIN usuario u ON u.email = av.email
+    LEFT JOIN paciente pa ON pa.usuario_id = u.id AND av.perfil = 'PACIENTE'
+    LEFT JOIN profissional pr ON pr.usuario_id = u.id AND av.perfil = 'PROFISSIONAL'
+    WHERE NOT EXISTS (
+        SELECT 1 FROM etapa_validacao e
+        WHERE e.paciente_id IS NOT DISTINCT FROM pa.id
+          AND e.profissional_id IS NOT DISTINCT FROM pr.id
+          AND e.tipo = av.tipo_etapa
+    )
+),
+documentos AS (
+    INSERT INTO documento (paciente_id, profissional_id, tipo_documento, nome_arquivo, content_type, tamanho_bytes,
+                           storage_key, enviado_em)
+    SELECT paciente_id, profissional_id, tipo_documento, nome_arquivo, 'application/pdf', 102400,
+           'seed-dev/' || nome_arquivo, now() - make_interval(days => dias_atras + 1)
+    FROM donos
+    RETURNING id, paciente_id, profissional_id, tipo_documento
+)
+INSERT INTO etapa_validacao (paciente_id, profissional_id, tipo, status, documento_id, justificativa,
+                             avaliado_por_id, avaliado_em, criado_em)
+SELECT d.paciente_id, d.profissional_id, dn.tipo_etapa, dn.status, d.id, dn.justificativa,
+       adm.id, now() - make_interval(days => dn.dias_atras), now() - make_interval(days => dn.dias_atras + 1)
+FROM documentos d
+JOIN donos dn ON dn.paciente_id IS NOT DISTINCT FROM d.paciente_id
+             AND dn.profissional_id IS NOT DISTINCT FROM d.profissional_id
+             AND dn.tipo_documento = d.tipo_documento
+CROSS JOIN (SELECT usuario_id AS id FROM administrador ORDER BY id LIMIT 1) adm;
+
 CREATE OR REPLACE FUNCTION pg_temp.seed_solicitacao(
     p_email TEXT, p_descricao TEXT, p_modalidade TEXT, p_categoria TEXT, p_especialidade TEXT,
     p_status TEXT, p_prazo_dias INT, p_dias_atras INT

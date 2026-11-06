@@ -7,6 +7,7 @@ import com.quickcare.backend.validacao.dto.ValidacaoResumoResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -44,6 +45,18 @@ public class AdminValidacaoController {
             @PathVariable Long id
     ) {
         return validacaoService.detalhar(usuarioId, PerfilNaUrl.ler(perfil), id);
+    }
+
+    @GetMapping("/{perfil}/{id}/etapas/{etapaId}/{arquivo}")
+    public ResponseEntity<byte[]> arquivo(
+            @AuthenticationPrincipal Long usuarioId,
+            @PathVariable String perfil,
+            @PathVariable Long id,
+            @PathVariable Long etapaId,
+            @PathVariable String arquivo
+    ) {
+        return validacaoService.arquivoParaOAdmin(usuarioId, PerfilNaUrl.ler(perfil), id, etapaId, ArquivoDaEtapa.ler(arquivo))
+                .resposta();
     }
 
     @PostMapping(value = "/{perfil}/{id}/etapas/{tipo}/decisao", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

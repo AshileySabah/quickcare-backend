@@ -169,19 +169,18 @@ public class ValidacaoService {
             throw new EtapaNaoEncontradaException();
         }
 
-        Alteracao alteracao = switch (tipo) {
+        boolean contaCompartilhadaAlterada = switch (tipo) {
             case CPF -> aplicarCpf(cadastro.usuario(), request);
             case IDENTIDADE -> aplicarIdentidade(cadastro, request);
             case CNPJ -> aplicarCnpj(cadastro.profissional(), request);
             case REGISTRO_PROFISSIONAL -> aplicarRegistro(cadastro.profissional(), request);
         };
-        if (!novoArquivo) {
-            throw new ValidacaoInvalidaException(alteracao.dados()
-                    ? "Você alterou dados desta etapa: envie o documento que os comprova."
-                    : "Altere algum dado ou envie um novo documento.");
+        Documento anterior = atual == null ? null : atual.getDocumento();
+        if (!novoArquivo && anterior == null) {
+            throw new ValidacaoInvalidaException("Envie o documento desta etapa.");
         }
 
-        Documento documento = salvarDocumento(tipo.getTipoDocumento(), arquivo, cadastro);
+        Documento documento = novoArquivo ? salvarDocumento(tipo.getTipoDocumento(), arquivo, cadastro) : anterior;
         if (atual != null && atual.getStatus() == StatusEtapa.PENDENTE) {
             atual.setDocumento(documento);
         } else {
@@ -189,11 +188,41 @@ public class ValidacaoService {
         }
         recalcularStatus(cadastro, todas);
 
-        if (alteracao.contaCompartilhada()) {
+        if (contaCompartilhadaAlterada) {
             outroPerfil(cadastro).ifPresent(outro -> reabrir(outro, tipo, documento));
         }
 
         return responses.detalhe(cadastro, todas, false);
+    }
+
+    @Transactional(readOnly = true)
+    public ArquivoBaixado meuArquivo(Long usuarioId, PerfilValidado perfil, Long etapaId, ArquivoDaEtapa arquivo) {
+        return arquivoDaEtapa(carregarDoUsuario(usuarioId, perfil), etapaId, arquivo);
+    }
+
+    @Transactional(readOnly = true)
+    public ArquivoBaixado arquivoParaOAdmin(Long adminUsuarioId, PerfilValidado perfil, Long id, Long etapaId,
+                                           ArquivoDaEtapa arquivo) {
+        exigirAdministrador(adminUsuarioId);
+        return arquivoDaEtapa(carregar(perfil, id), etapaId, arquivo);
+    }
+
+    private ArquivoBaixado arquivoDaEtapa(CadastroAvaliado cadastro, Long etapaId, ArquivoDaEtapa arquivo) {
+        EtapaValidacao etapa = etapas(cadastro).stream()
+                .filter(candidata -> candidata.getId().equals(etapaId))
+                .findFirst()
+                .orElseThrow(EtapaNaoEncontradaException::new);
+
+        if (arquivo == ArquivoDaEtapa.DOCUMENTO) {
+            Documento documento = Optional.ofNullable(etapa.getDocumento()).orElseThrow(EtapaNaoEncontradaException::new);
+            return new ArquivoBaixado(documento.getNomeArquivo(), documento.getContentType(),
+                    armazenamentoDocumentoService.baixar(documento.getStorageKey()));
+        }
+        if (etapa.getAnexoStorageKey() == null) {
+            throw new EtapaNaoEncontradaException();
+        }
+        return new ArquivoBaixado(etapa.getAnexoNomeArquivo(), etapa.getAnexoContentType(),
+                armazenamentoDocumentoService.baixar(etapa.getAnexoStorageKey()));
     }
 
     @Transactional(readOnly = true)
@@ -226,10 +255,7 @@ public class ValidacaoService {
         return ValidacaoResponses.emRevalidacao(cadastro, etapas(cadastro));
     }
 
-    private record Alteracao(boolean dados, boolean contaCompartilhada) {
-    }
-
-    private Alteracao aplicarCpf(Usuario usuario, ReenvioEtapaRequest request) {
+    private boolean aplicarCpf(Usuario usuario, ReenvioEtapaRequest request) {
         if (request.cpf() == null) {
             throw new ValidacaoInvalidaException("Informe o CPF.");
         }
@@ -238,10 +264,10 @@ public class ValidacaoService {
             throw new CpfJaCadastradoException();
         }
         usuario.setCpf(request.cpf());
-        return new Alteracao(alterado, alterado);
+        return alterado;
     }
 
-    private Alteracao aplicarIdentidade(CadastroAvaliado cadastro, ReenvioEtapaRequest request) {
+    private boolean aplicarIdentidade(CadastroAvaliado cadastro, ReenvioEtapaRequest request) {
         Usuario usuario = cadastro.usuario();
         DocumentoIdentidade identidade = DocumentoIdentidade.validar(
                 request.documentoIdentidadeTipo(), request.documentoIdentidadeNumero(), request.documentoIdentidadeUf());
@@ -254,39 +280,34 @@ public class ValidacaoService {
 
         LocalDate dataNascimento = request.dataNascimento() == null ? cadastro.dataNascimento() : request.dataNascimento();
         Genero genero = request.genero() == null ? cadastro.genero() : request.genero();
-        boolean pessoaisAlterados = !Objects.equals(dataNascimento, cadastro.dataNascimento()) || genero != cadastro.genero();
 
         usuario.setNome(nome);
         usuario.setDocumentoIdentidadeTipo(identidade.tipo());
         usuario.setDocumentoIdentidadeNumero(identidade.numero());
         usuario.setDocumentoIdentidadeUf(identidade.uf());
         cadastro.definirDadosPessoais(dataNascimento, genero);
-        return new Alteracao(contaAlterada || pessoaisAlterados, contaAlterada);
+        return contaAlterada;
     }
 
-    private Alteracao aplicarCnpj(Profissional profissional, ReenvioEtapaRequest request) {
+    private boolean aplicarCnpj(Profissional profissional, ReenvioEtapaRequest request) {
         if (request.cnpj() == null) {
             throw new ValidacaoInvalidaException("Informe o CNPJ.");
         }
         if (profissionalRepository.existsByCnpjAndIdNot(request.cnpj(), profissional.getId())) {
             throw new ValidacaoInvalidaException("CNPJ já cadastrado para outro profissional.");
         }
-        boolean alterado = !request.cnpj().equals(profissional.getCnpj());
         profissional.setCnpj(request.cnpj());
-        return new Alteracao(alterado, false);
+        return false;
     }
 
-    private Alteracao aplicarRegistro(Profissional profissional, ReenvioEtapaRequest request) {
+    private boolean aplicarRegistro(Profissional profissional, ReenvioEtapaRequest request) {
         if (request.registroProfissional() == null || request.registroProfissional().isBlank()
                 || request.registroProfissionalUf() == null) {
             throw new ValidacaoInvalidaException("Informe o número e a UF do registro profissional.");
         }
-        String numero = request.registroProfissional().trim();
-        String uf = request.registroProfissionalUf().toUpperCase(Locale.ROOT);
-        boolean alterado = !numero.equals(profissional.getRegistroProfissional()) || !uf.equals(profissional.getRegistroProfissionalUf());
-        profissional.setRegistroProfissional(numero);
-        profissional.setRegistroProfissionalUf(uf);
-        return new Alteracao(alterado, false);
+        profissional.setRegistroProfissional(request.registroProfissional().trim());
+        profissional.setRegistroProfissionalUf(request.registroProfissionalUf().toUpperCase(Locale.ROOT));
+        return false;
     }
 
     private Optional<CadastroAvaliado> outroPerfil(CadastroAvaliado cadastro) {

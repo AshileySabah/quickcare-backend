@@ -217,24 +217,64 @@ class ValidacaoServiceTest {
     }
 
     @Test
-    void semAlterarDadosNemEnviarDocumentoNaoReenvia() {
-        comEtapasDoUsuario(reprovada(TipoEtapaValidacao.CNPJ));
+    void semMudarNadaAindaAssimReabreAEtapaComOMesmoDocumento() {
+        EtapaValidacao reprovada = reprovada(TipoEtapaValidacao.CNPJ);
+        Documento anterior = Documento.builder().storageKey("validacao_cnpj/antigo.pdf").build();
+        reprovada.setDocumento(anterior);
+        comEtapasDoUsuario(reprovada);
 
-        assertThatThrownBy(() -> service.reenviar(USUARIO_ID, PerfilValidado.PROFISSIONAL, TipoEtapaValidacao.CNPJ,
-                reenvioCnpj("00000000000191"), null))
-                .isInstanceOf(ValidacaoInvalidaException.class)
-                .hasMessageContaining("Altere algum dado");
+        service.reenviar(USUARIO_ID, PerfilValidado.PROFISSIONAL, TipoEtapaValidacao.CNPJ, reenvioCnpj("00000000000191"), null);
+
+        ArgumentCaptor<EtapaValidacao> nova = ArgumentCaptor.forClass(EtapaValidacao.class);
+        verify(etapaRepository).save(nova.capture());
+        assertThat(nova.getValue().getStatus()).isEqualTo(StatusEtapa.PENDENTE);
+        assertThat(nova.getValue().getDocumento()).isSameAs(anterior);
     }
 
     @Test
-    void mudarDadosSemEnviarODocumentoQueOsComprovaNaoReenvia() {
-        comEtapasDoUsuario(aprovada(TipoEtapaValidacao.CNPJ));
+    void incluirCnpjSemDocumentoNaoEntra() {
+        profissional.setCnpj(null);
+        comEtapasDoUsuario(aprovada(TipoEtapaValidacao.IDENTIDADE));
 
         assertThatThrownBy(() -> service.reenviar(USUARIO_ID, PerfilValidado.PROFISSIONAL, TipoEtapaValidacao.CNPJ,
                 reenvioCnpj("11222333000181"), null))
                 .isInstanceOf(ValidacaoInvalidaException.class)
-                .hasMessageContaining("envie o documento");
+                .hasMessageContaining("Envie o documento");
         verify(etapaRepository, never()).save(any());
+    }
+
+    @Test
+    void entregaODocumentoDaPropriaEtapaPeloServidorENaoOdeOutraPessoa() {
+        EtapaValidacao cpf = aprovada(TipoEtapaValidacao.CPF);
+        cpf.setId(7L);
+        cpf.setDocumento(Documento.builder().nomeArquivo("cpf.pdf").contentType("application/pdf").storageKey("comprovante_cpf/a.pdf").build());
+        comEtapasDoUsuario(cpf);
+        when(armazenamentoDocumentoService.baixar("comprovante_cpf/a.pdf")).thenReturn(new byte[]{9});
+
+        ArquivoBaixado arquivo = service.meuArquivo(USUARIO_ID, PerfilValidado.PROFISSIONAL, 7L, ArquivoDaEtapa.DOCUMENTO);
+
+        assertThat(arquivo.nomeArquivo()).isEqualTo("cpf.pdf");
+        assertThat(arquivo.conteudo()).containsExactly(9);
+        assertThatThrownBy(() -> service.meuArquivo(USUARIO_ID, PerfilValidado.PROFISSIONAL, 99L, ArquivoDaEtapa.DOCUMENTO))
+                .isInstanceOf(EtapaNaoEncontradaException.class);
+        assertThatThrownBy(() -> service.meuArquivo(USUARIO_ID, PerfilValidado.PROFISSIONAL, 7L, ArquivoDaEtapa.ANEXO))
+                .isInstanceOf(EtapaNaoEncontradaException.class);
+    }
+
+    @Test
+    void mudarSoOsDadosMantemODocumentoAtual() {
+        EtapaValidacao aprovada = aprovada(TipoEtapaValidacao.CNPJ);
+        Documento atual = Documento.builder().storageKey("validacao_cnpj/atual.pdf").build();
+        aprovada.setDocumento(atual);
+        comEtapasDoUsuario(aprovada);
+
+        service.reenviar(USUARIO_ID, PerfilValidado.PROFISSIONAL, TipoEtapaValidacao.CNPJ, reenvioCnpj("11222333000181"), null);
+
+        assertThat(profissional.getCnpj()).isEqualTo("11222333000181");
+        ArgumentCaptor<EtapaValidacao> nova = ArgumentCaptor.forClass(EtapaValidacao.class);
+        verify(etapaRepository).save(nova.capture());
+        assertThat(nova.getValue().getDocumento()).isSameAs(atual);
+        verify(armazenamentoDocumentoService, never()).enviar(any(), any());
     }
 
     @Test

@@ -34,7 +34,7 @@ class ValidacaoResponses {
                 emRevalidacao(cadastro, todasEtapas),
                 cadastro.criadoEm(),
                 dados(cadastro),
-                etapas(todasEtapas, exibirAvaliador)
+                etapas(cadastro, todasEtapas, exibirAvaliador)
         );
     }
 
@@ -94,7 +94,7 @@ class ValidacaoResponses {
         );
     }
 
-    private List<EtapaValidacaoResponse> etapas(List<EtapaValidacao> todasEtapas, boolean exibirAvaliador) {
+    private List<EtapaValidacaoResponse> etapas(CadastroAvaliado cadastro, List<EtapaValidacao> todasEtapas, boolean paraOAdmin) {
         Map<TipoEtapaValidacao, List<EtapaValidacao>> porTipo = new EnumMap<>(TipoEtapaValidacao.class);
         todasEtapas.forEach(etapa -> porTipo.computeIfAbsent(etapa.getTipo(), tipo -> new ArrayList<>()).add(etapa));
 
@@ -104,43 +104,53 @@ class ValidacaoResponses {
                     Collections.reverse(maisRecentesPrimeiro);
                     List<EtapaValidacaoResponse> historico = maisRecentesPrimeiro.stream()
                             .skip(1)
-                            .map(anterior -> etapa(anterior, exibirAvaliador, List.of()))
+                            .map(anterior -> etapa(cadastro, anterior, paraOAdmin, List.of()))
                             .toList();
-                    return etapa(maisRecentesPrimeiro.getFirst(), exibirAvaliador, historico);
+                    return etapa(cadastro, maisRecentesPrimeiro.getFirst(), paraOAdmin, historico);
                 })
                 .toList();
     }
 
-    private EtapaValidacaoResponse etapa(EtapaValidacao etapa, boolean exibirAvaliador, List<EtapaValidacaoResponse> historico) {
+    private EtapaValidacaoResponse etapa(CadastroAvaliado cadastro, EtapaValidacao etapa, boolean paraOAdmin,
+                                         List<EtapaValidacaoResponse> historico) {
         return new EtapaValidacaoResponse(
                 etapa.getId(),
                 etapa.getTipo(),
                 etapa.getTipo().getDescricao(),
                 etapa.getStatus(),
                 etapa.getJustificativa(),
-                documento(etapa.getDocumento()),
-                anexo(etapa),
-                exibirAvaliador && etapa.getAvaliadoPor() != null ? etapa.getAvaliadoPor().getNome() : null,
+                documento(cadastro, etapa, paraOAdmin),
+                anexo(cadastro, etapa, paraOAdmin),
+                paraOAdmin && etapa.getAvaliadoPor() != null ? etapa.getAvaliadoPor().getNome() : null,
                 etapa.getAvaliadoEm(),
                 etapa.getCriadoEm(),
                 historico
         );
     }
 
-    private ArquivoResponse documento(Documento documento) {
+    private ArquivoResponse documento(CadastroAvaliado cadastro, EtapaValidacao etapa, boolean paraOAdmin) {
+        Documento documento = etapa.getDocumento();
         if (documento == null) {
             return null;
         }
         return new ArquivoResponse(documento.getNomeArquivo(), documento.getContentType(), documento.getTamanhoBytes(),
-                documento.getEnviadoEm(), url(documento.getStorageKey()));
+                documento.getEnviadoEm(), caminho(cadastro, etapa, ArquivoDaEtapa.DOCUMENTO, paraOAdmin));
     }
 
-    private ArquivoResponse anexo(EtapaValidacao etapa) {
+    private ArquivoResponse anexo(CadastroAvaliado cadastro, EtapaValidacao etapa, boolean paraOAdmin) {
         if (etapa.getAnexoStorageKey() == null) {
             return null;
         }
         return new ArquivoResponse(etapa.getAnexoNomeArquivo(), etapa.getAnexoContentType(), null,
-                etapa.getAvaliadoEm(), url(etapa.getAnexoStorageKey()));
+                etapa.getAvaliadoEm(), caminho(cadastro, etapa, ArquivoDaEtapa.ANEXO, paraOAdmin));
+    }
+
+    private static String caminho(CadastroAvaliado cadastro, EtapaValidacao etapa, ArquivoDaEtapa arquivo, boolean paraOAdmin) {
+        boolean paciente = cadastro.perfil() == PerfilValidado.PACIENTE;
+        return paraOAdmin
+                ? "/admin/validacoes/%s/%d/etapas/%d/%s".formatted(paciente ? "pacientes" : "profissionais", cadastro.id(),
+                        etapa.getId(), arquivo.caminho())
+                : "/validacao/%s/etapas/%d/%s".formatted(paciente ? "paciente" : "profissional", etapa.getId(), arquivo.caminho());
     }
 
     private String url(String storageKey) {

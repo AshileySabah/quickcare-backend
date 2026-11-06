@@ -5,6 +5,7 @@ import com.quickcare.backend.validacao.dto.ValidacaoDetalheResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -24,6 +25,16 @@ public class ValidacaoController {
     @GetMapping("/{perfil}")
     public ValidacaoDetalheResponse minhaValidacao(@AuthenticationPrincipal Long usuarioId, @PathVariable String perfil) {
         return validacaoService.minhaValidacao(usuarioId, PerfilNaUrl.ler(perfil));
+    }
+
+    @GetMapping("/{perfil}/etapas/{etapaId}/{arquivo}")
+    public ResponseEntity<byte[]> arquivo(
+            @AuthenticationPrincipal Long usuarioId,
+            @PathVariable String perfil,
+            @PathVariable Long etapaId,
+            @PathVariable String arquivo
+    ) {
+        return validacaoService.meuArquivo(usuarioId, PerfilNaUrl.ler(perfil), etapaId, ArquivoDaEtapa.ler(arquivo)).resposta();
     }
 
     @PostMapping(value = "/{perfil}/etapas/{tipo}/reenvio", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

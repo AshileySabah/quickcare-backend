@@ -74,6 +74,27 @@ public class ArmazenamentoDocumentoService {
         return pasta + "/" + nomeArquivo;
     }
 
+    public byte[] baixar(String storageKey) {
+        try {
+            byte[] conteudo = restClientBuilder.build()
+                    .get()
+                    .uri(properties.url() + "/storage/v1/object/authenticated/{bucket}/{chave}", properties.bucket(), storageKey)
+                    .header("Authorization", "Bearer " + properties.apiKey())
+                    .header("apikey", properties.apiKey())
+                    .retrieve()
+                    .body(byte[].class);
+            if (conteudo == null) {
+                throw new ArquivoInvalidoException("Arquivo indisponível.");
+            }
+            return conteudo;
+        } catch (ArquivoInvalidoException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            log.warn("Falha ao baixar \"{}\" do storage: {}", storageKey, ex.getMessage());
+            throw new ArquivoInvalidoException("Não foi possível abrir o arquivo. Tente novamente.");
+        }
+    }
+
     public String urlDoAvatar(Usuario usuario) {
         return usuario.getAvatarStorageKey() != null ? gerarUrlAssinada(usuario.getAvatarStorageKey()) : null;
     }
