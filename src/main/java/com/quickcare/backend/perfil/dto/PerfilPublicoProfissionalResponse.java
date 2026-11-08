@@ -19,6 +19,7 @@ public record PerfilPublicoProfissionalResponse(
         Instant membroDesde,
         long atendimentosConcluidos,
         ResumoAvaliacoesResponse avaliacoes,
+        boolean podeDenunciar,
         @JsonInclude(JsonInclude.Include.NON_NULL) List<ContatoEmergenciaResponse> contatosEmergencia
 ) {
 }

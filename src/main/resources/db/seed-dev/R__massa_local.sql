@@ -1314,3 +1314,68 @@ WHERE s.descricao LIKE 'Teste média Bruno:%' AND p.status = 'ACEITA'
 SELECT pg_temp.seed_avaliacao(d, 'bruno@quickcare.dev', 'PROFISSIONAL', 5, ARRAY['COLABORACAO'], 1)
 FROM (VALUES ('Teste média Bruno: plantão de 12h na volta para casa depois da internação.'),
              ('Teste média Bruno: plantão de 12h na noite seguinte à troca da sonda.')) AS a (d);
+CREATE OR REPLACE FUNCTION pg_temp.seed_denuncia(
+    p_email_paciente TEXT, p_email_profissional TEXT, p_denunciante TEXT, p_motivo TEXT, p_descricao TEXT,
+    p_status TEXT, p_consequencia TEXT, p_justificativa TEXT, p_horas_atras INT, p_recurso TEXT
+) RETURNS VOID AS $$
+DECLARE
+    v_paciente BIGINT;
+    v_profissional BIGINT;
+    v_admin BIGINT;
+    v_denunciado BIGINT;
+    v_ocorrencia BIGINT;
+BEGIN
+    SELECT pa.id INTO v_paciente FROM paciente pa JOIN usuario u ON u.id = pa.usuario_id WHERE u.email = p_email_paciente;
+    SELECT pr.id INTO v_profissional FROM profissional pr JOIN usuario u ON u.id = pr.usuario_id WHERE u.email = p_email_profissional;
+    SELECT usuario_id INTO v_admin FROM administrador ORDER BY id LIMIT 1;
+    IF v_paciente IS NULL OR v_profissional IS NULL
+       OR EXISTS (SELECT 1 FROM denuncia WHERE paciente_id = v_paciente AND profissional_id = v_profissional
+                  AND denunciante = p_denunciante AND descricao = p_descricao) THEN
+        RETURN;
+    END IF;
+
+    IF p_consequencia = 'OCORRENCIA' THEN
+        SELECT CASE p_denunciante WHEN 'PACIENTE' THEN pr.usuario_id ELSE pa.usuario_id END INTO v_denunciado
+        FROM paciente pa, profissional pr WHERE pa.id = v_paciente AND pr.id = v_profissional;
+        INSERT INTO ocorrencia (usuario_id, perfil, motivo, justificativa, criado_por_usuario_id, criado_em)
+        VALUES (v_denunciado, CASE p_denunciante WHEN 'PACIENTE' THEN 'PROFISSIONAL' ELSE 'PACIENTE' END,
+                'DENUNCIA_PROCEDENTE', p_justificativa, v_admin, now() - make_interval(hours => p_horas_atras / 2))
+        RETURNING id INTO v_ocorrencia;
+        IF p_recurso IS NOT NULL THEN
+            INSERT INTO recurso_ocorrencia (ocorrencia_id, texto, status, criado_em)
+            VALUES (v_ocorrencia, p_recurso, 'EM_ANALISE', now() - make_interval(hours => p_horas_atras / 4));
+        END IF;
+    END IF;
+
+    INSERT INTO denuncia (paciente_id, profissional_id, denunciante, motivo, descricao, status, consequencia,
+                          justificativa_decisao, analise_iniciada_em, analisada_por_usuario_id,
+                          decidida_em, decidida_por_usuario_id, ocorrencia_id, criado_em)
+    VALUES (v_paciente, v_profissional, p_denunciante, p_motivo, p_descricao, p_status, p_consequencia,
+            CASE WHEN p_status IN ('PROCEDENTE', 'IMPROCEDENTE') THEN p_justificativa END,
+            CASE WHEN p_status <> 'ABERTA' THEN now() - make_interval(hours => p_horas_atras * 3 / 4) END,
+            CASE WHEN p_status <> 'ABERTA' THEN v_admin END,
+            CASE WHEN p_status IN ('PROCEDENTE', 'IMPROCEDENTE') THEN now() - make_interval(hours => p_horas_atras / 2) END,
+            CASE WHEN p_status IN ('PROCEDENTE', 'IMPROCEDENTE') THEN v_admin END,
+            v_ocorrencia, now() - make_interval(hours => p_horas_atras));
+END;
+$$ LANGUAGE plpgsql;
+
+SELECT pg_temp.seed_denuncia('maria@quickcare.dev', 'bruno@quickcare.dev', 'PACIENTE', 'COMPORTAMENTO_INADEQUADO',
+       'Teste denúncia: chegou atrasado, ficou no celular a noite toda e foi grosseiro quando pedi ajuda com a medicação.',
+       'ABERTA', NULL, NULL, 6, NULL);
+SELECT pg_temp.seed_denuncia('paciente@quickcare.dev', 'ambos@quickcare.dev', 'PACIENTE', 'COBRANCA_INDEVIDA',
+       'Teste denúncia: pediu um valor a mais em dinheiro no último dia, fora do que foi combinado na proposta.',
+       'EM_ANALISE', NULL, NULL, 30, NULL);
+SELECT pg_temp.seed_denuncia('ambos@quickcare.dev', 'profissional@quickcare.dev', 'PACIENTE', 'NEGLIGENCIA',
+       'Teste denúncia: deixou de trocar o curativo dois dias seguidos e a ferida infeccionou.',
+       'PROCEDENTE', 'OCORRENCIA', 'O relato foi confirmado pelas fotos e pela receita do pronto-socorro.', 72,
+       'Os dois dias sem troca foram combinados com a paciente por mensagem, porque ela ia viajar.');
+SELECT pg_temp.seed_denuncia('helena@quickcare.dev', 'eduardo@quickcare.dev', 'PACIENTE', 'DESRESPEITO_OU_ASSEDIO',
+       'Teste denúncia: fez comentários desrespeitosos sobre a minha casa durante a aplicação.',
+       'PROCEDENTE', 'OCORRENCIA', 'O relato tem detalhes consistentes e o profissional não negou ao ser contatado.', 48, NULL);
+SELECT pg_temp.seed_denuncia('helena@quickcare.dev', 'fabio@quickcare.dev', 'PACIENTE', 'OUTRO',
+       'Teste denúncia: achei que a cuidadora foi embora 10 minutos antes do horário.',
+       'IMPROCEDENTE', NULL, 'Diferença pequena e o horário de saída registrado bate com o combinado.', 20, NULL);
+SELECT pg_temp.seed_denuncia('maria@quickcare.dev', 'bruno@quickcare.dev', 'PROFISSIONAL', 'COMPORTAMENTO_INADEQUADO',
+       'Teste denúncia: a família gritou comigo durante o plantão e me impediu de registrar a medicação.',
+       'ABERTA', NULL, NULL, 3, NULL);

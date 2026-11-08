@@ -2,6 +2,9 @@ package com.quickcare.backend.notificacao;
 
 import com.quickcare.backend.atendimento.Atendimento;
 import com.quickcare.backend.atendimento.LadoAtendimento;
+import com.quickcare.backend.denuncia.ConsequenciaDenuncia;
+import com.quickcare.backend.denuncia.Denuncia;
+import com.quickcare.backend.denuncia.StatusDenuncia;
 import com.quickcare.backend.especialidade.Especialidade;
 import com.quickcare.backend.ocorrencia.Bloqueio;
 import com.quickcare.backend.ocorrencia.MotivoBloqueioTardio;
@@ -466,7 +469,40 @@ public class Notificador {
             MotivoOcorrencia.NAO_COMPARECIMENTO, "Um atendimento ficou registrado como não comparecimento seu.",
             MotivoOcorrencia.DECISAO_DISPUTA, "Um administrador decidiu uma disputa contra você.",
             MotivoOcorrencia.MANUAL, "Um administrador registrou uma ocorrência no seu perfil.",
-            MotivoOcorrencia.BLOQUEIO_TARDIO, "Você bloqueou alguém a menos de 48h de um atendimento aceito.");
+            MotivoOcorrencia.BLOQUEIO_TARDIO, "Você bloqueou alguém a menos de 48h de um atendimento aceito.",
+            MotivoOcorrencia.DENUNCIA_PROCEDENTE, "Um administrador considerou procedente uma denúncia contra você.");
+
+    public void denunciaRecebida(Denuncia denuncia) {
+        notificacaoService.notificar(denuncia.usuarioDenunciante(), denuncia.perfilDenunciante(),
+                TipoNotificacao.DENUNCIA_RECEBIDA, "Recebemos a sua denúncia",
+                "Um administrador vai analisar a denúncia de " + denuncia.getMotivo().getRotulo().toLowerCase()
+                        + ". Avisaremos você quando ela for julgada. Quem foi denunciado não sabe que foi você.",
+                inicioDo(denuncia.perfilDenunciante()), true);
+    }
+
+    public void denunciaJulgada(Denuncia denuncia) {
+        String resultado = denuncia.getStatus() == StatusDenuncia.PROCEDENTE
+                ? "Um administrador analisou a sua denúncia e a considerou procedente: "
+                : "Um administrador analisou a sua denúncia e a considerou improcedente: ";
+        notificacaoService.notificar(denuncia.usuarioDenunciante(), denuncia.perfilDenunciante(),
+                TipoNotificacao.DENUNCIA_JULGADA, "Denúncia analisada",
+                limitar(resultado + comPontoFinal(denuncia.getJustificativaDecisao())),
+                inicioDo(denuncia.perfilDenunciante()), true);
+    }
+
+    public void denunciaProcedente(Denuncia denuncia) {
+        String efeito = denuncia.getConsequencia() == ConsequenciaDenuncia.OCORRENCIA
+                ? " Isso gerou uma ocorrência no seu perfil. Se discordar, você pode recorrer uma vez pelo quadro de ocorrências."
+                : "";
+        notificacaoService.notificar(denuncia.usuarioDenunciado(), denuncia.perfilDenunciado(),
+                TipoNotificacao.DENUNCIA_PROCEDENTE, "Denúncia procedente",
+                limitar("Um administrador analisou uma denúncia sobre o seu perfil e a considerou procedente: "
+                        + comPontoFinal(denuncia.getJustificativaDecisao()) + efeito),
+                denuncia.getConsequencia() == ConsequenciaDenuncia.OCORRENCIA
+                        ? ocorrenciasDo(denuncia.perfilDenunciado())
+                        : inicioDo(denuncia.perfilDenunciado()),
+                true);
+    }
 
     private static String ocorrenciasDo(TipoPerfil perfil) {
         return inicioDo(perfil) + "?" + PARAMETRO_DESTAQUE + "=ocorrencias";
