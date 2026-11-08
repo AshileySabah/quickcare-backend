@@ -11,6 +11,7 @@ import com.quickcare.backend.cadastro.dto.NovoPerfilProfissionalRequest;
 import com.quickcare.backend.cadastro.exception.EspecialidadeInvalidaException;
 import com.quickcare.backend.cadastro.exception.PerfilJaExistenteException;
 import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
+import com.quickcare.backend.documento.ArquivoInvalidoException;
 import com.quickcare.backend.documento.Documento;
 import com.quickcare.backend.documento.DocumentoObrigatorioException;
 import com.quickcare.backend.documento.DocumentoRepository;
@@ -43,6 +44,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -278,6 +280,19 @@ class CadastroServiceTest {
                 List.of(arquivo("rg.pdf")), List.of(TipoDocumento.VALIDACAO_CPF)))
                 .isInstanceOf(DocumentoObrigatorioException.class)
                 .hasMessageContaining("comprove seu CPF");
+        verify(pacienteRepository, never()).save(any());
+    }
+
+    @Test
+    void recusaDocumentoSemTipo() {
+        when(usuarioRepository.findById(1L)).thenReturn(Optional.of(usuario));
+
+        assertThatThrownBy(() -> service.criarPerfilPaciente(1L, pacienteRequest(),
+                List.of(arquivo("cpf.pdf"), arquivo("rg.pdf"), arquivo("extra.pdf")),
+                Arrays.asList(TipoDocumento.COMPROVANTE_CPF, TipoDocumento.VALIDACAO_CPF, null)))
+                .isInstanceOf(ArquivoInvalidoException.class)
+                .hasMessage("Escolha a que se refere cada documento enviado.");
+        verify(armazenamentoDocumentoService, never()).enviar(any(), any());
         verify(pacienteRepository, never()).save(any());
     }
 

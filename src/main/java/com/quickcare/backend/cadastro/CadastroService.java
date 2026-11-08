@@ -50,6 +50,7 @@ import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 @Service
@@ -278,6 +279,10 @@ public class CadastroService {
 
         if (arquivos.size() != tipos.size()) {
             throw new ArquivoInvalidoException("Cada documento enviado precisa ter um tipo correspondente.");
+        }
+
+        if (tipos.stream().anyMatch(Objects::isNull)) {
+            throw new ArquivoInvalidoException("Escolha a que se refere cada documento enviado.");
         }
 
         List<DocumentoParaSalvar> resultado = new ArrayList<>();
