@@ -25,6 +25,7 @@ import com.quickcare.backend.paciente.PacienteRepository;
 import com.quickcare.backend.profissional.ModalidadeAtendimento;
 import com.quickcare.backend.profissional.Profissional;
 import com.quickcare.backend.profissional.ProfissionalRepository;
+import com.quickcare.backend.seguranca.HerancaPorDocumentoService;
 import com.quickcare.backend.solicitacao.exception.PerfilNaoAutorizadoException;
 import com.quickcare.backend.usuario.Genero;
 import com.quickcare.backend.usuario.TipoPerfil;
@@ -74,6 +75,7 @@ class CadastroServiceTest {
     @Mock private AdministradorRepository administradorRepository;
     @Mock private AtuacaoRepository atuacaoRepository;
     @Mock private AtuacaoEventoRepository atuacaoEventoRepository;
+    @Mock private HerancaPorDocumentoService herancaPorDocumentoService;
 
     private CadastroService service;
 
@@ -84,7 +86,7 @@ class CadastroServiceTest {
         service = new CadastroService(usuarioRepository, pacienteRepository, profissionalRepository, documentoRepository,
                 armazenamentoDocumentoService, passwordEncoder, geocodificacaoService, validacaoService,
                 administradorRepository, new MontagemAtuacoes(especialidadeRepository), atuacaoRepository,
-                atuacaoEventoRepository);
+                atuacaoEventoRepository, herancaPorDocumentoService);
         usuario = Usuario.builder().id(1L).nome("Maria Silva").email("maria@email.com").ultimoPerfil(TipoPerfil.PACIENTE).build();
     }
 

@@ -9,7 +9,7 @@ import java.time.Duration;
 
 @Component
 @RequiredArgsConstructor
-class AuthCookies {
+public class AuthCookies {
 
     static final String ACCESS_TOKEN_COOKIE = "access_token";
     static final String REFRESH_TOKEN_COOKIE = "refresh_token";
@@ -17,7 +17,7 @@ class AuthCookies {
 
     private final JwtProperties jwtProperties;
 
-    ResponseCookie accessToken(String token) {
+    public ResponseCookie accessToken(String token) {
         return ResponseCookie.from(ACCESS_TOKEN_COOKIE, token)
                 .httpOnly(true)
                 .secure(true)
@@ -27,7 +27,7 @@ class AuthCookies {
                 .build();
     }
 
-    ResponseCookie refreshToken(String token) {
+    public ResponseCookie refreshToken(String token) {
         return ResponseCookie.from(REFRESH_TOKEN_COOKIE, token)
                 .httpOnly(true)
                 .secure(true)
@@ -37,11 +37,11 @@ class AuthCookies {
                 .build();
     }
 
-    ResponseCookie expiredAccessToken() {
+    public ResponseCookie expiredAccessToken() {
         return expired(ACCESS_TOKEN_COOKIE, "/");
     }
 
-    ResponseCookie expiredRefreshToken() {
+    public ResponseCookie expiredRefreshToken() {
         return expired(REFRESH_TOKEN_COOKIE, REFRESH_TOKEN_PATH);
     }
 

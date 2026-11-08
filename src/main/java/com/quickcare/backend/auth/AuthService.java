@@ -10,6 +10,8 @@ import com.quickcare.backend.jwt.JwtService;
 import com.quickcare.backend.jwt.TokenInvalidoException;
 import com.quickcare.backend.paciente.PacienteRepository;
 import com.quickcare.backend.profissional.ProfissionalRepository;
+import com.quickcare.backend.seguranca.EncerramentoService;
+import com.quickcare.backend.seguranca.exception.ContaEncerradaException;
 import com.quickcare.backend.solicitacao.exception.PerfilNaoAutorizadoException;
 import com.quickcare.backend.usuario.TipoPerfil;
 import com.quickcare.backend.usuario.Usuario;
@@ -21,6 +23,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,6 +32,9 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class AuthService {
+
+    private static final ZoneId FUSO = ZoneId.of("America/Sao_Paulo");
+    private static final DateTimeFormatter DIA = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     private final UsuarioRepository usuarioRepository;
     private final AdministradorRepository administradorRepository;
@@ -45,22 +52,28 @@ public class AuthService {
         if (!passwordEncoder.matches(request.senha(), usuario.getSenhaHash())) {
             throw new LoginInvalidoException();
         }
+        if (usuario.contaEncerrada()) {
+            throw new ContaEncerradaException("Sua conta foi encerrada e será excluída em "
+                    + DIA.format(EncerramentoService.excluiEm(usuario.getEncerradoEm()).atZone(FUSO))
+                    + ". Até lá, você pode recuperá-la.");
+        }
 
         return iniciarSessao(usuario);
     }
 
-    LoginResult iniciarSessao(Usuario usuario) {
+    public LoginResult iniciarSessao(Usuario usuario) {
         return new LoginResult(montarResposta(usuario), jwtService.gerarAccessToken(usuario), jwtService.gerarRefreshToken(usuario));
     }
 
     @Transactional(readOnly = true)
     public LoginResponse sessaoAtual(Long usuarioId) {
         Usuario usuario = usuarioRepository.findById(usuarioId)
+                .filter(encontrado -> !encontrado.contaEncerrada())
                 .orElseThrow(TokenInvalidoException::new);
         return montarResposta(usuario);
     }
 
-    private LoginResponse montarResposta(Usuario usuario) {
+    public LoginResponse montarResposta(Usuario usuario) {
         List<PerfilStatusResponse> perfis = new ArrayList<>();
         if (administradorRepository.existsByUsuarioId(usuario.getId())) {
             perfis.add(new PerfilStatusResponse("ADMIN", "ATIVO", null));
@@ -103,7 +116,7 @@ public class AuthService {
         Usuario usuario = usuarioRepository.findById(usuarioId)
                 .orElseThrow(TokenInvalidoException::new);
 
-        if (emitidoAntesDaTrocaDeSenha(claims, usuario)) {
+        if (usuario.contaEncerrada() || emitidoAntesDaTrocaDeSenha(claims, usuario)) {
             throw new TokenInvalidoException();
         }
 

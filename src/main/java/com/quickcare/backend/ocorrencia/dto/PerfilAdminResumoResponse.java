@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.quickcare.backend.usuario.TipoPerfil;
 import com.quickcare.backend.validacao.StatusValidacao;
 
+import java.time.Instant;
+
 public record PerfilAdminResumoResponse(
         Long usuarioId,
         TipoPerfil perfil,
@@ -13,6 +15,7 @@ public record PerfilAdminResumoResponse(
         boolean banido,
         int ocorrenciasContando,
         int recursosEmAnalise,
-        @JsonInclude(JsonInclude.Include.NON_NULL) BloqueioResponse bloqueio
+        @JsonInclude(JsonInclude.Include.NON_NULL) BloqueioResponse bloqueio,
+        @JsonInclude(JsonInclude.Include.NON_NULL) Instant congeladoEm
 ) {
 }

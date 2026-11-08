@@ -32,7 +32,11 @@ import com.quickcare.backend.paciente.PacienteRepository;
 import com.quickcare.backend.profissional.ModalidadeAtendimento;
 import com.quickcare.backend.profissional.Profissional;
 import com.quickcare.backend.profissional.ProfissionalRepository;
+import com.quickcare.backend.seguranca.EncerramentoService;
+import com.quickcare.backend.seguranca.HerancaPorDocumentoService;
+import com.quickcare.backend.seguranca.exception.ContaEncerradaException;
 import com.quickcare.backend.solicitacao.exception.PerfilNaoAutorizadoException;
+import com.quickcare.backend.solicitacao.exception.TransicaoStatusInvalidaException;
 import com.quickcare.backend.usuario.ContatoEmergencia;
 import com.quickcare.backend.usuario.TipoPerfil;
 import com.quickcare.backend.usuario.Usuario;
@@ -44,6 +48,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
@@ -69,6 +75,10 @@ public class CadastroService {
     private final MontagemAtuacoes montagemAtuacoes;
     private final AtuacaoRepository atuacaoRepository;
     private final AtuacaoEventoRepository atuacaoEventoRepository;
+    private final HerancaPorDocumentoService herancaPorDocumentoService;
+
+    private static final ZoneId FUSO = ZoneId.of("America/Sao_Paulo");
+    private static final DateTimeFormatter DIA = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     @Transactional
     public CadastroResponse cadastrarPaciente(
@@ -138,13 +148,19 @@ public class CadastroService {
         if (administradorRepository.existsByUsuarioId(usuarioId)) {
             throw new PerfilNaoAutorizadoException("Administradores não podem ter perfil de paciente ou profissional.");
         }
-        return usuarioRepository.findById(usuarioId).orElseThrow(TokenInvalidoException::new);
+        return usuarioRepository.findById(usuarioId)
+                .filter(usuario -> !usuario.contaEncerrada())
+                .orElseThrow(TokenInvalidoException::new);
     }
 
     private CadastroResponse criarPaciente(Usuario usuario, NovoPerfilPacienteRequest request,
                                            List<DocumentoParaSalvar> documentosValidados) {
         if (pacienteRepository.existsByUsuarioId(usuario.getId())) {
             throw new PerfilJaExistenteException("paciente");
+        }
+        if (pacienteRepository.findCongeladoDoTitular(usuario.getId()).isPresent()) {
+            throw new TransicaoStatusInvalidaException("Você encerrou seu perfil de paciente há menos de "
+                    + EncerramentoService.PRAZO_RECUPERACAO.toDays() + " dias. Recupere-o na tela de Segurança.");
         }
 
         Paciente paciente = pacienteRepository.save(
@@ -171,6 +187,7 @@ public class CadastroService {
 
         validacaoService.iniciar(paciente, salvarDocumentos(documentosValidados, paciente, null));
         usuario.setUltimoPerfil(TipoPerfil.PACIENTE);
+        herancaPorDocumentoService.herdar(usuario, paciente);
 
         return new CadastroResponse(usuario.getId(), paciente.getId(), usuario.getNome(), usuario.getEmail(), "PACIENTE");
     }
@@ -179,6 +196,10 @@ public class CadastroService {
                                                List<DocumentoParaSalvar> documentosValidados) {
         if (profissionalRepository.existsByUsuarioId(usuario.getId())) {
             throw new PerfilJaExistenteException("profissional");
+        }
+        if (profissionalRepository.findCongeladoDoTitular(usuario.getId()).isPresent()) {
+            throw new TransicaoStatusInvalidaException("Você encerrou seu perfil de profissional há menos de "
+                    + EncerramentoService.PRAZO_RECUPERACAO.toDays() + " dias. Recupere-o na tela de Segurança.");
         }
 
         if (request.modalidadeAtendimento() != ModalidadeAtendimento.REMOTO && request.raioAtendimentoKm() == null) {
@@ -237,6 +258,7 @@ public class CadastroService {
 
         validacaoService.iniciar(profissional, documentosDaConta, documentosDeRegistro);
         usuario.setUltimoPerfil(TipoPerfil.PROFISSIONAL);
+        herancaPorDocumentoService.herdar(usuario, profissional);
 
         return new CadastroResponse(usuario.getId(), profissional.getId(), usuario.getNome(), usuario.getEmail(), "PROFISSIONAL");
     }
@@ -334,6 +356,12 @@ public class CadastroService {
                                     DocumentoIdentidade identidade, MultipartFile avatar) {
         Optional<Usuario> porEmail = usuarioRepository.findByEmail(email);
         Optional<Usuario> porCpf = usuarioRepository.findByCpf(cpf);
+
+        porEmail.or(() -> porCpf).filter(Usuario::contaEncerrada).ifPresent(encerrada -> {
+            throw new ContaEncerradaException("Existe uma conta encerrada com estes dados. Até "
+                    + DIA.format(EncerramentoService.excluiEm(encerrada.getEncerradoEm()).atZone(FUSO))
+                    + " ela pode ser recuperada: entre com seu e-mail e senha.");
+        });
 
         if (porEmail.isPresent() && porCpf.isPresent()) {
             if (!porEmail.get().getId().equals(porCpf.get().getId())) {

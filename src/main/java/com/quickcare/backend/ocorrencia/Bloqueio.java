@@ -19,6 +19,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.time.Duration;
 import java.time.Instant;
 
 @Entity
@@ -90,6 +91,12 @@ public class Bloqueio {
 
     public Instant terminoEfetivo() {
         return removidoEm != null && removidoEm.isBefore(fim) ? removidoEm : fim;
+    }
+
+    public void prorrogarPorCongelamento(Instant congeladoEm, Duration duracao) {
+        if (removidoEm == null && fim.isAfter(congeladoEm)) {
+            fim = fim.plus(duracao);
+        }
     }
 
     public void desfazer(Instant agora) {

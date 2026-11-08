@@ -7,6 +7,7 @@ import com.quickcare.backend.administrador.TipoAcaoAdmin;
 import com.quickcare.backend.administrador.dto.AcaoAdminResponse;
 import com.quickcare.backend.common.RecursoNaoEncontradoException;
 import com.quickcare.backend.banimento.Banimento;
+import com.quickcare.backend.banimento.BanimentoRepository;
 import com.quickcare.backend.banimento.BanimentoService;
 import com.quickcare.backend.banimento.TipoBanimento;
 import com.quickcare.backend.banimento.dto.BanimentoRequest;
@@ -22,6 +23,7 @@ import com.quickcare.backend.paciente.Paciente;
 import com.quickcare.backend.paciente.PacienteRepository;
 import com.quickcare.backend.profissional.Profissional;
 import com.quickcare.backend.profissional.ProfissionalRepository;
+import com.quickcare.backend.seguranca.Congelamento;
 import com.quickcare.backend.usuario.TipoPerfil;
 import com.quickcare.backend.usuario.Usuario;
 import com.quickcare.backend.validacao.StatusValidacao;
@@ -60,6 +62,8 @@ public class AdminPerfilService {
     private final AcessoAdmin acessoAdmin;
     private final Clock clock;
     private final BanimentoService banimentoService;
+    private final BanimentoRepository banimentoRepository;
+    private final Congelamento congelamento;
 
     @Transactional(readOnly = true)
     public List<PerfilAdminResumoResponse> listar(Long adminUsuarioId, TipoPerfil perfil, String busca, Situacao situacao) {
@@ -92,7 +96,7 @@ public class AdminPerfilService {
     @Transactional
     public PerfilAdminDetalheResponse lancarOcorrencia(Long adminUsuarioId, TipoPerfil perfil, Long usuarioId, String justificativa) {
         Usuario admin = acessoAdmin.exigir(adminUsuarioId);
-        Linha linha = carregar(perfil, usuarioId);
+        Linha linha = carregarAlteravel(perfil, usuarioId);
         Ocorrencia ocorrencia = ocorrenciaService.lancarManual(admin, linha.usuario(), perfil, justificativa);
         acessoAdmin.registrar(admin, TipoAcaoAdmin.OCORRENCIA_LANCADA, AcaoAdmin.Alvo.OCORRENCIA, ocorrencia.getId(),
                 perfil.name(), justificativa);
@@ -102,6 +106,8 @@ public class AdminPerfilService {
     @Transactional
     public PerfilAdminDetalheResponse anularOcorrencia(Long adminUsuarioId, Long ocorrenciaId, String justificativa) {
         Usuario admin = acessoAdmin.exigir(adminUsuarioId);
+        ocorrenciaRepository.findById(ocorrenciaId).ifPresent(encontrada ->
+                congelamento.exigirNaoCongelado(encontrada.getUsuario().getId(), encontrada.getPerfil()));
         Ocorrencia ocorrencia = ocorrenciaService.anular(admin, ocorrenciaId, justificativa);
         acessoAdmin.registrar(admin, TipoAcaoAdmin.OCORRENCIA_ANULADA, AcaoAdmin.Alvo.OCORRENCIA, ocorrencia.getId(),
                 ocorrencia.getMotivo().name(), justificativa);
@@ -111,7 +117,7 @@ public class AdminPerfilService {
     @Transactional
     public PerfilAdminDetalheResponse aplicarBloqueio(Long adminUsuarioId, TipoPerfil perfil, Long usuarioId, String justificativa) {
         Usuario admin = acessoAdmin.exigir(adminUsuarioId);
-        Linha linha = carregar(perfil, usuarioId);
+        Linha linha = carregarAlteravel(perfil, usuarioId);
         Bloqueio bloqueio = ocorrenciaService.aplicarBloqueio(admin, linha.usuario(), perfil, justificativa);
         acessoAdmin.registrar(admin, TipoAcaoAdmin.BLOQUEIO_APLICADO, AcaoAdmin.Alvo.BLOQUEIO, bloqueio.getId(),
                 "Nível " + bloqueio.getNivel(), justificativa);
@@ -121,6 +127,8 @@ public class AdminPerfilService {
     @Transactional
     public PerfilAdminDetalheResponse removerBloqueio(Long adminUsuarioId, Long bloqueioId, String justificativa) {
         Usuario admin = acessoAdmin.exigir(adminUsuarioId);
+        bloqueioRepository.findById(bloqueioId).ifPresent(encontrado ->
+                congelamento.exigirNaoCongelado(encontrado.getUsuario().getId(), encontrado.getPerfil()));
         Bloqueio bloqueio = ocorrenciaService.removerBloqueio(admin, bloqueioId, justificativa);
         acessoAdmin.registrar(admin, TipoAcaoAdmin.BLOQUEIO_REMOVIDO, AcaoAdmin.Alvo.BLOQUEIO, bloqueio.getId(),
                 "Nível " + bloqueio.getNivel(), justificativa);
@@ -141,6 +149,8 @@ public class AdminPerfilService {
         if (banir && tipoBanimento == null) {
             throw new TransicaoStatusInvalidaException("Escolha se o banimento é permanente ou uma suspensão.");
         }
+        recursoRepository.findById(recursoId).ifPresent(encontrado -> congelamento.exigirNaoCongelado(
+                encontrado.getOcorrencia().getUsuario().getId(), encontrado.getOcorrencia().getPerfil()));
         RecursoOcorrencia recurso = ocorrenciaService.decidirRecurso(admin, recursoId, anular, justificativa);
         Ocorrencia ocorrencia = recurso.getOcorrencia();
         boolean daDenuncia = ocorrencia.getMotivo() == MotivoOcorrencia.DENUNCIA_PROCEDENTE;
@@ -159,6 +169,8 @@ public class AdminPerfilService {
     public PerfilAdminDetalheResponse decidirMotivoDeBloqueio(Long adminUsuarioId, Long motivoId, boolean aceitar,
                                                              String justificativa) {
         Usuario admin = acessoAdmin.exigir(adminUsuarioId);
+        motivoBloqueioRepository.findById(motivoId).ifPresent(encontrado ->
+                congelamento.exigirNaoCongelado(encontrado.getUsuario().getId(), encontrado.getPerfil()));
         MotivoBloqueioTardio motivo = ocorrenciaService.decidirMotivoDeBloqueio(admin, motivoId, aceitar, justificativa);
         acessoAdmin.registrar(admin, aceitar ? TipoAcaoAdmin.MOTIVO_BLOQUEIO_ACEITO : TipoAcaoAdmin.MOTIVO_BLOQUEIO_NEGADO,
                 AcaoAdmin.Alvo.MOTIVO_BLOQUEIO, motivo.getId(), motivo.getPerfil().name(), justificativa);
@@ -174,7 +186,7 @@ public class AdminPerfilService {
     @Transactional
     public PerfilAdminDetalheResponse banir(Long adminUsuarioId, TipoPerfil perfil, Long usuarioId, BanimentoRequest request) {
         Usuario admin = acessoAdmin.exigir(adminUsuarioId);
-        Linha linha = carregar(perfil, usuarioId);
+        Linha linha = carregarAlteravel(perfil, usuarioId);
         banimentoService.banir(admin, linha.usuario(), perfil, request.tipo(), request.dias(), request.justificativa(), null);
         if (request.ambosPerfis()) {
             TipoPerfil outro = perfil == TipoPerfil.PACIENTE ? TipoPerfil.PROFISSIONAL : TipoPerfil.PACIENTE;
@@ -192,6 +204,7 @@ public class AdminPerfilService {
     @Transactional
     public PerfilAdminDetalheResponse removerBanimento(Long adminUsuarioId, Long banimentoId, String justificativa) {
         Usuario admin = acessoAdmin.exigir(adminUsuarioId);
+        exigirBanimentoNaoCongelado(banimentoId);
         Banimento banimento = banimentoService.remover(admin, banimentoId, justificativa);
         return detalhe(carregar(banimento.getPerfil(), banimento.getUsuario().getId()));
     }
@@ -200,35 +213,64 @@ public class AdminPerfilService {
     public PerfilAdminDetalheResponse decidirRecursoDeBanimento(Long adminUsuarioId, Long banimentoId, boolean aceitar,
                                                                String justificativa) {
         Usuario admin = acessoAdmin.exigir(adminUsuarioId);
+        exigirBanimentoNaoCongelado(banimentoId);
         Banimento banimento = banimentoService.decidirRecurso(admin, banimentoId, aceitar, justificativa);
         return detalhe(carregar(banimento.getPerfil(), banimento.getUsuario().getId()));
     }
 
-    private record Linha(Usuario usuario, TipoPerfil perfil, StatusValidacao statusValidacao, boolean banido) {
+    private void exigirBanimentoNaoCongelado(Long banimentoId) {
+        banimentoRepository.findById(banimentoId).ifPresent(encontrado ->
+                congelamento.exigirNaoCongelado(encontrado.getUsuario().getId(), encontrado.getPerfil()));
+    }
+
+    private record Linha(Usuario usuario, TipoPerfil perfil, StatusValidacao statusValidacao, boolean banido,
+                         Instant congeladoEm) {
 
         static Linha de(Paciente paciente) {
-            return new Linha(paciente.getUsuario(), TipoPerfil.PACIENTE, paciente.getStatusValidacao(), paciente.isBanido());
+            return new Linha(dono(paciente.getUsuario(), paciente.congelado()), TipoPerfil.PACIENTE,
+                    paciente.getStatusValidacao(), paciente.isBanido(), paciente.congelado() ? paciente.getEncerradoEm() : null);
         }
 
         static Linha de(Profissional profissional) {
-            return new Linha(profissional.getUsuario(), TipoPerfil.PROFISSIONAL, profissional.getStatusValidacao(),
-                    profissional.isBanido());
+            return new Linha(dono(profissional.getUsuario(), profissional.congelado()), TipoPerfil.PROFISSIONAL,
+                    profissional.getStatusValidacao(), profissional.isBanido(),
+                    profissional.congelado() ? profissional.getEncerradoEm() : null);
+        }
+
+        private static Usuario dono(Usuario usuario, boolean congelado) {
+            return congelado && usuario.getTitular() != null ? usuario.getTitular() : usuario;
         }
     }
 
     private Stream<Linha> perfis(TipoPerfil perfil) {
         Stream<Linha> pacientes = perfil == TipoPerfil.PROFISSIONAL ? Stream.empty()
-                : pacienteRepository.findAllByOrderByCriadoEmAsc().stream().map(Linha::de);
+                : pacienteRepository.findAllByOrderByCriadoEmAsc().stream()
+                        .filter(paciente -> paciente.getExcluidoEm() == null)
+                        .map(Linha::de);
         Stream<Linha> profissionais = perfil == TipoPerfil.PACIENTE ? Stream.empty()
-                : profissionalRepository.findAllByOrderByCriadoEmAsc().stream().map(Linha::de);
+                : profissionalRepository.findAllByOrderByCriadoEmAsc().stream()
+                        .filter(profissional -> profissional.getExcluidoEm() == null)
+                        .map(Linha::de);
         return Stream.concat(pacientes, profissionais);
     }
 
     private Linha carregar(TipoPerfil perfil, Long usuarioId) {
         return (perfil == TipoPerfil.PACIENTE
-                ? pacienteRepository.findByUsuarioId(usuarioId).map(Linha::de)
-                : profissionalRepository.findByUsuarioId(usuarioId).map(Linha::de))
+                ? pacienteRepository.findByUsuarioId(usuarioId)
+                        .or(() -> pacienteRepository.findCongeladoDoTitular(usuarioId))
+                        .map(Linha::de)
+                : profissionalRepository.findByUsuarioId(usuarioId)
+                        .or(() -> profissionalRepository.findCongeladoDoTitular(usuarioId))
+                        .map(Linha::de))
                 .orElseThrow(() -> new RecursoNaoEncontradoException("Perfil não encontrado."));
+    }
+
+    private Linha carregarAlteravel(TipoPerfil perfil, Long usuarioId) {
+        Linha linha = carregar(perfil, usuarioId);
+        if (linha.congeladoEm() != null) {
+            throw new TransicaoStatusInvalidaException(Congelamento.MENSAGEM);
+        }
+        return linha;
     }
 
     private PerfilAdminResumoResponse resumo(Linha linha) {
@@ -242,7 +284,8 @@ public class AdminPerfilService {
                         MotivoBloqueioTardio.Status.EM_ANALISE, usuarioId, linha.perfil())
                         + banimentoService.recursosEmAnalise(usuarioId, linha.perfil()),
                 ocorrenciaService.bloqueioAtivo(usuarioId, linha.perfil()).map(bloqueio -> BloqueioResponse.de(bloqueio, agora))
-                        .orElse(null));
+                        .orElse(null),
+                linha.congeladoEm());
     }
 
     private PerfilAdminDetalheResponse detalhe(Linha linha) {

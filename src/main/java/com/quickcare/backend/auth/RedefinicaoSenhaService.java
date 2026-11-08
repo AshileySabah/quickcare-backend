@@ -67,6 +67,18 @@ public class RedefinicaoSenhaService {
         return authService.iniciarSessao(usuario);
     }
 
+    @Transactional
+    public String gerarToken(Usuario usuario) {
+        tokenRepository.excluirDoUsuario(usuario.getId());
+        String token = gerarToken();
+        tokenRepository.save(TokenRedefinicaoSenha.builder()
+                .usuario(usuario)
+                .tokenHash(hash(token))
+                .expiraEm(Instant.now().plus(VALIDADE_TOKEN))
+                .build());
+        return token;
+    }
+
     private void enviarLink(Usuario usuario) {
         Instant agora = Instant.now();
         Optional<TokenRedefinicaoSenha> anterior = tokenRepository.findByUsuarioId(usuario.getId());

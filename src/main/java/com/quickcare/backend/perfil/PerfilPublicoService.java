@@ -47,7 +47,7 @@ public class PerfilPublicoService {
     @Transactional(readOnly = true)
     public PerfilPublicoProfissionalResponse buscarProfissional(Long usuarioId, Long profissionalId) {
         Profissional profissional = profissionalRepository.findById(profissionalId)
-                .filter(p -> !p.isBanido() && p.getStatusValidacao() == StatusValidacao.APROVADO)
+                .filter(p -> !p.isBanido() && !p.encerrado() && p.getStatusValidacao() == StatusValidacao.APROVADO)
                 .orElseThrow(PerfilNaoEncontradoException::new);
         Long pacienteId = usuarioId == null ? null
                 : pacienteRepository.findByUsuarioId(usuarioId).map(Paciente::getId).orElse(null);
@@ -117,6 +117,7 @@ public class PerfilPublicoService {
         }
 
         Paciente paciente = pacienteRepository.findById(pacienteId)
+                .filter(encontrado -> !encontrado.encerrado())
                 .orElseThrow(PerfilNaoEncontradoException::new);
 
         return new PerfilPublicoPacienteResponse(

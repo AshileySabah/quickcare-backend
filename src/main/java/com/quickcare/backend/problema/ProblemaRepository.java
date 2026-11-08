@@ -35,7 +35,25 @@ public interface ProblemaRepository extends JpaRepository<ProblemaAtendimento, L
             select p.id from ProblemaAtendimento p
             where p.status = com.quickcare.backend.problema.StatusProblema.AGUARDANDO_RESPOSTA
               and p.prazoResposta <= :agora
+              and (p.atendimento.solicitacao.paciente.encerradoEm is null
+                   or p.atendimento.solicitacao.paciente.excluidoEm is not null)
+              and (p.atendimento.proposta.profissional.encerradoEm is null
+                   or p.atendimento.proposta.profissional.excluidoEm is not null)
             """)
     List<Long> findIdsComPrazoVencido(@Param("agora") Instant agora);
+
+    @Query("""
+            select p from ProblemaAtendimento p
+            where p.status = com.quickcare.backend.problema.StatusProblema.AGUARDANDO_RESPOSTA
+              and p.atendimento.solicitacao.paciente.id = :pacienteId
+            """)
+    List<ProblemaAtendimento> findAguardandoDoPaciente(@Param("pacienteId") Long pacienteId);
+
+    @Query("""
+            select p from ProblemaAtendimento p
+            where p.status = com.quickcare.backend.problema.StatusProblema.AGUARDANDO_RESPOSTA
+              and p.atendimento.proposta.profissional.id = :profissionalId
+            """)
+    List<ProblemaAtendimento> findAguardandoDoProfissional(@Param("profissionalId") Long profissionalId);
 
 }
