@@ -49,7 +49,8 @@ public class PerfilPublicoService {
         Profissional profissional = profissionalRepository.findById(profissionalId)
                 .filter(p -> !p.isBanido() && p.getStatusValidacao() == StatusValidacao.APROVADO)
                 .orElseThrow(PerfilNaoEncontradoException::new);
-        Long pacienteId = pacienteRepository.findByUsuarioId(usuarioId).map(Paciente::getId).orElse(null);
+        Long pacienteId = usuarioId == null ? null
+                : pacienteRepository.findByUsuarioId(usuarioId).map(Paciente::getId).orElse(null);
         if (pacienteId != null && bloqueioUsuarioRepository.existsByPacienteIdAndProfissionalId(pacienteId, profissional.getId())) {
             throw new PerfilNaoEncontradoException();
         }
@@ -85,6 +86,9 @@ public class PerfilPublicoService {
     }
 
     private boolean atendimentoIniciado(Long usuarioId, Profissional profissional) {
+        if (usuarioId == null) {
+            return false;
+        }
         return pacienteRepository.findByUsuarioId(usuarioId)
                 .map(paciente -> atendimentoEmAndamento(profissional, paciente.getId()))
                 .orElse(false);
