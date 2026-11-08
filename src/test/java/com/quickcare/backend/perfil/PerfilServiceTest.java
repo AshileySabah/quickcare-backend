@@ -1,5 +1,7 @@
 package com.quickcare.backend.perfil;
 
+import com.quickcare.backend.avaliacao.AvaliacaoService;
+import com.quickcare.backend.avaliacao.dto.ResumoAvaliacoesResponse;
 import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
 import com.quickcare.backend.geolocalizacao.GeocodificacaoService;
 import com.quickcare.backend.paciente.Paciente;
@@ -37,6 +39,7 @@ class PerfilServiceTest {
     @Mock private ProfissionalRepository profissionalRepository;
     @Mock private ArmazenamentoDocumentoService armazenamentoDocumentoService;
     @Mock private GeocodificacaoService geocodificacaoService;
+    @Mock private AvaliacaoService avaliacaoService;
 
     @InjectMocks
     private PerfilService service;
@@ -79,6 +82,20 @@ class PerfilServiceTest {
 
         assertThat(perfil.modalidadeAtendimento()).isEqualTo(ModalidadeAtendimento.AMBOS);
         assertThat(perfil.contatosEmergencia()).hasSize(1);
+    }
+
+    @Test
+    void oProprioPerfilTrazAsAvaliacoesRecebidas() {
+        ResumoAvaliacoesResponse doPaciente = new ResumoAvaliacoesResponse(4.5, 2, List.of());
+        ResumoAvaliacoesResponse doProfissional = new ResumoAvaliacoesResponse(null, 0, List.of());
+        when(pacienteRepository.findByUsuarioId(USUARIO_ID)).thenReturn(Optional.of(paciente()));
+        when(profissionalRepository.findByUsuarioId(USUARIO_ID))
+                .thenReturn(Optional.of(Profissional.builder().id(20L).usuario(usuario).contatosEmergencia(new ArrayList<>()).build()));
+        when(avaliacaoService.resumoDoPaciente(10L)).thenReturn(doPaciente);
+        when(avaliacaoService.resumoDoProfissional(20L)).thenReturn(doProfissional);
+
+        assertThat(service.buscarPaciente(USUARIO_ID).avaliacoes()).isSameAs(doPaciente);
+        assertThat(service.buscarProfissional(USUARIO_ID).avaliacoes()).isSameAs(doProfissional);
     }
 
     private Paciente paciente() {

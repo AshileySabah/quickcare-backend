@@ -199,13 +199,31 @@ public class Notificador {
         paraProfissional(proposta, Destaque.PROPOSTA, TipoNotificacao.LEMBRETE_ATENDIMENTO, titulo, mensagem, true);
     }
 
-    public void atendimentoFinalizado(Atendimento atendimento) {
+    public void atendimentoFinalizado(Atendimento atendimento, Instant prazoAvaliacao) {
         Proposta proposta = atendimento.getProposta();
         String mensagem = "O atendimento de " + servico(proposta) + " terminou.";
-        paraPaciente(proposta, Destaque.PROPOSTA, TipoNotificacao.ATENDIMENTO_FINALIZADO, "Atendimento finalizado",
-                mensagem + " Em breve você poderá avaliar " + nomeDoProfissional(proposta) + ".", true);
-        paraProfissional(proposta, Destaque.PROPOSTA, TipoNotificacao.ATENDIMENTO_FINALIZADO, "Atendimento finalizado",
-                mensagem + " Em breve você poderá avaliar o paciente.", true);
+        String prazo = " A avaliação fica aberta até " + DIA.format(prazoAvaliacao.atZone(FUSO)) + ".";
+        notificacaoService.notificar(proposta.getSolicitacao().getPaciente().getUsuario(), TipoPerfil.PACIENTE,
+                TipoNotificacao.ATENDIMENTO_FINALIZADO, "Atendimento finalizado: avalie",
+                limitar(mensagem + " Conte como foi com " + nomeDoProfissional(proposta) + "." + prazo),
+                avaliacoesDo(TipoPerfil.PACIENTE), true);
+        notificacaoService.notificar(proposta.getProfissional().getUsuario(), TipoPerfil.PROFISSIONAL,
+                TipoNotificacao.ATENDIMENTO_FINALIZADO, "Atendimento finalizado: avalie",
+                limitar(mensagem + " Conte como foi com o paciente." + prazo),
+                avaliacoesDo(TipoPerfil.PROFISSIONAL), true);
+    }
+
+    public void lembreteDeAvaliacao(Atendimento atendimento, LadoAtendimento lado, Instant prazoAvaliacao) {
+        Proposta proposta = atendimento.getProposta();
+        TipoPerfil perfil = lado == LadoAtendimento.PACIENTE ? TipoPerfil.PACIENTE : TipoPerfil.PROFISSIONAL;
+        Usuario usuario = lado == LadoAtendimento.PACIENTE
+                ? proposta.getSolicitacao().getPaciente().getUsuario()
+                : proposta.getProfissional().getUsuario();
+        notificacaoService.notificar(usuario, perfil, TipoNotificacao.AVALIACAO_PENDENTE, "Avalie o atendimento",
+                limitar("Você ainda não avaliou o atendimento de " + servico(proposta) + " que terminou em "
+                        + DIA.format(atendimento.getTermino().atZone(FUSO)) + ". A avaliação fica aberta até "
+                        + DIA.format(prazoAvaliacao.atZone(FUSO)) + "."),
+                avaliacoesDo(perfil), true);
     }
 
     public void problemaRelatado(ProblemaAtendimento problema) {
@@ -452,6 +470,10 @@ public class Notificador {
 
     private static String ocorrenciasDo(TipoPerfil perfil) {
         return inicioDo(perfil) + "?" + PARAMETRO_DESTAQUE + "=ocorrencias";
+    }
+
+    private static String avaliacoesDo(TipoPerfil perfil) {
+        return inicioDo(perfil) + "?" + PARAMETRO_DESTAQUE + "=avaliacoes";
     }
 
     private void paraProfissional(

@@ -2,6 +2,7 @@ package com.quickcare.backend.perfil;
 
 import com.quickcare.backend.atendimento.AtendimentoRepository;
 import com.quickcare.backend.atendimento.StatusAtendimento;
+import com.quickcare.backend.avaliacao.AvaliacaoService;
 import com.quickcare.backend.bloqueiousuario.BloqueioUsuarioRepository;
 import com.quickcare.backend.atuacao.dto.AtuacaoResumoResponse;
 import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
@@ -37,6 +38,7 @@ public class PerfilPublicoService {
     private final ArmazenamentoDocumentoService armazenamentoDocumentoService;
     private final BloqueioUsuarioRepository bloqueioUsuarioRepository;
     private final ValidacaoService validacaoService;
+    private final AvaliacaoService avaliacaoService;
 
     @Transactional(readOnly = true)
     public PerfilPublicoProfissionalResponse buscarProfissional(Long usuarioId, Long profissionalId) {
@@ -59,6 +61,7 @@ public class PerfilPublicoService {
                 profissional.getCriadoEm(),
                 atendimentoRepository.countByPropostaProfissionalIdAndStatusIn(
                         profissional.getId(), StatusAtendimento.REALIZADOS),
+                avaliacaoService.resumoDoProfissional(profissional.getId()),
                 atendimentoIniciado(usuarioId, profissional)
                         ? ContatoEmergenciaResponse.de(profissional.getContatosEmergencia())
                         : null
@@ -104,6 +107,7 @@ public class PerfilPublicoService {
                 paciente.getCidade(),
                 paciente.getUf(),
                 paciente.getCriadoEm(),
+                avaliacaoService.resumoDoPaciente(paciente.getId()),
                 atendimentoNaFase(profissional, pacienteId, StatusSolicitacao.EM_CURSO)
                         ? new PerfilPublicoPacienteResponse.Saude(
                                 paciente.getAlergias(), paciente.getCondicoesSaude(), paciente.getMedicamentosEmUso())

@@ -3,6 +3,7 @@ package com.quickcare.backend.atendimento;
 import com.quickcare.backend.atendimento.dto.AtendimentoResponse;
 import com.quickcare.backend.atendimento.dto.RemarcacaoRequest;
 import com.quickcare.backend.atendimento.exception.AtendimentoNaoEncontradoException;
+import com.quickcare.backend.avaliacao.RegrasAvaliacao;
 import com.quickcare.backend.notificacao.Notificador;
 import com.quickcare.backend.ocorrencia.MotivoOcorrencia;
 import com.quickcare.backend.ocorrencia.OcorrenciaService;
@@ -416,7 +417,7 @@ public class AtendimentoService {
         if (atendimento.getStatus() == StatusAtendimento.EM_ANDAMENTO && !agora.isBefore(atendimento.getTermino())) {
             atendimento.finalizar();
             registrar(atendimento, TipoEventoAtendimento.FINALIZADO, LadoAtendimento.SISTEMA, null);
-            notificador.atendimentoFinalizado(atendimento);
+            notificador.atendimentoFinalizado(atendimento, RegrasAvaliacao.prazo(atendimento));
         }
 
         if (atendimento.getStatus() == StatusAtendimento.FINALIZADO

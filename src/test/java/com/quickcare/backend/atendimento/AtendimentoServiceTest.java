@@ -423,7 +423,7 @@ class AtendimentoServiceTest {
         relogio.avancar(Duration.ofHours(8));
         service.processarVencidos();
         assertThat(atendimento.getStatus()).isEqualTo(StatusAtendimento.FINALIZADO);
-        verify(notificador).atendimentoFinalizado(atendimento);
+        verify(notificador).atendimentoFinalizado(atendimento, atendimento.getTermino().plus(Duration.ofDays(30)));
         assertThat(solicitacao.getStatus()).isEqualTo(StatusSolicitacao.CONCLUIDA);
 
         relogio.avancar(Duration.ofHours(72));

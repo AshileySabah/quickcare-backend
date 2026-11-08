@@ -1,5 +1,6 @@
 package com.quickcare.backend.perfil.dto;
 
+import com.quickcare.backend.avaliacao.dto.ResumoAvaliacoesResponse;
 import com.quickcare.backend.profissional.ModalidadeAtendimento;
 import com.quickcare.backend.usuario.Genero;
 
@@ -25,6 +26,7 @@ public record PerfilProfissionalResponse(
         String bairro,
         String cidade,
         String uf,
-        DeclaracoesResponse declaracoes
+        DeclaracoesResponse declaracoes,
+        ResumoAvaliacoesResponse avaliacoes
 ) {
 }
