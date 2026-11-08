@@ -37,7 +37,8 @@ public class AcaoAdmin {
         BLOQUEIO_USUARIO,
         MOTIVO_BLOQUEIO,
         USUARIO,
-        DENUNCIA
+        DENUNCIA,
+        BANIMENTO
     }
 
     @Id

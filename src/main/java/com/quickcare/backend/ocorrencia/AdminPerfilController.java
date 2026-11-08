@@ -1,6 +1,7 @@
 package com.quickcare.backend.ocorrencia;
 
 import com.quickcare.backend.administrador.dto.JustificativaRequest;
+import com.quickcare.backend.banimento.dto.BanimentoRequest;
 import com.quickcare.backend.ocorrencia.dto.DecisaoMotivoBloqueioRequest;
 import com.quickcare.backend.ocorrencia.dto.DecisaoRecursoRequest;
 import com.quickcare.backend.ocorrencia.dto.PerfilAdminDetalheResponse;
@@ -92,7 +93,7 @@ public class AdminPerfilController {
             @Valid @RequestBody DecisaoRecursoRequest request
     ) {
         return adminPerfilService.decidirRecurso(usuarioId, id, request.anular(), request.justificativa(),
-                request.consequenciaSeNegado());
+                request.consequenciaSeNegado(), request.tipoBanimento(), request.diasSuspensao());
     }
 
     @PatchMapping("/motivos-de-bloqueio/{id}/decisao")
@@ -102,6 +103,34 @@ public class AdminPerfilController {
             @Valid @RequestBody DecisaoMotivoBloqueioRequest request
     ) {
         return adminPerfilService.decidirMotivoDeBloqueio(usuarioId, id, request.aceitar(), request.justificativa());
+    }
+
+    @PostMapping("/perfis/{perfil}/{id}/banimentos")
+    public PerfilAdminDetalheResponse banir(
+            @AuthenticationPrincipal Long usuarioId,
+            @PathVariable TipoPerfil perfil,
+            @PathVariable Long id,
+            @Valid @RequestBody BanimentoRequest request
+    ) {
+        return adminPerfilService.banir(usuarioId, perfil, id, request);
+    }
+
+    @PatchMapping("/banimentos/{id}/remover")
+    public PerfilAdminDetalheResponse removerBanimento(
+            @AuthenticationPrincipal Long usuarioId,
+            @PathVariable Long id,
+            @Valid @RequestBody JustificativaRequest request
+    ) {
+        return adminPerfilService.removerBanimento(usuarioId, id, request.justificativa());
+    }
+
+    @PatchMapping("/banimentos/{id}/recurso/decisao")
+    public PerfilAdminDetalheResponse decidirRecursoDeBanimento(
+            @AuthenticationPrincipal Long usuarioId,
+            @PathVariable Long id,
+            @Valid @RequestBody DecisaoMotivoBloqueioRequest request
+    ) {
+        return adminPerfilService.decidirRecursoDeBanimento(usuarioId, id, request.aceitar(), request.justificativa());
     }
 
     @GetMapping("/recursos/em-aberto")

@@ -8,7 +8,6 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -42,11 +41,6 @@ public class AdminDenunciaController {
     @GetMapping("/{id}")
     public DenunciaDetalheResponse detalhar(@AuthenticationPrincipal Long usuarioId, @PathVariable Long id) {
         return denunciaService.detalhar(usuarioId, id);
-    }
-
-    @PatchMapping("/{id}/analise")
-    public DenunciaDetalheResponse iniciarAnalise(@AuthenticationPrincipal Long usuarioId, @PathVariable Long id) {
-        return denunciaService.iniciarAnalise(usuarioId, id);
     }
 
     @PostMapping("/{id}/decisao")

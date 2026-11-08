@@ -6,6 +6,11 @@ import com.quickcare.backend.administrador.AcessoAdmin;
 import com.quickcare.backend.administrador.TipoAcaoAdmin;
 import com.quickcare.backend.administrador.dto.AcaoAdminResponse;
 import com.quickcare.backend.common.RecursoNaoEncontradoException;
+import com.quickcare.backend.banimento.Banimento;
+import com.quickcare.backend.banimento.BanimentoService;
+import com.quickcare.backend.banimento.TipoBanimento;
+import com.quickcare.backend.banimento.dto.BanimentoRequest;
+import com.quickcare.backend.banimento.dto.BanimentoResponse;
 import com.quickcare.backend.denuncia.ConsequenciaDenuncia;
 import com.quickcare.backend.solicitacao.exception.TransicaoStatusInvalidaException;
 import com.quickcare.backend.ocorrencia.dto.BloqueioResponse;
@@ -54,6 +59,7 @@ public class AdminPerfilService {
     private final AcaoAdminRepository acaoAdminRepository;
     private final AcessoAdmin acessoAdmin;
     private final Clock clock;
+    private final BanimentoService banimentoService;
 
     @Transactional(readOnly = true)
     public List<PerfilAdminResumoResponse> listar(Long adminUsuarioId, TipoPerfil perfil, String busca, Situacao situacao) {
@@ -123,21 +129,27 @@ public class AdminPerfilService {
 
     @Transactional
     public PerfilAdminDetalheResponse decidirRecurso(Long adminUsuarioId, Long recursoId, boolean anular, String justificativa) {
-        return decidirRecurso(adminUsuarioId, recursoId, anular, justificativa, null);
+        return decidirRecurso(adminUsuarioId, recursoId, anular, justificativa, null, null, null);
     }
 
     @Transactional
     public PerfilAdminDetalheResponse decidirRecurso(Long adminUsuarioId, Long recursoId, boolean anular, String justificativa,
-                                                     ConsequenciaDenuncia consequenciaSeNegado) {
+                                                     ConsequenciaDenuncia consequenciaSeNegado, TipoBanimento tipoBanimento,
+                                                     Integer diasSuspensao) {
         Usuario admin = acessoAdmin.exigir(adminUsuarioId);
-        if (!anular && consequenciaSeNegado == ConsequenciaDenuncia.BANIMENTO) {
-            throw new TransicaoStatusInvalidaException(
-                    "O banimento ainda não está disponível. Por enquanto, mantenha a ocorrência.");
+        boolean banir = !anular && consequenciaSeNegado == ConsequenciaDenuncia.BANIMENTO;
+        if (banir && tipoBanimento == null) {
+            throw new TransicaoStatusInvalidaException("Escolha se o banimento é permanente ou uma suspensão.");
         }
         RecursoOcorrencia recurso = ocorrenciaService.decidirRecurso(admin, recursoId, anular, justificativa);
         Ocorrencia ocorrencia = recurso.getOcorrencia();
+        boolean daDenuncia = ocorrencia.getMotivo() == MotivoOcorrencia.DENUNCIA_PROCEDENTE;
+        if (banir && daDenuncia) {
+            banimentoService.banir(admin, ocorrencia.getUsuario(), ocorrencia.getPerfil(), tipoBanimento, diasSuspensao,
+                    justificativa, null);
+        }
         String detalhe = ocorrencia.getMotivo().name()
-                + (!anular && ocorrencia.getMotivo() == MotivoOcorrencia.DENUNCIA_PROCEDENTE ? "; mantida como ocorrência" : "");
+                + (!anular && daDenuncia ? (banir ? "; banimento aplicado" : "; mantida como ocorrência") : "");
         acessoAdmin.registrar(admin, anular ? TipoAcaoAdmin.RECURSO_ACEITO : TipoAcaoAdmin.RECURSO_NEGADO,
                 AcaoAdmin.Alvo.OCORRENCIA, ocorrencia.getId(), detalhe, justificativa);
         return detalhe(carregar(ocorrencia.getPerfil(), ocorrencia.getUsuario().getId()));
@@ -156,7 +168,40 @@ public class AdminPerfilService {
     @Transactional(readOnly = true)
     public long contarRecursosEmAnalise(Long adminUsuarioId) {
         acessoAdmin.exigir(adminUsuarioId);
-        return ocorrenciaService.recursosEmAnalise();
+        return ocorrenciaService.recursosEmAnalise() + banimentoService.recursosEmAnalise();
+    }
+
+    @Transactional
+    public PerfilAdminDetalheResponse banir(Long adminUsuarioId, TipoPerfil perfil, Long usuarioId, BanimentoRequest request) {
+        Usuario admin = acessoAdmin.exigir(adminUsuarioId);
+        Linha linha = carregar(perfil, usuarioId);
+        banimentoService.banir(admin, linha.usuario(), perfil, request.tipo(), request.dias(), request.justificativa(), null);
+        if (request.ambosPerfis()) {
+            TipoPerfil outro = perfil == TipoPerfil.PACIENTE ? TipoPerfil.PROFISSIONAL : TipoPerfil.PACIENTE;
+            boolean temOutro = outro == TipoPerfil.PACIENTE
+                    ? pacienteRepository.findByUsuarioId(usuarioId).isPresent()
+                    : profissionalRepository.findByUsuarioId(usuarioId).isPresent();
+            if (!temOutro) {
+                throw new TransicaoStatusInvalidaException("Esta pessoa não tem o outro perfil para banir.");
+            }
+            banimentoService.banir(admin, linha.usuario(), outro, request.tipo(), request.dias(), request.justificativa(), null);
+        }
+        return detalhe(carregar(perfil, usuarioId));
+    }
+
+    @Transactional
+    public PerfilAdminDetalheResponse removerBanimento(Long adminUsuarioId, Long banimentoId, String justificativa) {
+        Usuario admin = acessoAdmin.exigir(adminUsuarioId);
+        Banimento banimento = banimentoService.remover(admin, banimentoId, justificativa);
+        return detalhe(carregar(banimento.getPerfil(), banimento.getUsuario().getId()));
+    }
+
+    @Transactional
+    public PerfilAdminDetalheResponse decidirRecursoDeBanimento(Long adminUsuarioId, Long banimentoId, boolean aceitar,
+                                                               String justificativa) {
+        Usuario admin = acessoAdmin.exigir(adminUsuarioId);
+        Banimento banimento = banimentoService.decidirRecurso(admin, banimentoId, aceitar, justificativa);
+        return detalhe(carregar(banimento.getPerfil(), banimento.getUsuario().getId()));
     }
 
     private record Linha(Usuario usuario, TipoPerfil perfil, StatusValidacao statusValidacao, boolean banido) {
@@ -194,7 +239,8 @@ public class AdminPerfilService {
                 recursoRepository.countByStatusAndOcorrenciaUsuarioIdAndOcorrenciaPerfil(
                         RecursoOcorrencia.Status.EM_ANALISE, usuarioId, linha.perfil())
                         + motivoBloqueioRepository.countByStatusAndUsuarioIdAndPerfil(
-                        MotivoBloqueioTardio.Status.EM_ANALISE, usuarioId, linha.perfil()),
+                        MotivoBloqueioTardio.Status.EM_ANALISE, usuarioId, linha.perfil())
+                        + banimentoService.recursosEmAnalise(usuarioId, linha.perfil()),
                 ocorrenciaService.bloqueioAtivo(usuarioId, linha.perfil()).map(bloqueio -> BloqueioResponse.de(bloqueio, agora))
                         .orElse(null));
     }
@@ -221,6 +267,11 @@ public class AdminPerfilService {
             acoes.addAll(acaoAdminRepository.findByAlvoTipoAndAlvoIdIn(AcaoAdmin.Alvo.BLOQUEIO,
                     bloqueios.stream().map(Bloqueio::getId).toList()));
         }
+        List<Banimento> banimentos = banimentoService.historico(usuarioId, linha.perfil());
+        if (!banimentos.isEmpty()) {
+            acoes.addAll(acaoAdminRepository.findByAlvoTipoAndAlvoIdIn(AcaoAdmin.Alvo.BANIMENTO,
+                    banimentos.stream().map(Banimento::getId).toList()));
+        }
 
         return new PerfilAdminDetalheResponse(
                 resumo(linha),
@@ -229,6 +280,7 @@ public class AdminPerfilService {
                 ocorrencias.stream().map(ocorrencia -> OcorrenciaResponse.paraOAdmin(ocorrencia, corte)).toList(),
                 bloqueios.stream().map(bloqueio -> BloqueioResponse.de(bloqueio, agora)).toList(),
                 motivos.stream().map(MotivoBloqueioResponse::de).toList(),
+                banimentos.stream().map(banimento -> BanimentoResponse.paraOAdmin(banimento, agora)).toList(),
                 acoes.stream()
                         .sorted(Comparator.comparing(AcaoAdmin::getCriadoEm).reversed())
                         .map(AcaoAdminResponse::de)

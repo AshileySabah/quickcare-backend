@@ -83,8 +83,8 @@ public class AuthService {
                 .orElseThrow(TokenInvalidoException::new);
 
         boolean ativo = switch (perfil) {
-            case PACIENTE -> pacienteRepository.findByUsuarioId(usuarioId).filter(p -> !p.isBanido()).isPresent();
-            case PROFISSIONAL -> profissionalRepository.findByUsuarioId(usuarioId).filter(p -> !p.isBanido()).isPresent();
+            case PACIENTE -> pacienteRepository.findByUsuarioId(usuarioId).isPresent();
+            case PROFISSIONAL -> profissionalRepository.findByUsuarioId(usuarioId).isPresent();
         };
         if (!ativo) {
             throw new PerfilNaoAutorizadoException("Você não tem um perfil ativo de "

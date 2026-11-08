@@ -2,7 +2,10 @@ package com.quickcare.backend.perfil;
 
 import com.quickcare.backend.atendimento.AtendimentoRepository;
 import com.quickcare.backend.atendimento.StatusAtendimento;
+import com.quickcare.backend.atendimento.LadoAtendimento;
 import com.quickcare.backend.avaliacao.AvaliacaoService;
+import com.quickcare.backend.denuncia.DenunciaRepository;
+import com.quickcare.backend.denuncia.StatusDenuncia;
 import com.quickcare.backend.bloqueiousuario.BloqueioUsuarioRepository;
 import com.quickcare.backend.atuacao.dto.AtuacaoResumoResponse;
 import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
@@ -39,6 +42,7 @@ public class PerfilPublicoService {
     private final BloqueioUsuarioRepository bloqueioUsuarioRepository;
     private final ValidacaoService validacaoService;
     private final AvaliacaoService avaliacaoService;
+    private final DenunciaRepository denunciaRepository;
 
     @Transactional(readOnly = true)
     public PerfilPublicoProfissionalResponse buscarProfissional(Long usuarioId, Long profissionalId) {
@@ -63,10 +67,16 @@ public class PerfilPublicoService {
                         profissional.getId(), StatusAtendimento.REALIZADOS),
                 avaliacaoService.resumoDoProfissional(profissional.getId()),
                 pacienteId != null && teveAtendimento(profissional.getId(), pacienteId),
+                pacienteId != null && denunciaEmAndamento(pacienteId, profissional.getId(), LadoAtendimento.PACIENTE),
                 atendimentoIniciado(usuarioId, profissional)
                         ? ContatoEmergenciaResponse.de(profissional.getContatosEmergencia())
                         : null
         );
+    }
+
+    private boolean denunciaEmAndamento(Long pacienteId, Long profissionalId, LadoAtendimento denunciante) {
+        return denunciaRepository.existsByPacienteIdAndProfissionalIdAndDenuncianteAndStatusIn(
+                pacienteId, profissionalId, denunciante, StatusDenuncia.PENDENTES);
     }
 
     private boolean teveAtendimento(Long profissionalId, Long pacienteId) {
@@ -115,6 +125,7 @@ public class PerfilPublicoService {
                 paciente.getCriadoEm(),
                 avaliacaoService.resumoDoPaciente(paciente.getId()),
                 teveAtendimento(profissional.getId(), paciente.getId()),
+                denunciaEmAndamento(paciente.getId(), profissional.getId(), LadoAtendimento.PROFISSIONAL),
                 atendimentoNaFase(profissional, pacienteId, StatusSolicitacao.EM_CURSO)
                         ? new PerfilPublicoPacienteResponse.Saude(
                                 paciente.getAlergias(), paciente.getCondicoesSaude(), paciente.getMedicamentosEmUso())

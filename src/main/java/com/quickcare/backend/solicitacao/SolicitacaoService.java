@@ -90,7 +90,8 @@ public class SolicitacaoService {
     @Transactional(readOnly = true)
     public List<SolicitacaoResponse> listarDoPaciente(Long usuarioId) {
         atendimentoService.processarVencidos();
-        Paciente paciente = buscarPacienteAtivo(usuarioId);
+        Paciente paciente = pacienteRepository.findByUsuarioId(usuarioId)
+                .orElseThrow(() -> new PerfilNaoAutorizadoException("Apenas pacientes podem gerenciar solicitações."));
 
         return responder(solicitacaoRepository.findByPacienteIdOrderByCriadoEmDesc(paciente.getId()));
     }
@@ -99,8 +100,10 @@ public class SolicitacaoService {
     public List<SolicitacaoResponse> listarDisponiveis(Long usuarioId) {
         atendimentoService.processarVencidos();
         Profissional profissional = profissionalRepository.findByUsuarioId(usuarioId)
-                .filter(p -> !p.isBanido())
                 .orElseThrow(() -> new PerfilNaoAutorizadoException("Apenas profissionais podem ver solicitações disponíveis."));
+        if (profissional.isBanido()) {
+            return List.of();
+        }
 
         if (profissional.getStatusValidacao() != StatusValidacao.APROVADO) {
             throw new CadastroNaoValidadoException("Seu cadastro ainda não foi aprovado.");

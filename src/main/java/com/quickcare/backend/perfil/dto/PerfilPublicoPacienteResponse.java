@@ -16,6 +16,7 @@ public record PerfilPublicoPacienteResponse(
         Instant membroDesde,
         ResumoAvaliacoesResponse avaliacoes,
         boolean podeDenunciar,
+        boolean denunciaEmAndamento,
         @JsonInclude(JsonInclude.Include.NON_NULL) Saude saude,
         @JsonInclude(JsonInclude.Include.NON_NULL) List<ContatoEmergenciaResponse> contatosEmergencia
 ) {

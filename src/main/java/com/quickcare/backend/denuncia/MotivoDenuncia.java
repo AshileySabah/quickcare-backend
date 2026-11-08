@@ -7,7 +7,7 @@ public enum MotivoDenuncia {
     COMPORTAMENTO_INADEQUADO("Comportamento inadequado"),
     DESRESPEITO_OU_ASSEDIO("Desrespeito ou assédio"),
     NEGLIGENCIA("Negligência no atendimento"),
-    COBRANCA_INDEVIDA("Cobrança indevida ou fora da plataforma"),
+    COBRANCA_INDEVIDA("Cobrança indevida"),
     FRAUDE("Fraude ou golpe"),
     PERFIL_FALSO("Perfil ou documentos falsos"),
     OUTRO("Outro motivo");

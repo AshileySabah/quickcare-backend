@@ -2,6 +2,8 @@ package com.quickcare.backend.notificacao;
 
 import com.quickcare.backend.atendimento.Atendimento;
 import com.quickcare.backend.atendimento.LadoAtendimento;
+import com.quickcare.backend.banimento.Banimento;
+import com.quickcare.backend.banimento.TipoBanimento;
 import com.quickcare.backend.denuncia.ConsequenciaDenuncia;
 import com.quickcare.backend.denuncia.Denuncia;
 import com.quickcare.backend.denuncia.StatusDenuncia;
@@ -472,6 +474,64 @@ public class Notificador {
             MotivoOcorrencia.BLOQUEIO_TARDIO, "Você bloqueou alguém a menos de 48h de um atendimento aceito.",
             MotivoOcorrencia.DENUNCIA_PROCEDENTE, "Um administrador considerou procedente uma denúncia contra você.");
 
+    public void banimentoAplicado(Banimento banimento) {
+        String perfil = banimento.getPerfil() == TipoPerfil.PACIENTE ? "paciente" : "profissional";
+        String duracao = banimento.getTipo() == TipoBanimento.PERMANENTE
+                ? " de forma permanente"
+                : " até " + DIA.format(banimento.getFim().atZone(FUSO)) + " às " + HORA.format(banimento.getFim().atZone(FUSO));
+        notificacaoService.notificar(banimento.getUsuario(), banimento.getPerfil(), TipoNotificacao.BANIMENTO_APLICADO,
+                "Perfil banido",
+                limitar("Um administrador baniu o seu perfil de " + perfil + duracao + ": "
+                        + comPontoFinal(banimento.getJustificativa())
+                        + " Você ainda pode entrar e consultar o histórico, mas não pode criar nem alterar nada."
+                        + " Se discordar, pode recorrer uma vez."),
+                inicioDo(banimento.getPerfil()), true);
+    }
+
+    public void banimentoEncerrado(Banimento banimento) {
+        String perfil = banimento.getPerfil() == TipoPerfil.PACIENTE ? "paciente" : "profissional";
+        String mensagem = switch (banimento.getEncerramento()) {
+            case EXPIROU -> "A suspensão do seu perfil de " + perfil + " terminou. Você já pode usar a plataforma de novo.";
+            case REMOVIDO -> "Um administrador removeu o banimento do seu perfil de " + perfil + ": "
+                    + comPontoFinal(banimento.getJustificativaEncerramento());
+            case RECURSO_ACEITO -> "Um administrador aceitou o seu recurso e removeu o banimento do seu perfil de " + perfil + ": "
+                    + comPontoFinal(banimento.getJustificativaEncerramento());
+        };
+        notificacaoService.notificar(banimento.getUsuario(), banimento.getPerfil(), TipoNotificacao.BANIMENTO_ENCERRADO,
+                "Banimento encerrado", limitar(mensagem), inicioDo(banimento.getPerfil()), true);
+    }
+
+    public void recursoDeBanimentoDecidido(Banimento banimento) {
+        if (banimento.getRecursoStatus() == Banimento.StatusRecurso.ACEITO) {
+            banimentoEncerrado(banimento);
+            return;
+        }
+        notificacaoService.notificar(banimento.getUsuario(), banimento.getPerfil(), TipoNotificacao.RECURSO_BANIMENTO_DECIDIDO,
+                "Recurso de banimento negado",
+                limitar("Um administrador analisou o seu recurso e manteve o banimento: "
+                        + comPontoFinal(banimento.getRecursoJustificativa())),
+                inicioDo(banimento.getPerfil()), true);
+    }
+
+    public void encerradoPorBanimentoDoPaciente(Collection<Proposta> afetadas) {
+        afetadas.forEach(proposta -> paraProfissional(proposta, Destaque.SOLICITACAO, TipoNotificacao.SOLICITACAO_CANCELADA,
+                "Solicitação encerrada",
+                "A solicitação de " + servico(proposta) + " foi encerrada porque o paciente não está mais disponível"
+                        + " na plataforma. A sua proposta ou atendimento foi encerrado, sem penalidade para você.", true));
+    }
+
+    public void encerradoPorBanimentoDoProfissional(Proposta proposta, boolean estavaAceita) {
+        String mensagem = estavaAceita
+                ? "O atendimento de " + servico(proposta) + " com " + nomeDoProfissional(proposta)
+                        + " foi cancelado porque o profissional não está mais disponível na plataforma."
+                        + " A vaga voltou a receber propostas, sem penalidade para você."
+                : "A proposta de " + nomeDoProfissional(proposta) + " para " + servico(proposta)
+                        + " foi encerrada porque o profissional não está mais disponível na plataforma.";
+        paraPaciente(proposta, Destaque.SOLICITACAO,
+                estavaAceita ? TipoNotificacao.ATENDIMENTO_CANCELADO : TipoNotificacao.PROPOSTA_CANCELADA,
+                estavaAceita ? "Atendimento cancelado" : "Proposta encerrada", mensagem, estavaAceita);
+    }
+
     public void denunciaRecebida(Denuncia denuncia) {
         notificacaoService.notificar(denuncia.usuarioDenunciante(), denuncia.perfilDenunciante(),
                 TipoNotificacao.DENUNCIA_RECEBIDA, "Recebemos a sua denúncia",
@@ -493,7 +553,7 @@ public class Notificador {
     public void denunciaProcedente(Denuncia denuncia) {
         String efeito = denuncia.getConsequencia() == ConsequenciaDenuncia.OCORRENCIA
                 ? " Isso gerou uma ocorrência no seu perfil. Se discordar, você pode recorrer uma vez pelo quadro de ocorrências."
-                : "";
+                : " Por isso, o seu perfil foi banido.";
         notificacaoService.notificar(denuncia.usuarioDenunciado(), denuncia.perfilDenunciado(),
                 TipoNotificacao.DENUNCIA_PROCEDENTE, "Denúncia procedente",
                 limitar("Um administrador analisou uma denúncia sobre o seu perfil e a considerou procedente: "
