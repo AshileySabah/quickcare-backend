@@ -44,4 +44,7 @@ public interface SolicitacaoRepository extends JpaRepository<Solicitacao, Long> 
     @EntityGraph(attributePaths = {"paciente", "paciente.usuario"})
     List<Solicitacao> findAllByOrderByCriadoEmDesc();
 
+    @EntityGraph(attributePaths = {"paciente", "profissionais", "profissionais.especialidades"})
+    List<Solicitacao> findDistinctByStatusInOrderByCriadoEmDesc(Collection<StatusSolicitacao> status);
+
 }

@@ -19,6 +19,9 @@ public interface BloqueioUsuarioRepository extends JpaRepository<BloqueioUsuario
     @Query("select distinct b.paciente.id from BloqueioUsuario b where b.profissional.id = :profissionalId")
     Set<Long> findPacienteIdsBloqueadosCom(@Param("profissionalId") Long profissionalId);
 
+    @Query("select distinct b.profissional.id from BloqueioUsuario b where b.paciente.id = :pacienteId")
+    Set<Long> findProfissionalIdsBloqueadosCom(@Param("pacienteId") Long pacienteId);
+
     @EntityGraph(attributePaths = {"paciente", "paciente.usuario", "profissional", "profissional.usuario", "criadoPor"})
     List<BloqueioUsuario> findAllByOrderByCriadoEmDesc();
 
