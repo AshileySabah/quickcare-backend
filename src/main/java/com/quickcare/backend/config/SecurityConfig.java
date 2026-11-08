@@ -41,7 +41,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/solicitacoes/**", "/propostas/**", "/perfil/**", "/perfis/**",
                                 "/profissionais/**", "/pacientes/**", "/auth/me", "/auth/perfil-ativo",
-                                "/admin/**", "/validacao/**", "/notificacoes/**", "/atendimentos/**", "/ocorrencias/**", "/bloqueios/**", "/ws/**").authenticated()
+                                "/admin/**", "/validacao/**", "/notificacoes/**", "/atendimentos/**", "/ocorrencias/**", "/bloqueios/**", "/ws/**","/conversas/**", "/mensagens/**").authenticated()
                         .anyRequest().permitAll());
 
         return http.build();

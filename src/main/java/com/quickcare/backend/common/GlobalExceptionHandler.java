@@ -28,6 +28,10 @@ import com.quickcare.backend.validacao.exception.CadastroNaoValidadoException;
 import com.quickcare.backend.validacao.exception.EtapaNaoEncontradaException;
 import com.quickcare.backend.validacao.exception.TransicaoEtapaInvalidaException;
 import com.quickcare.backend.validacao.exception.ValidacaoInvalidaException;
+import com.quickcare.backend.chat.exception.ConversaAcessoNegadoException;
+import com.quickcare.backend.chat.exception.ExclusaoMensagemNaoAutorizadaException;
+import com.quickcare.backend.chat.exception.MensagemNaoEncontradaException;
+import com.quickcare.backend.chat.exception.MensagemVaziaException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -202,5 +206,20 @@ public class GlobalExceptionHandler {
     private ResponseEntity<ApiError> build(HttpStatus status, String mensagem) {
         return ResponseEntity.status(status).body(new ApiError(Instant.now(), status.value(), mensagem));
     }
+
+    @ExceptionHandler(MensagemVaziaException.class)
+    public ResponseEntity<ApiError> handleMensagemVazia(MensagemVaziaException ex) {
+    return build(HttpStatus.BAD_REQUEST, ex.getMessage());
+}
+
+    @ExceptionHandler({ConversaAcessoNegadoException.class, ExclusaoMensagemNaoAutorizadaException.class})
+    public ResponseEntity<ApiError> handleChatProibido(RuntimeException ex) {
+    return build(HttpStatus.FORBIDDEN, ex.getMessage());
+}
+
+    @ExceptionHandler(MensagemNaoEncontradaException.class)
+    public ResponseEntity<ApiError> handleMensagemNaoEncontrada(MensagemNaoEncontradaException ex) {
+    return build(HttpStatus.NOT_FOUND, ex.getMessage());
+}
 
 }
