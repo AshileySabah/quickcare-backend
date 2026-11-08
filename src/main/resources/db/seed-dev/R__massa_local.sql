@@ -1258,3 +1258,59 @@ FROM proposta p
 JOIN solicitacao s ON s.id = p.solicitacao_id
 WHERE s.descricao LIKE 'Teste avaliação:%' AND p.status = 'ACEITA'
   AND NOT EXISTS (SELECT 1 FROM atendimento a WHERE a.proposta_id = p.id);
+SELECT pg_temp.seed_solicitacao(s.email, s.descricao, 'PRESENCIAL', 'ENFERMEIRO', 'Acompanhamento 24h', 'CONCLUIDA', s.prazo, s.dias_atras)
+FROM (VALUES ('helena@quickcare.dev', 'Teste média: plantão de 24h no fim de semana do aniversário da minha avó.', -3, 12),
+             ('helena@quickcare.dev', 'Teste média: plantão de 24h na recuperação da cirurgia no quadril.', -5, 14),
+             ('maria@quickcare.dev', 'Teste média: plantão de 24h para a minha mãe durante a viagem da família.', -4, 13))
+     AS s (email, descricao, prazo, dias_atras);
+
+SELECT pg_temp.seed_proposta_da_atuacao(p.descricao, 'camila@quickcare.dev', 'ENFERMEIRO', p.valor, p.abordagem, 'ACEITA', p.dias_atras)
+FROM (VALUES ('Teste média: plantão de 24h no fim de semana do aniversário da minha avó.', 580.00,
+              'Plantão de 24h com medicação, alimentação e companhia durante a festa.', 11),
+             ('Teste média: plantão de 24h na recuperação da cirurgia no quadril.', 600.00,
+              'Plantão de 24h com mudança de decúbito, curativo e controle da dor.', 13),
+             ('Teste média: plantão de 24h para a minha mãe durante a viagem da família.', 590.00,
+              'Plantão de 24h com rotina de medicação e relatório diário para a família.', 12))
+     AS p (descricao, valor, abordagem, dias_atras);
+
+INSERT INTO atendimento (proposta_id, solicitacao_id, status, inicio, termino, aceito_em, criado_em,
+                         lembrete_24h_em, lembrete_30min_em, lembrete_inicio_em)
+SELECT p.id, p.solicitacao_id,
+       CASE WHEN now() < p.termino + INTERVAL '72 hours' THEN 'FINALIZADO' ELSE 'CONCLUIDO' END,
+       p.inicio, p.termino, p.inicio - INTERVAL '5 days', p.inicio - INTERVAL '5 days',
+       p.inicio, p.inicio, p.inicio
+FROM proposta p
+JOIN solicitacao s ON s.id = p.solicitacao_id
+WHERE s.descricao LIKE 'Teste média:%' AND p.status = 'ACEITA'
+  AND NOT EXISTS (SELECT 1 FROM atendimento a WHERE a.proposta_id = p.id);
+
+SELECT pg_temp.seed_avaliacao(d, 'camila@quickcare.dev', 'PROFISSIONAL', 5, ARRAY['COLABORACAO'], 1)
+FROM (VALUES ('Teste média: plantão de 24h no fim de semana do aniversário da minha avó.'),
+             ('Teste média: plantão de 24h na recuperação da cirurgia no quadril.'),
+             ('Teste média: plantão de 24h para a minha mãe durante a viagem da família.')) AS a (d);
+SELECT pg_temp.seed_solicitacao('helena@quickcare.dev', s.descricao, 'PRESENCIAL', 'ENFERMEIRO', 'Acompanhamento 12h', 'CONCLUIDA', s.prazo, s.dias_atras)
+FROM (VALUES ('Teste média Bruno: plantão de 12h na volta para casa depois da internação.', -3, 11),
+             ('Teste média Bruno: plantão de 12h na noite seguinte à troca da sonda.', -6, 15))
+     AS s (descricao, prazo, dias_atras);
+
+SELECT pg_temp.seed_proposta_da_atuacao(p.descricao, 'bruno@quickcare.dev', 'ENFERMEIRO', p.valor, p.abordagem, 'ACEITA', p.dias_atras)
+FROM (VALUES ('Teste média Bruno: plantão de 12h na volta para casa depois da internação.', 305.00,
+              'Plantão de 12h com medicação, controle dos sinais vitais e orientação para a família.', 10),
+             ('Teste média Bruno: plantão de 12h na noite seguinte à troca da sonda.', 295.00,
+              'Plantão noturno com cuidados com a sonda, higiene e registro da diurese.', 14))
+     AS p (descricao, valor, abordagem, dias_atras);
+
+INSERT INTO atendimento (proposta_id, solicitacao_id, status, inicio, termino, aceito_em, criado_em,
+                         lembrete_24h_em, lembrete_30min_em, lembrete_inicio_em)
+SELECT p.id, p.solicitacao_id,
+       CASE WHEN now() < p.termino + INTERVAL '72 hours' THEN 'FINALIZADO' ELSE 'CONCLUIDO' END,
+       p.inicio, p.termino, p.inicio - INTERVAL '5 days', p.inicio - INTERVAL '5 days',
+       p.inicio, p.inicio, p.inicio
+FROM proposta p
+JOIN solicitacao s ON s.id = p.solicitacao_id
+WHERE s.descricao LIKE 'Teste média Bruno:%' AND p.status = 'ACEITA'
+  AND NOT EXISTS (SELECT 1 FROM atendimento a WHERE a.proposta_id = p.id);
+
+SELECT pg_temp.seed_avaliacao(d, 'bruno@quickcare.dev', 'PROFISSIONAL', 5, ARRAY['COLABORACAO'], 1)
+FROM (VALUES ('Teste média Bruno: plantão de 12h na volta para casa depois da internação.'),
+             ('Teste média Bruno: plantão de 12h na noite seguinte à troca da sonda.')) AS a (d);
