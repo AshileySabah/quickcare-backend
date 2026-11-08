@@ -62,10 +62,16 @@ public class PerfilPublicoService {
                 atendimentoRepository.countByPropostaProfissionalIdAndStatusIn(
                         profissional.getId(), StatusAtendimento.REALIZADOS),
                 avaliacaoService.resumoDoProfissional(profissional.getId()),
+                pacienteId != null && teveAtendimento(profissional.getId(), pacienteId),
                 atendimentoIniciado(usuarioId, profissional)
                         ? ContatoEmergenciaResponse.de(profissional.getContatosEmergencia())
                         : null
         );
+    }
+
+    private boolean teveAtendimento(Long profissionalId, Long pacienteId) {
+        return atendimentoRepository.existsByPropostaProfissionalIdAndSolicitacaoPacienteIdAndStatusIn(
+                profissionalId, pacienteId, Set.of(StatusAtendimento.values()));
     }
 
     private boolean atendimentoIniciado(Long usuarioId, Profissional profissional) {
@@ -108,6 +114,7 @@ public class PerfilPublicoService {
                 paciente.getUf(),
                 paciente.getCriadoEm(),
                 avaliacaoService.resumoDoPaciente(paciente.getId()),
+                teveAtendimento(profissional.getId(), paciente.getId()),
                 atendimentoNaFase(profissional, pacienteId, StatusSolicitacao.EM_CURSO)
                         ? new PerfilPublicoPacienteResponse.Saude(
                                 paciente.getAlergias(), paciente.getCondicoesSaude(), paciente.getMedicamentosEmUso())

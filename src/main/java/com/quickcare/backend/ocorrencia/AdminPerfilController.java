@@ -91,7 +91,8 @@ public class AdminPerfilController {
             @PathVariable Long id,
             @Valid @RequestBody DecisaoRecursoRequest request
     ) {
-        return adminPerfilService.decidirRecurso(usuarioId, id, request.anular(), request.justificativa());
+        return adminPerfilService.decidirRecurso(usuarioId, id, request.anular(), request.justificativa(),
+                request.consequenciaSeNegado());
     }
 
     @PatchMapping("/motivos-de-bloqueio/{id}/decisao")

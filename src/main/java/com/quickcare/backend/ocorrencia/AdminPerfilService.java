@@ -6,6 +6,8 @@ import com.quickcare.backend.administrador.AcessoAdmin;
 import com.quickcare.backend.administrador.TipoAcaoAdmin;
 import com.quickcare.backend.administrador.dto.AcaoAdminResponse;
 import com.quickcare.backend.common.RecursoNaoEncontradoException;
+import com.quickcare.backend.denuncia.ConsequenciaDenuncia;
+import com.quickcare.backend.solicitacao.exception.TransicaoStatusInvalidaException;
 import com.quickcare.backend.ocorrencia.dto.BloqueioResponse;
 import com.quickcare.backend.ocorrencia.dto.MotivoBloqueioResponse;
 import com.quickcare.backend.ocorrencia.dto.OcorrenciaResponse;
@@ -121,11 +123,23 @@ public class AdminPerfilService {
 
     @Transactional
     public PerfilAdminDetalheResponse decidirRecurso(Long adminUsuarioId, Long recursoId, boolean anular, String justificativa) {
+        return decidirRecurso(adminUsuarioId, recursoId, anular, justificativa, null);
+    }
+
+    @Transactional
+    public PerfilAdminDetalheResponse decidirRecurso(Long adminUsuarioId, Long recursoId, boolean anular, String justificativa,
+                                                     ConsequenciaDenuncia consequenciaSeNegado) {
         Usuario admin = acessoAdmin.exigir(adminUsuarioId);
+        if (!anular && consequenciaSeNegado == ConsequenciaDenuncia.BANIMENTO) {
+            throw new TransicaoStatusInvalidaException(
+                    "O banimento ainda não está disponível. Por enquanto, mantenha a ocorrência.");
+        }
         RecursoOcorrencia recurso = ocorrenciaService.decidirRecurso(admin, recursoId, anular, justificativa);
         Ocorrencia ocorrencia = recurso.getOcorrencia();
+        String detalhe = ocorrencia.getMotivo().name()
+                + (!anular && ocorrencia.getMotivo() == MotivoOcorrencia.DENUNCIA_PROCEDENTE ? "; mantida como ocorrência" : "");
         acessoAdmin.registrar(admin, anular ? TipoAcaoAdmin.RECURSO_ACEITO : TipoAcaoAdmin.RECURSO_NEGADO,
-                AcaoAdmin.Alvo.OCORRENCIA, ocorrencia.getId(), ocorrencia.getMotivo().name(), justificativa);
+                AcaoAdmin.Alvo.OCORRENCIA, ocorrencia.getId(), detalhe, justificativa);
         return detalhe(carregar(ocorrencia.getPerfil(), ocorrencia.getUsuario().getId()));
     }
 

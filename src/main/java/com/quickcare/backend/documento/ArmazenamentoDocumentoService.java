@@ -47,6 +47,11 @@ public class ArmazenamentoDocumentoService {
         return enviarParaPasta("anexos-problema", arquivo);
     }
 
+    public String enviarAnexoDenuncia(MultipartFile arquivo) {
+        validar(arquivo, TIPOS_ACEITOS, "Envie um arquivo PDF, JPG ou PNG.");
+        return enviarParaPasta("anexos-denuncia", arquivo);
+    }
+
     public void validarAnexo(MultipartFile arquivo) {
         validar(arquivo, TIPOS_ACEITOS, "Envie um arquivo PDF, JPG ou PNG.");
     }

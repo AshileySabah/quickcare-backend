@@ -36,7 +36,8 @@ public class AcaoAdmin {
         PROPOSTA,
         BLOQUEIO_USUARIO,
         MOTIVO_BLOQUEIO,
-        USUARIO
+        USUARIO,
+        DENUNCIA
     }
 
     @Id
