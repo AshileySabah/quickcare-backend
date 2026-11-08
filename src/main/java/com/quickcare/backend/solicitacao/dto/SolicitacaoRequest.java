@@ -12,10 +12,14 @@ import java.time.LocalDate;
 import java.util.List;
 
 public record SolicitacaoRequest(
-        @NotEmpty @Size(max = 10) List<@NotNull @Valid ProfissionalSolicitadoRequest> profissionais,
-        @NotBlank @Size(min = 20, max = 1000) String descricao,
-        @NotNull ModalidadeSolicitacao modalidade,
+        @NotEmpty(message = "Inclua pelo menos um profissional na solicitação.")
+        @Size(max = 10, message = "A solicitação pode pedir no máximo 10 tipos de profissional.")
+        List<@NotNull(message = "Inclua pelo menos um profissional na solicitação.") @Valid ProfissionalSolicitadoRequest> profissionais,
+        @NotBlank(message = "Descreva o que você precisa.")
+        @Size(min = 20, max = 1000, message = "A descrição deve ter entre 20 e 1000 caracteres.") String descricao,
+        @NotNull(message = "Escolha se o atendimento é presencial ou online.") ModalidadeSolicitacao modalidade,
         @Valid EnderecoSolicitacaoRequest endereco,
-        @NotNull @FutureOrPresent LocalDate prazoDesejado
+        @NotNull(message = "Informe o prazo desejado.")
+        @FutureOrPresent(message = "O prazo desejado não pode ser uma data que já passou.") LocalDate prazoDesejado
 ) {
 }

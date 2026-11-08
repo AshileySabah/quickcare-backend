@@ -4,6 +4,6 @@ import com.quickcare.backend.usuario.TipoPerfil;
 import jakarta.validation.constraints.NotNull;
 
 public record PerfilAtivoRequest(
-        @NotNull TipoPerfil perfil
+        @NotNull(message = "Escolha o perfil.") TipoPerfil perfil
 ) {
 }

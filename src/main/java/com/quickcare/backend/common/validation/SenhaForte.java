@@ -12,7 +12,7 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 @Constraint(validatedBy = SenhaForteValidator.class)
 public @interface SenhaForte {
-    String message() default "Senha deve ter no mínimo 8 caracteres, com maiúscula, minúscula e caractere especial";
+    String message() default "A senha precisa ter pelo menos 8 caracteres, com letra maiúscula, letra minúscula e caractere especial.";
     Class<?>[] groups() default {};
     Class<? extends Payload>[] payload() default {};
 }

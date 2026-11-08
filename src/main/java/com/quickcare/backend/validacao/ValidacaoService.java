@@ -26,6 +26,7 @@ import com.quickcare.backend.validacao.dto.DecisaoEtapaRequest;
 import com.quickcare.backend.validacao.dto.ReenvioEtapaRequest;
 import com.quickcare.backend.validacao.dto.ValidacaoDetalheResponse;
 import com.quickcare.backend.validacao.dto.ValidacaoResumoResponse;
+import com.quickcare.backend.common.validation.Maioridade;
 import com.quickcare.backend.validacao.exception.CadastroNaoEncontradoException;
 import com.quickcare.backend.validacao.exception.CadastroNaoValidadoException;
 import com.quickcare.backend.validacao.exception.EtapaNaoEncontradaException;
@@ -357,6 +358,11 @@ public class ValidacaoService {
                 || !Objects.equals(identidade.numero(), usuario.getDocumentoIdentidadeNumero())
                 || !Objects.equals(identidade.uf(), usuario.getDocumentoIdentidadeUf());
 
+        if (request.dataNascimento() != null && !Maioridade.atingida(request.dataNascimento(), LocalDate.now())) {
+            throw new ValidacaoInvalidaException(cadastro.profissional() != null
+                    ? "O profissional deve ter pelo menos 18 anos."
+                    : "O paciente deve ter pelo menos 18 anos.");
+        }
         LocalDate dataNascimento = request.dataNascimento() == null ? cadastro.dataNascimento() : request.dataNascimento();
         Genero genero = request.genero() == null ? cadastro.genero() : request.genero();
 

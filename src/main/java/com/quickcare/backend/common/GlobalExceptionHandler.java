@@ -29,18 +29,32 @@ import com.quickcare.backend.validacao.exception.EtapaNaoEncontradaException;
 import com.quickcare.backend.atuacao.AtuacaoNaoEncontradaException;
 import com.quickcare.backend.validacao.exception.TransicaoEtapaInvalidaException;
 import com.quickcare.backend.validacao.exception.ValidacaoInvalidaException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.MessageSourceResolvable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 
 import java.time.Instant;
+import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(EmailJaCadastradoException.class)
     public ResponseEntity<ApiError> handleEmailJaCadastrado(EmailJaCadastradoException ex) {
@@ -199,10 +213,52 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiError> handleValidacao(MethodArgumentNotValidException ex) {
-        String mensagem = ex.getBindingResult().getFieldErrors().stream()
-                .map(erro -> erro.getField() + ": " + erro.getDefaultMessage())
-                .collect(Collectors.joining("; "));
-        return build(HttpStatus.BAD_REQUEST, mensagem);
+        return build(HttpStatus.BAD_REQUEST, mensagens(ex.getBindingResult().getAllErrors()));
+    }
+
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public ResponseEntity<ApiError> handleValidacaoDeParametros(HandlerMethodValidationException ex) {
+        return build(HttpStatus.BAD_REQUEST, mensagens(ex.getAllErrors()));
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiError> handleFormatoInvalido() {
+        return build(HttpStatus.BAD_REQUEST, "Alguns dados estão em formato inválido. Confira o formulário e tente de novo.");
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiError> handleArquivoGrande() {
+        return build(HttpStatus.PAYLOAD_TOO_LARGE, "O arquivo é maior que o tamanho permitido. Envie um arquivo menor.");
+    }
+
+    @ExceptionHandler({
+            MissingServletRequestPartException.class,
+            MissingServletRequestParameterException.class,
+            MethodArgumentTypeMismatchException.class
+    })
+    public ResponseEntity<ApiError> handleRequisicaoIncompleta() {
+        return build(HttpStatus.BAD_REQUEST, "Não foi possível ler os dados enviados. Recarregue a página e tente de novo.");
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ApiError> handleInesperado(Exception ex) {
+        if (ex instanceof ErrorResponse resposta && !resposta.getStatusCode().is5xxServerError()) {
+            HttpStatus status = HttpStatus.valueOf(resposta.getStatusCode().value());
+            String mensagem = status == HttpStatus.NOT_FOUND
+                    ? "Não encontramos o que você procurou."
+                    : "Não foi possível concluir a ação. Recarregue a página e tente de novo.";
+            return build(status, mensagem);
+        }
+        log.error("Erro inesperado", ex);
+        return build(HttpStatus.INTERNAL_SERVER_ERROR, "Algo deu errado do nosso lado. Tente de novo em instantes.");
+    }
+
+    private static String mensagens(List<? extends MessageSourceResolvable> erros) {
+        return erros.stream()
+                .map(MessageSourceResolvable::getDefaultMessage)
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.joining(" "));
     }
 
     private ResponseEntity<ApiError> build(HttpStatus status, String mensagem) {

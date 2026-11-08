@@ -5,6 +5,6 @@ import jakarta.validation.constraints.NotEmpty;
 import java.util.List;
 
 public record AlterarEspecialidadesRequest(
-        @NotEmpty List<Long> especialidadeIds
+        @NotEmpty(message = "Escolha pelo menos uma especialidade.") List<Long> especialidadeIds
 ) {
 }

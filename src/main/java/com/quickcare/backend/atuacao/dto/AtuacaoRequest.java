@@ -9,9 +9,9 @@ import jakarta.validation.constraints.Size;
 import java.util.List;
 
 public record AtuacaoRequest(
-        @NotNull CategoriaProfissional categoria,
-        @NotEmpty List<Long> especialidadeIds,
-        @Size(max = 50) String registroProfissional,
-        @Pattern(regexp = "(?i)^[a-z]{2}$") String registroProfissionalUf
+        @NotNull(message = "Escolha a categoria da atuação.") CategoriaProfissional categoria,
+        @NotEmpty(message = "Escolha pelo menos uma especialidade.") List<Long> especialidadeIds,
+        @Size(max = 50, message = "O número do registro deve ter no máximo 50 caracteres.") String registroProfissional,
+        @Pattern(regexp = "(?i)^[a-z]{2}$", message = "Escolha a UF do registro profissional.") String registroProfissionalUf
 ) {
 }

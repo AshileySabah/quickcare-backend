@@ -339,6 +339,22 @@ class ValidacaoServiceTest {
     }
 
     @Test
+    void reenvioComProfissionalMenorDeIdadeERecusado() {
+        profissional.setStatusValidacao(StatusValidacao.APROVADO);
+        profissional.setDataNascimento(LocalDate.of(1990, 1, 1));
+        comEtapasDoUsuario(aprovada(TipoEtapaValidacao.IDENTIDADE));
+        LocalDate dezessete = LocalDate.now().minusYears(18).plusDays(1);
+
+        assertThatThrownBy(() -> service.reenviar(USUARIO_ID, PerfilValidado.PROFISSIONAL, TipoEtapaValidacao.IDENTIDADE,
+                null, new ReenvioEtapaRequest(null, "52998224725", TipoDocumentoIdentidade.CNH, "02650306461", null,
+                        dezessete, Genero.FEMININO, null, null, null), ARQUIVO))
+                .isInstanceOf(ValidacaoInvalidaException.class)
+                .hasMessage("O profissional deve ter pelo menos 18 anos.");
+        assertThat(profissional.getDataNascimento()).isEqualTo(LocalDate.of(1990, 1, 1));
+        verify(etapaRepository, never()).save(any());
+    }
+
+    @Test
     void emRevalidacaoQuandoAprovadoTemEtapaQueNaoEstaAprovada() {
         profissional.setStatusValidacao(StatusValidacao.APROVADO);
         when(etapaRepository.findByProfissionalIdOrderByCriadoEmAscIdAsc(20L))

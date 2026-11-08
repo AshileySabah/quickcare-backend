@@ -12,7 +12,7 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 @Constraint(validatedBy = CnpjValidator.class)
 public @interface Cnpj {
-    String message() default "CNPJ inválido";
+    String message() default "CNPJ inválido. Confira os números.";
     Class<?>[] groups() default {};
     Class<? extends Payload>[] payload() default {};
 }

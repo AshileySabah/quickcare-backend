@@ -8,19 +8,19 @@ import jakarta.validation.constraints.Pattern;
 import java.util.List;
 
 public record AtualizarPerfilPacienteRequest(
-        @NotBlank String nome,
+        @NotBlank(message = "Informe o nome completo.") String nome,
         String telefone,
         @Valid List<ContatoEmergenciaRequest> contatosEmergencia,
         String alergias,
         String condicoesSaude,
         String medicamentosEmUso,
-        @NotBlank @Pattern(regexp = "\\d{8}") String cep,
-        @NotBlank String logradouro,
-        @NotBlank String numero,
+        @NotBlank(message = "Informe o CEP.") @Pattern(regexp = "\\d{8}", message = "O CEP deve ter 8 dígitos.") String cep,
+        @NotBlank(message = "Informe o logradouro.") String logradouro,
+        @NotBlank(message = "Informe o número do endereço.") String numero,
         String complemento,
-        @NotBlank String bairro,
-        @NotBlank String cidade,
-        @NotBlank @Pattern(regexp = "(?i)^[a-z]{2}$") String uf,
+        @NotBlank(message = "Informe o bairro.") String bairro,
+        @NotBlank(message = "Informe a cidade.") String cidade,
+        @NotBlank(message = "Informe a UF do endereço.") @Pattern(regexp = "(?i)^[a-z]{2}$", message = "A UF deve ter 2 letras.") String uf,
         boolean removerAvatar
 ) {
 }
