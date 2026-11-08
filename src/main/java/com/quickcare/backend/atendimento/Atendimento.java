@@ -99,6 +99,12 @@ public class Atendimento {
     @Column(name = "lembrete_inicio_em")
     private Instant lembreteInicioEm;
 
+    @Column(name = "lembrete_avaliacao_3d_em")
+    private Instant lembreteAvaliacao3dEm;
+
+    @Column(name = "lembrete_avaliacao_7d_em")
+    private Instant lembreteAvaliacao7dEm;
+
     @OneToOne(mappedBy = "atendimento", fetch = FetchType.LAZY)
     private ProblemaAtendimento problema;
 

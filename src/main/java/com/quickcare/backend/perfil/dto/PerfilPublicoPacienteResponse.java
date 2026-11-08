@@ -1,6 +1,7 @@
 package com.quickcare.backend.perfil.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.quickcare.backend.avaliacao.dto.ResumoAvaliacoesResponse;
 
 import java.time.Instant;
 import java.util.List;
@@ -13,6 +14,7 @@ public record PerfilPublicoPacienteResponse(
         String cidade,
         String uf,
         Instant membroDesde,
+        ResumoAvaliacoesResponse avaliacoes,
         @JsonInclude(JsonInclude.Include.NON_NULL) Saude saude,
         @JsonInclude(JsonInclude.Include.NON_NULL) List<ContatoEmergenciaResponse> contatosEmergencia
 ) {

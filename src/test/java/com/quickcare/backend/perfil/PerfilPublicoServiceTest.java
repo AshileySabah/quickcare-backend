@@ -4,6 +4,8 @@ import com.quickcare.backend.atendimento.AtendimentoRepository;
 import com.quickcare.backend.atendimento.StatusAtendimento;
 import com.quickcare.backend.atuacao.Atuacao;
 import com.quickcare.backend.atuacao.dto.AtuacaoResumoResponse;
+import com.quickcare.backend.avaliacao.AvaliacaoService;
+import com.quickcare.backend.avaliacao.dto.ResumoAvaliacoesResponse;
 import com.quickcare.backend.bloqueiousuario.BloqueioUsuarioRepository;
 import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
 import com.quickcare.backend.especialidade.CategoriaProfissional;
@@ -57,6 +59,7 @@ class PerfilPublicoServiceTest {
     @Mock private ArmazenamentoDocumentoService armazenamentoDocumentoService;
     @Mock private BloqueioUsuarioRepository bloqueioUsuarioRepository;
     @Mock private ValidacaoService validacaoService;
+    @Mock private AvaliacaoService avaliacaoService;
 
     @InjectMocks
     private PerfilPublicoService service;
@@ -103,9 +106,12 @@ class PerfilPublicoServiceTest {
     void mostraOProfissionalAprovadoSemDadosDeContato() {
         when(profissionalRepository.findById(PROFISSIONAL_ID)).thenReturn(Optional.of(profissional));
         when(atendimentoRepository.countByPropostaProfissionalIdAndStatusIn(PROFISSIONAL_ID, StatusAtendimento.REALIZADOS)).thenReturn(4L);
+        ResumoAvaliacoesResponse avaliacoes = new ResumoAvaliacoesResponse(4.5, 2, List.of());
+        when(avaliacaoService.resumoDoProfissional(PROFISSIONAL_ID)).thenReturn(avaliacoes);
 
         PerfilPublicoProfissionalResponse perfil = service.buscarProfissional(USUARIO_PROFISSIONAL_ID, PROFISSIONAL_ID);
 
+        assertThat(perfil.avaliacoes()).isSameAs(avaliacoes);
         assertThat(perfil.atuacoes()).singleElement().satisfies(atuacao -> {
             assertThat(atuacao.especialidades()).extracting(EspecialidadeResponse::nome).containsExactly("Curativos", "Sondagem");
             assertThat(atuacao.siglaRegistro()).isEqualTo("COREN");

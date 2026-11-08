@@ -1181,3 +1181,80 @@ SELECT pg_temp.seed_notificacao('profissional@quickcare.dev', 'PROFISSIONAL', 'C
 SELECT pg_temp.seed_notificacao('profissional@quickcare.dev', 'PROFISSIONAL', 'SOLICITACAO_ALTERADA', 'Solicitação alterada',
        'O paciente alterou a solicitação de Curativos. Confira se a sua proposta ainda atende.',
        'Minha mãe precisa de curativos diários', 'profissional@quickcare.dev', 'SOLICITACAO', NULL, 1, FALSE);
+
+CREATE OR REPLACE FUNCTION pg_temp.seed_avaliacao(
+    p_descricao TEXT, p_email_profissional TEXT, p_avaliador TEXT, p_nota INT, p_destaques TEXT[], p_dias_atras INT
+) RETURNS VOID AS $$
+DECLARE
+    v_atendimento atendimento%ROWTYPE;
+    v_paciente BIGINT;
+    v_profissional BIGINT;
+    v_avaliacao BIGINT;
+BEGIN
+    SELECT a.* INTO v_atendimento
+    FROM atendimento a
+    JOIN solicitacao s ON s.id = a.solicitacao_id
+    JOIN proposta p ON p.id = a.proposta_id
+    JOIN profissional pr ON pr.id = p.profissional_id
+    JOIN usuario u ON u.id = pr.usuario_id
+    WHERE s.descricao = p_descricao AND u.email = p_email_profissional
+      AND a.status IN ('FINALIZADO', 'CONCLUIDO')
+    ORDER BY a.id DESC LIMIT 1;
+    IF v_atendimento.id IS NULL
+       OR EXISTS (SELECT 1 FROM avaliacao WHERE atendimento_id = v_atendimento.id AND avaliador = p_avaliador) THEN
+        RETURN;
+    END IF;
+
+    SELECT s.paciente_id, p.profissional_id INTO v_paciente, v_profissional
+    FROM solicitacao s JOIN proposta p ON p.id = v_atendimento.proposta_id
+    WHERE s.id = v_atendimento.solicitacao_id;
+
+    INSERT INTO avaliacao (atendimento_id, avaliador, paciente_id, profissional_id, nota, criado_em)
+    VALUES (v_atendimento.id, p_avaliador, v_paciente, v_profissional, p_nota,
+            LEAST(now(), v_atendimento.termino + make_interval(days => p_dias_atras)))
+    RETURNING id INTO v_avaliacao;
+
+    INSERT INTO avaliacao_destaque (avaliacao_id, destaque)
+    SELECT v_avaliacao, d FROM unnest(p_destaques) AS d;
+
+    UPDATE atendimento
+    SET lembrete_avaliacao_3d_em = COALESCE(lembrete_avaliacao_3d_em, now()),
+        lembrete_avaliacao_7d_em = COALESCE(lembrete_avaliacao_7d_em, now())
+    WHERE id = v_atendimento.id AND termino < now() - INTERVAL '7 days';
+END;
+$$ LANGUAGE plpgsql;
+
+SELECT pg_temp.seed_avaliacao('Curativo de uma queimadura leve na mão.', 'profissional@quickcare.dev',
+       'PACIENTE', 5, ARRAY['PONTUALIDADE', 'CUIDADO', 'BOA_COMUNICACAO'], 1);
+SELECT pg_temp.seed_avaliacao('Curativo de uma queimadura leve na mão.', 'profissional@quickcare.dev',
+       'PROFISSIONAL', 5, ARRAY['EDUCACAO', 'INFORMACOES_CLARAS'], 2);
+
+SELECT pg_temp.seed_avaliacao('Cuidadora para o pós-operatório do meu pai por duas semanas.', 'ambos@quickcare.dev',
+       'PACIENTE', 4, ARRAY['ATENCAO', 'CUIDADO', 'ATRASO'], 1);
+SELECT pg_temp.seed_avaliacao('Cuidadora para o pós-operatório do meu pai por duas semanas.', 'ambos@quickcare.dev',
+       'PROFISSIONAL', 5, ARRAY['COLABORACAO', 'PONTUALIDADE'], 3);
+
+SELECT pg_temp.seed_avaliacao('Teste atuação: aplicação de injeção já concluída.', 'eduardo@quickcare.dev',
+       'PACIENTE', 5, ARRAY['PONTUALIDADE', 'EDUCACAO'], 1);
+SELECT pg_temp.seed_solicitacao(s.email, s.descricao, 'PRESENCIAL', 'ENFERMEIRO', 'Acompanhamento 12h', 'CONCLUIDA', s.prazo, s.dias_atras)
+FROM (VALUES ('helena@quickcare.dev', 'Teste avaliação: plantão de 12h depois da cirurgia de catarata.', -4, 12),
+             ('maria@quickcare.dev', 'Teste avaliação: plantão de 12h na primeira noite em casa após a alta.', -2, 10))
+     AS s (email, descricao, prazo, dias_atras);
+
+SELECT pg_temp.seed_proposta_da_atuacao(p.descricao, 'bruno@quickcare.dev', 'ENFERMEIRO', p.valor, p.abordagem, 'ACEITA', p.dias_atras)
+FROM (VALUES ('Teste avaliação: plantão de 12h depois da cirurgia de catarata.', 310.00,
+              'Plantão de 12h com colírios no horário, controle da pressão e repouso orientado.', 11),
+             ('Teste avaliação: plantão de 12h na primeira noite em casa após a alta.', 300.00,
+              'Plantão noturno com medicação, curativo e registro para a família.', 9))
+     AS p (descricao, valor, abordagem, dias_atras);
+
+INSERT INTO atendimento (proposta_id, solicitacao_id, status, inicio, termino, aceito_em, criado_em,
+                         lembrete_24h_em, lembrete_30min_em, lembrete_inicio_em)
+SELECT p.id, p.solicitacao_id,
+       CASE WHEN now() < p.termino + INTERVAL '72 hours' THEN 'FINALIZADO' ELSE 'CONCLUIDO' END,
+       p.inicio, p.termino, p.inicio - INTERVAL '5 days', p.inicio - INTERVAL '5 days',
+       p.inicio, p.inicio, p.inicio
+FROM proposta p
+JOIN solicitacao s ON s.id = p.solicitacao_id
+WHERE s.descricao LIKE 'Teste avaliação:%' AND p.status = 'ACEITA'
+  AND NOT EXISTS (SELECT 1 FROM atendimento a WHERE a.proposta_id = p.id);

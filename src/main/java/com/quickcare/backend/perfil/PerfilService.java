@@ -1,5 +1,6 @@
 package com.quickcare.backend.perfil;
 
+import com.quickcare.backend.avaliacao.AvaliacaoService;
 import com.quickcare.backend.cadastro.dto.ContatoEmergenciaRequest;
 import com.quickcare.backend.cadastro.exception.RaioAtendimentoObrigatorioException;
 import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
@@ -33,6 +34,7 @@ public class PerfilService {
     private final ProfissionalRepository profissionalRepository;
     private final ArmazenamentoDocumentoService armazenamentoDocumentoService;
     private final GeocodificacaoService geocodificacaoService;
+    private final AvaliacaoService avaliacaoService;
 
     @Transactional(readOnly = true)
     public PerfilPacienteResponse buscarPaciente(Long usuarioId) {
@@ -142,7 +144,8 @@ public class PerfilService {
                 paciente.getBairro(),
                 paciente.getCidade(),
                 paciente.getUf(),
-                new DeclaracoesResponse(paciente.isConfirmacaoInformacoesVerdadeiras(), paciente.isConsentimentoLgpd())
+                new DeclaracoesResponse(paciente.isConfirmacaoInformacoesVerdadeiras(), paciente.isConsentimentoLgpd()),
+                avaliacaoService.resumoDoPaciente(paciente.getId())
         );
     }
 
@@ -166,7 +169,8 @@ public class PerfilService {
                 profissional.getBairro(),
                 profissional.getCidade(),
                 profissional.getUf(),
-                new DeclaracoesResponse(profissional.isConfirmacaoInformacoesVerdadeiras(), profissional.isConsentimentoLgpd())
+                new DeclaracoesResponse(profissional.isConfirmacaoInformacoesVerdadeiras(), profissional.isConsentimentoLgpd()),
+                avaliacaoService.resumoDoProfissional(profissional.getId())
         );
     }
 
