@@ -1,12 +1,15 @@
 package com.quickcare.backend.validacao;
 
+import com.quickcare.backend.atuacao.Atuacao;
 import com.quickcare.backend.documento.Documento;
 import com.quickcare.backend.paciente.Paciente;
 import com.quickcare.backend.profissional.Profissional;
+import com.quickcare.backend.usuario.Genero;
 import com.quickcare.backend.usuario.Usuario;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Set;
 
 public record CadastroAvaliado(Paciente paciente, Profissional profissional) {
 
@@ -50,8 +53,31 @@ public record CadastroAvaliado(Paciente paciente, Profissional profissional) {
         return paciente != null ? paciente.getDataNascimento() : profissional.getDataNascimento();
     }
 
+    public Genero genero() {
+        return paciente != null ? paciente.getGenero() : profissional.getGenero();
+    }
+
+    public void definirDadosPessoais(LocalDate dataNascimento, Genero genero) {
+        if (paciente != null) {
+            paciente.setDataNascimento(dataNascimento);
+            paciente.setGenero(genero);
+        } else {
+            profissional.setDataNascimento(dataNascimento);
+            profissional.setGenero(genero);
+        }
+    }
+
+    public boolean temAtuacaoLiberadaSemEtapa(Set<Long> atuacoesComEtapa) {
+        return profissional != null && profissional.atuacoesAtivas().stream()
+                .anyMatch(atuacao -> !atuacao.exigeRegistro() || !atuacoesComEtapa.contains(atuacao.getId()));
+    }
+
     public EtapaValidacao novaEtapaPendente(TipoEtapaValidacao tipo, Documento documento) {
-        return EtapaValidacao.pendente(tipo, documento, paciente, profissional);
+        return EtapaValidacao.pendente(tipo, documento, paciente, profissional, null);
+    }
+
+    public EtapaValidacao novaEtapaDeRegistro(Atuacao atuacao, Documento documento) {
+        return EtapaValidacao.pendente(TipoEtapaValidacao.REGISTRO_PROFISSIONAL, documento, null, profissional, atuacao);
     }
 
 }

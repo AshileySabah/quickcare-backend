@@ -24,6 +24,7 @@ public record PerfilProfissionalResponse(
         String complemento,
         String bairro,
         String cidade,
-        String uf
+        String uf,
+        DeclaracoesResponse declaracoes
 ) {
 }

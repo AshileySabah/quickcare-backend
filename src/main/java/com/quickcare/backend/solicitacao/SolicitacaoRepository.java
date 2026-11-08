@@ -23,7 +23,7 @@ public interface SolicitacaoRepository extends JpaRepository<Solicitacao, Long> 
               and exists (
                   select 1 from SolicitacaoProfissional p
                   where p.solicitacao = s
-                    and p.categoria = :categoria
+                    and p.categoria in :categorias
                     and p.vagasPreenchidas < p.quantidade
                     and not exists (
                         select 1 from p.especialidades e
@@ -33,7 +33,7 @@ public interface SolicitacaoRepository extends JpaRepository<Solicitacao, Long> 
             order by s.criadoEm desc
             """)
     List<Solicitacao> findDisponiveisPara(
-            @Param("categoria") CategoriaProfissional categoria,
+            @Param("categorias") Collection<CategoriaProfissional> categorias,
             @Param("especialidadeIds") Collection<Long> especialidadeIds,
             @Param("modalidades") Collection<ModalidadeSolicitacao> modalidades,
             @Param("status") Collection<StatusSolicitacao> status);

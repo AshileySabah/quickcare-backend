@@ -12,7 +12,7 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 @Constraint(validatedBy = CpfValidator.class)
 public @interface Cpf {
-    String message() default "CPF inválido";
+    String message() default "CPF inválido. Confira os números.";
     Class<?>[] groups() default {};
     Class<? extends Payload>[] payload() default {};
 }

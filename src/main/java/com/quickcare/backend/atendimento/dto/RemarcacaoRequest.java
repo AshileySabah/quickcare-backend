@@ -4,5 +4,8 @@ import jakarta.validation.constraints.NotNull;
 
 import java.time.Instant;
 
-public record RemarcacaoRequest(@NotNull Instant inicio, @NotNull Instant termino) {
+public record RemarcacaoRequest(
+        @NotNull(message = "Informe o novo início.") Instant inicio,
+        @NotNull(message = "Informe o novo término.") Instant termino
+) {
 }

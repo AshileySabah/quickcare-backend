@@ -3,6 +3,7 @@ package com.quickcare.backend.documento;
 import com.quickcare.backend.storage.SupabaseStorageProperties;
 import com.quickcare.backend.usuario.Usuario;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
@@ -13,6 +14,7 @@ import java.time.Duration;
 import java.util.Set;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ArmazenamentoDocumentoService {
@@ -65,10 +67,32 @@ public class ArmazenamentoDocumentoService {
         } catch (IOException ex) {
             throw new ArquivoInvalidoException("Não foi possível ler o arquivo \"%s\".".formatted(arquivo.getOriginalFilename()));
         } catch (Exception ex) {
+            log.warn("Falha ao enviar \"{}\" para o storage em {}: {}", arquivo.getOriginalFilename(), properties.url(), ex.getMessage());
             throw new ArquivoInvalidoException("Não foi possível enviar o arquivo \"%s\". Tente novamente.".formatted(arquivo.getOriginalFilename()));
         }
 
         return pasta + "/" + nomeArquivo;
+    }
+
+    public byte[] baixar(String storageKey) {
+        try {
+            byte[] conteudo = restClientBuilder.build()
+                    .get()
+                    .uri(properties.url() + "/storage/v1/object/authenticated/{bucket}/{chave}", properties.bucket(), storageKey)
+                    .header("Authorization", "Bearer " + properties.apiKey())
+                    .header("apikey", properties.apiKey())
+                    .retrieve()
+                    .body(byte[].class);
+            if (conteudo == null) {
+                throw new ArquivoInvalidoException("Arquivo indisponível.");
+            }
+            return conteudo;
+        } catch (ArquivoInvalidoException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            log.warn("Falha ao baixar \"{}\" do storage: {}", storageKey, ex.getMessage());
+            throw new ArquivoInvalidoException("Não foi possível abrir o arquivo. Tente novamente.");
+        }
     }
 
     public String urlDoAvatar(Usuario usuario) {

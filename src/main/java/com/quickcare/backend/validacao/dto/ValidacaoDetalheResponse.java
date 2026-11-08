@@ -10,6 +10,8 @@ public record ValidacaoDetalheResponse(
         Long id,
         PerfilValidado perfil,
         StatusValidacao statusValidacao,
+        boolean emRevalidacao,
+        boolean bloqueiaCriacao,
         Instant cadastradoEm,
         DadosCadastraisResponse dados,
         List<EtapaValidacaoResponse> etapas

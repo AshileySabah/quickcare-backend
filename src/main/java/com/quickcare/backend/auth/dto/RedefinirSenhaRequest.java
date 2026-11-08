@@ -4,7 +4,7 @@ import com.quickcare.backend.common.validation.SenhaForte;
 import jakarta.validation.constraints.NotBlank;
 
 public record RedefinirSenhaRequest(
-        @NotBlank String token,
-        @NotBlank @SenhaForte String novaSenha
+        @NotBlank(message = "O link de redefinição é inválido. Peça um novo.") String token,
+        @NotBlank(message = "Crie uma senha.") @SenhaForte String novaSenha
 ) {
 }

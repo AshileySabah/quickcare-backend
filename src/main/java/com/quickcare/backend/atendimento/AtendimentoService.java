@@ -82,7 +82,7 @@ public class AtendimentoService {
         exigir(proposta.getInicio().isAfter(agora),
                 "O início desta proposta já passou. Peça ao profissional para atualizar a data.");
 
-        SolicitacaoProfissional vaga = solicitacao.vagaDisponivelPara(proposta.getProfissional())
+        SolicitacaoProfissional vaga = solicitacao.vagaDisponivelPara(proposta.getAtuacao())
                 .orElseGet(() -> tomarVagaReservada(proposta, agora));
         vaga.preencherVaga();
         proposta.setVaga(vaga);
@@ -142,7 +142,7 @@ public class AtendimentoService {
 
         atendimentos.stream()
                 .filter(atendimento -> StatusAtendimento.REALIZADOS.contains(atendimento.getStatus()))
-                .forEach(atendimento -> solicitacao.vagaDisponivelPara(atendimento.getProposta().getProfissional())
+                .forEach(atendimento -> solicitacao.vagaDisponivelPara(atendimento.getProposta().getAtuacao())
                         .ifPresent(linha -> {
                             linha.preencherVaga();
                             atendimento.getProposta().setVaga(linha);
@@ -154,7 +154,7 @@ public class AtendimentoService {
                 .sorted(Comparator.comparing(Atendimento::getAceitoEm))
                 .forEach(atendimento -> {
                     Proposta proposta = atendimento.getProposta();
-                    Optional<SolicitacaoProfissional> linha = solicitacao.vagaDisponivelPara(proposta.getProfissional());
+                    Optional<SolicitacaoProfissional> linha = solicitacao.vagaDisponivelPara(proposta.getAtuacao());
                     if (linha.isPresent()) {
                         linha.get().preencherVaga();
                         linha.get().reservarVaga();
@@ -505,7 +505,7 @@ public class AtendimentoService {
         Proposta proposta = atendimento.getProposta();
         Solicitacao solicitacao = atendimento.getSolicitacao();
         if (proposta.getVaga() == null) {
-            solicitacao.vagaDisponivelPara(proposta.getProfissional()).ifPresent(linha -> {
+            solicitacao.vagaDisponivelPara(proposta.getAtuacao()).ifPresent(linha -> {
                 linha.preencherVaga();
                 proposta.setVaga(linha);
             });
@@ -559,7 +559,7 @@ public class AtendimentoService {
 
     private SolicitacaoProfissional tomarVagaReservada(Proposta proposta, Instant agora) {
         Solicitacao solicitacao = proposta.getSolicitacao();
-        Set<SolicitacaoProfissional> linhas = Set.copyOf(solicitacao.linhasQueRecebem(proposta.getProfissional()).toList());
+        Set<SolicitacaoProfissional> linhas = Set.copyOf(solicitacao.linhasQueRecebem(proposta.getAtuacao()).toList());
 
         Atendimento substituido = atendimentoRepository.findBySolicitacaoIdAndStatusIn(
                         solicitacao.getId(), Set.of(StatusAtendimento.AGUARDANDO_REACEITE)).stream()
@@ -581,7 +581,7 @@ public class AtendimentoService {
     private void recusarPendentesSemVaga(Solicitacao solicitacao, Proposta aceita) {
         propostaRepository.findBySolicitacaoIdAndStatus(solicitacao.getId(), StatusProposta.PENDENTE).stream()
                 .filter(pendente -> aceita == null || !pendente.getId().equals(aceita.getId()))
-                .filter(pendente -> solicitacao.linhasQueRecebem(pendente.getProfissional()).findAny().isEmpty())
+                .filter(pendente -> solicitacao.linhasQueRecebem(pendente.getAtuacao()).findAny().isEmpty())
                 .forEach(pendente -> {
                     pendente.setStatus(StatusProposta.RECUSADA);
                     notificador.propostaRecusada(pendente, true);

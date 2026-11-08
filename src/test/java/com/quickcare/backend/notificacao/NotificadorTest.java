@@ -131,7 +131,8 @@ class NotificadorTest {
 
     @Test
     void etapaReprovadaVaiPorEmailComAJustificativa() {
-        notificador.etapaReprovada(usuarioProfissional, TipoPerfil.PROFISSIONAL, TipoEtapaValidacao.CNPJ, "Documento ilegível");
+        notificador.etapaReprovada(usuarioProfissional, TipoPerfil.PROFISSIONAL, TipoEtapaValidacao.CNPJ.getDescricao(),
+                "Documento ilegível");
 
         ArgumentCaptor<String> mensagem = ArgumentCaptor.forClass(String.class);
         verify(notificacaoService).notificar(eq(usuarioProfissional), eq(TipoPerfil.PROFISSIONAL),
@@ -139,6 +140,16 @@ class NotificadorTest {
                 eq("/professional/aguardando-validacao?destaque=validacao"), eq(true));
         assertThat(mensagem.getValue())
                 .isEqualTo("A etapa CNPJ foi reprovada: Documento ilegível. Corrija os dados e reenvie o documento.");
+    }
+
+    @Test
+    void registroAprovadoAvisaQueAAtuacaoFoiLiberada() {
+        notificador.registroAprovado(usuarioProfissional, "Médico(a)");
+
+        ArgumentCaptor<String> mensagem = ArgumentCaptor.forClass(String.class);
+        verify(notificacaoService).notificar(eq(usuarioProfissional), eq(TipoPerfil.PROFISSIONAL),
+                eq(TipoNotificacao.CADASTRO_APROVADO), eq("Registro aprovado"), mensagem.capture(), anyString(), eq(true));
+        assertThat(mensagem.getValue()).contains("Médico(a)").contains("propostas dessa atuação");
     }
 
 }

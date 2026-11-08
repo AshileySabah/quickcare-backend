@@ -94,9 +94,13 @@ public class AdminPropostaService {
 
     private void reativar(Proposta proposta) {
         Solicitacao solicitacao = proposta.getSolicitacao();
-        if (propostaRepository.existsBySolicitacaoIdAndProfissionalIdAndStatusIn(
-                solicitacao.getId(), proposta.getProfissional().getId(), StatusProposta.ATIVAS)) {
-            throw new TransicaoStatusInvalidaException("O profissional já tem outra proposta valendo nesta solicitação.");
+        if (!proposta.getAtuacao().ativa()) {
+            throw new TransicaoStatusInvalidaException("O profissional removeu a atuação desta proposta do perfil.");
+        }
+        if (propostaRepository.existsBySolicitacaoIdAndAtuacaoIdAndStatusIn(
+                solicitacao.getId(), proposta.getAtuacao().getId(), StatusProposta.ATIVAS)) {
+            throw new TransicaoStatusInvalidaException(
+                    "O profissional já tem outra proposta valendo nesta solicitação para a mesma atuação.");
         }
         if (bloqueioUsuarioRepository.existsByPacienteIdAndProfissionalId(
                 solicitacao.getPaciente().getId(), proposta.getProfissional().getId())) {

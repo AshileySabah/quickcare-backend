@@ -1,6 +1,6 @@
 package com.quickcare.backend.solicitacao;
 
-import com.quickcare.backend.especialidade.Especialidade;
+import com.quickcare.backend.atuacao.Atuacao;
 import com.quickcare.backend.geolocalizacao.Coordenadas;
 import com.quickcare.backend.paciente.Paciente;
 import com.quickcare.backend.profissional.Profissional;
@@ -30,12 +30,13 @@ import java.math.BigDecimal;
 import java.text.Normalizer;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @Entity
@@ -119,28 +120,37 @@ public class Solicitacao {
         atualizadoEm = Instant.now();
     }
 
-    public boolean atendidaPor(Profissional profissional) {
-        return ModalidadeSolicitacao.atendidasPor(profissional.getModalidadeAtendimento()).contains(modalidade)
-                && dentroDoRaioDe(profissional)
-                && linhasQueRecebem(profissional).findAny().isPresent();
+    public boolean atendidaPor(Profissional profissional, Collection<Atuacao> atuacoes) {
+        return !atuacoesQueAtendem(profissional, atuacoes).isEmpty();
     }
 
-    public Optional<SolicitacaoProfissional> vagaDisponivelPara(Profissional profissional) {
-        return linhasDoProfissional(profissional)
+    public List<Atuacao> atuacoesQueAtendem(Profissional profissional, Collection<Atuacao> atuacoes) {
+        if (!ModalidadeSolicitacao.atendidasPor(profissional.getModalidadeAtendimento()).contains(modalidade)
+                || !dentroDoRaioDe(profissional)) {
+            return List.of();
+        }
+        return atuacoes.stream()
+                .filter(atuacao -> linhasQueRecebem(atuacao).findAny().isPresent())
+                .toList();
+    }
+
+    public Optional<SolicitacaoProfissional> vagaDisponivelPara(Atuacao atuacao) {
+        return linhasDa(atuacao)
                 .filter(SolicitacaoProfissional::temVaga)
                 .max(Comparator.comparingInt(pedido -> pedido.getEspecialidades().size()));
     }
 
-    public Stream<SolicitacaoProfissional> linhasQueRecebem(Profissional profissional) {
-        return linhasDoProfissional(profissional).filter(SolicitacaoProfissional::aceitaPropostas);
+    public Stream<SolicitacaoProfissional> linhasQueRecebem(Atuacao atuacao) {
+        return linhasDa(atuacao).filter(SolicitacaoProfissional::aceitaPropostas);
     }
 
-    private Stream<SolicitacaoProfissional> linhasDoProfissional(Profissional profissional) {
-        Set<Long> especialidadeIds = profissional.getEspecialidades().stream()
-                .map(Especialidade::getId)
-                .collect(Collectors.toSet());
-        return profissionais.stream()
-                .filter(pedido -> pedido.atendidaPor(profissional.getCategoria(), especialidadeIds));
+    public boolean temLinhaPara(Atuacao atuacao, Set<Long> especialidadeIds) {
+        return profissionais.stream().anyMatch(pedido -> atuacao.atende(pedido, especialidadeIds));
+    }
+
+    private Stream<SolicitacaoProfissional> linhasDa(Atuacao atuacao) {
+        Set<Long> especialidadeIds = atuacao.especialidadeIds();
+        return profissionais.stream().filter(pedido -> atuacao.atende(pedido, especialidadeIds));
     }
 
     public boolean todasAsVagasPreenchidas() {

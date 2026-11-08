@@ -8,7 +8,6 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.Set;
 
 public interface PropostaRepository extends JpaRepository<Proposta, Long> {
 
@@ -22,9 +21,6 @@ public interface PropostaRepository extends JpaRepository<Proposta, Long> {
 
     boolean existsBySolicitacaoIdAndProfissionalIdAndStatusNot(Long solicitacaoId, Long profissionalId, StatusProposta status);
 
-    boolean existsBySolicitacaoIdAndProfissionalIdAndStatusIn(
-            Long solicitacaoId, Long profissionalId, Collection<StatusProposta> status);
-
     boolean existsBySolicitacaoIdAndStatus(Long solicitacaoId, StatusProposta status);
 
     boolean existsByProfissionalIdAndSolicitacaoPacienteIdAndStatus(
@@ -36,15 +32,26 @@ public interface PropostaRepository extends JpaRepository<Proposta, Long> {
     long countByProfissionalIdAndStatusAndSolicitacaoStatus(
             Long profissionalId, StatusProposta status, StatusSolicitacao statusSolicitacao);
 
+    boolean existsBySolicitacaoIdAndAtuacaoIdAndStatusIn(
+            Long solicitacaoId, Long atuacaoId, Collection<StatusProposta> status);
+
+    List<Proposta> findByAtuacaoIdAndStatusIn(Long atuacaoId, Collection<StatusProposta> status);
+
     @Query("""
-            select distinct p.solicitacao.id
+            select p.solicitacao.id as solicitacaoId, p.atuacao.id as atuacaoId
             from Proposta p
             where p.profissional.id = :profissionalId
               and p.status in :status
             """)
-    Set<Long> findSolicitacaoIdsComPropostaDoProfissional(
+    List<PropostaPorAtuacao> findAtuacoesComPropostaDoProfissional(
             @Param("profissionalId") Long profissionalId,
             @Param("status") Collection<StatusProposta> status);
+
+    interface PropostaPorAtuacao {
+        Long getSolicitacaoId();
+
+        Long getAtuacaoId();
+    }
 
     List<Proposta> findBySolicitacaoIdAndStatus(Long solicitacaoId, StatusProposta status);
 

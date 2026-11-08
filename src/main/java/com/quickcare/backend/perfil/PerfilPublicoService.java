@@ -3,8 +3,8 @@ package com.quickcare.backend.perfil;
 import com.quickcare.backend.atendimento.AtendimentoRepository;
 import com.quickcare.backend.atendimento.StatusAtendimento;
 import com.quickcare.backend.bloqueiousuario.BloqueioUsuarioRepository;
+import com.quickcare.backend.atuacao.dto.AtuacaoResumoResponse;
 import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
-import com.quickcare.backend.especialidade.Especialidade;
 import com.quickcare.backend.paciente.Paciente;
 import com.quickcare.backend.paciente.PacienteRepository;
 import com.quickcare.backend.perfil.dto.ContatoEmergenciaResponse;
@@ -17,6 +17,7 @@ import com.quickcare.backend.proposta.PropostaRepository;
 import com.quickcare.backend.proposta.StatusProposta;
 import com.quickcare.backend.solicitacao.StatusSolicitacao;
 import com.quickcare.backend.validacao.StatusValidacao;
+import com.quickcare.backend.validacao.ValidacaoService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,6 +36,7 @@ public class PerfilPublicoService {
     private final AtendimentoRepository atendimentoRepository;
     private final ArmazenamentoDocumentoService armazenamentoDocumentoService;
     private final BloqueioUsuarioRepository bloqueioUsuarioRepository;
+    private final ValidacaoService validacaoService;
 
     @Transactional(readOnly = true)
     public PerfilPublicoProfissionalResponse buscarProfissional(Long usuarioId, Long profissionalId) {
@@ -50,12 +52,7 @@ public class PerfilPublicoService {
                 profissional.getId(),
                 profissional.getUsuario().getNome(),
                 armazenamentoDocumentoService.urlDoAvatar(profissional.getUsuario()),
-                profissional.getCategoria(),
-                profissional.getCategoria().getRotulo(),
-                profissional.getEspecialidades().stream().map(Especialidade::getNome).sorted().toList(),
-                profissional.getCategoria().getSiglaRegistro(),
-                profissional.getRegistroProfissional(),
-                profissional.getRegistroProfissionalUf(),
+                validacaoService.atuacoesLiberadas(profissional).stream().map(AtuacaoResumoResponse::de).toList(),
                 profissional.getModalidadeAtendimento(),
                 profissional.getCidade(),
                 profissional.getUf(),
