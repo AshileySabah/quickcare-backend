@@ -1,7 +1,7 @@
 package com.quickcare.backend.cadastro.dto;
 
+import com.quickcare.backend.atuacao.dto.AtuacaoRequest;
 import com.quickcare.backend.common.validation.Cnpj;
-import com.quickcare.backend.especialidade.CategoriaProfissional;
 import com.quickcare.backend.profissional.ModalidadeAtendimento;
 import com.quickcare.backend.usuario.Genero;
 import jakarta.validation.Valid;
@@ -19,10 +19,7 @@ import java.util.List;
 
 public record NovoPerfilProfissionalRequest(
         @Pattern(regexp = "\\d{14}") @Cnpj String cnpj,
-        @NotNull CategoriaProfissional categoria,
-        @NotEmpty List<Long> especialidadeIds,
-        String registroProfissional,
-        @Pattern(regexp = "(?i)^[a-z]{2}$") String registroProfissionalUf,
+        @NotEmpty @Valid List<AtuacaoRequest> atuacoes,
         @NotNull @Past LocalDate dataNascimento,
         @NotNull Genero genero,
         @Valid List<ContatoEmergenciaRequest> contatosEmergencia,

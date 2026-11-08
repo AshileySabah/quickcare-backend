@@ -4,6 +4,7 @@ import com.quickcare.backend.atendimento.Atendimento;
 import com.quickcare.backend.atendimento.AtendimentoRepository;
 import com.quickcare.backend.atendimento.AtendimentoService;
 import com.quickcare.backend.atendimento.StatusAtendimento;
+import com.quickcare.backend.atuacao.Atuacao;
 import com.quickcare.backend.notificacao.Notificador;
 import com.quickcare.backend.ocorrencia.OcorrenciaService;
 import com.quickcare.backend.bloqueiousuario.BloqueioUsuarioRepository;
@@ -25,6 +26,7 @@ import com.quickcare.backend.solicitacao.SolicitacaoProfissional;
 import com.quickcare.backend.solicitacao.SolicitacaoRepository;
 import com.quickcare.backend.solicitacao.StatusSolicitacao;
 import com.quickcare.backend.solicitacao.exception.PerfilNaoAutorizadoException;
+import com.quickcare.backend.solicitacao.exception.SolicitacaoInvalidaException;
 import com.quickcare.backend.solicitacao.exception.SolicitacaoNaoEncontradaException;
 import com.quickcare.backend.solicitacao.exception.TransicaoStatusInvalidaException;
 import com.quickcare.backend.usuario.Usuario;
@@ -53,6 +55,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -72,7 +75,7 @@ class PropostaServiceTest {
     private static final Instant TERMINO = INICIO.plus(Duration.ofHours(8));
 
     private static final PropostaRequest REQUEST = new PropostaRequest(
-            new BigDecimal("180.00"), "  Curativos diários com relatório semanal de evolução.  ", INICIO, TERMINO);
+            new BigDecimal("180.00"), "  Curativos diários com relatório semanal de evolução.  ", INICIO, TERMINO, null);
 
     @Mock
     private PropostaRepository propostaRepository;
@@ -245,11 +248,81 @@ class PropostaServiceTest {
     void naoEnviaSegundaPropostaAtiva() {
         mockProfissional(profissional);
         when(solicitacaoRepository.findById(50L)).thenReturn(Optional.of(solicitacao));
-        when(propostaRepository.existsBySolicitacaoIdAndProfissionalIdAndStatusIn(50L, 20L, StatusProposta.ATIVAS))
+        when(propostaRepository.existsBySolicitacaoIdAndAtuacaoIdAndStatusIn(50L, 200L, StatusProposta.ATIVAS))
                 .thenReturn(true);
 
         assertThatThrownBy(() -> service.enviar(USUARIO_PROFISSIONAL_ID, 50L, REQUEST))
                 .isInstanceOf(PropostaJaEnviadaException.class);
+    }
+
+    @Test
+    void comDuasAtuacoesQueAtendemPedeParaEscolherAVaga() {
+        incluirMedico();
+        mockProfissional(profissional);
+        when(solicitacaoRepository.findById(50L)).thenReturn(Optional.of(solicitacao));
+
+        assertThatThrownBy(() -> service.enviar(USUARIO_PROFISSIONAL_ID, 50L, REQUEST))
+                .isInstanceOf(SolicitacaoInvalidaException.class)
+                .hasMessageContaining("Escolha para qual vaga");
+        verify(propostaRepository, never()).save(any());
+    }
+
+    @Test
+    void ocupaUmaVagaPorAtuacaoNaMesmaSolicitacao() {
+        Atuacao medico = incluirMedico();
+        mockProfissional(profissional);
+        when(solicitacaoRepository.findById(50L)).thenReturn(Optional.of(solicitacao));
+        when(propostaRepository.existsBySolicitacaoIdAndAtuacaoIdAndStatusIn(50L, 200L, StatusProposta.ATIVAS))
+                .thenReturn(true);
+        when(propostaRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        PropostaResponse response = service.enviar(USUARIO_PROFISSIONAL_ID, 50L, comAtuacao(medico.getId()));
+
+        assertThat(response.profissional().atuacaoId()).isEqualTo(201L);
+        assertThat(response.profissional().categoria()).isEqualTo(CategoriaProfissional.MEDICO);
+    }
+
+    @Test
+    void atuacaoComRegistroEmValidacaoNaoEnviaProposta() {
+        Atuacao medico = incluirMedico();
+        when(profissionalRepository.findByUsuarioId(USUARIO_PROFISSIONAL_ID)).thenReturn(Optional.of(profissional));
+        when(validacaoService.atuacoesLiberadas(profissional)).thenReturn(List.of(profissional.atuacoesAtivas().getFirst()));
+        when(validacaoService.atuacaoLiberada(medico)).thenReturn(false);
+        when(solicitacaoRepository.findById(50L)).thenReturn(Optional.of(solicitacao));
+
+        assertThatThrownBy(() -> service.enviar(USUARIO_PROFISSIONAL_ID, 50L, comAtuacao(medico.getId())))
+                .isInstanceOf(CadastroNaoValidadoException.class)
+                .hasMessageContaining("em validação");
+        verify(propostaRepository, never()).save(any());
+    }
+
+    @Test
+    void naoEditaPropostaDeAtuacaoEmValidacao() {
+        Proposta proposta = proposta(100L, profissional, StatusProposta.PENDENTE);
+        mockProfissional(profissional);
+        when(propostaRepository.findById(100L)).thenReturn(Optional.of(proposta));
+        doThrow(new CadastroNaoValidadoException("O seu registro de Enfermeiro(a) está em validação."))
+                .when(validacaoService).exigirAtuacaoLiberada(proposta.getAtuacao());
+
+        assertThatThrownBy(() -> service.atualizar(USUARIO_PROFISSIONAL_ID, 100L, REQUEST))
+                .isInstanceOf(CadastroNaoValidadoException.class);
+        verify(propostaRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void encerrarPeloProfissionalCancelaAPendenteEAvisaOPaciente() {
+        solicitacao.setStatus(StatusSolicitacao.RECEBENDO_PROPOSTAS);
+        Proposta proposta = proposta(100L, profissional, StatusProposta.PENDENTE);
+
+        service.encerrarPeloProfissional(proposta);
+
+        assertThat(proposta.getStatus()).isEqualTo(StatusProposta.CANCELADA);
+        verify(notificador).propostaCancelada(proposta, false);
+    }
+
+    private static PropostaRequest comAtuacao(Long atuacaoId) {
+        return new PropostaRequest(new BigDecimal("180.00"), "Atendimento clínico com retorno em uma semana.",
+                INICIO, TERMINO, atuacaoId);
     }
 
     @Test
@@ -261,7 +334,7 @@ class PropostaServiceTest {
         PropostaResponse response = service.enviar(USUARIO_PROFISSIONAL_ID, 50L, REQUEST);
 
         assertThat(StatusProposta.ATIVAS).doesNotContain(StatusProposta.RECUSADA, StatusProposta.CANCELADA);
-        verify(propostaRepository).existsBySolicitacaoIdAndProfissionalIdAndStatusIn(50L, 20L, StatusProposta.ATIVAS);
+        verify(propostaRepository).existsBySolicitacaoIdAndAtuacaoIdAndStatusIn(50L, 200L, StatusProposta.ATIVAS);
         assertThat(response.status()).isEqualTo(StatusProposta.PENDENTE);
     }
 
@@ -335,7 +408,7 @@ class PropostaServiceTest {
         when(propostaRepository.saveAndFlush(proposta)).thenReturn(proposta);
 
         PropostaResponse response = service.atualizar(USUARIO_PROFISSIONAL_ID, 100L,
-                new PropostaRequest(new BigDecimal("250.00"), "Abordagem revisada com visitas diárias.", INICIO, TERMINO));
+                new PropostaRequest(new BigDecimal("250.00"), "Abordagem revisada com visitas diárias.", INICIO, TERMINO, null));
 
         assertThat(response.valor()).isEqualByComparingTo("250.00");
     }
@@ -380,7 +453,7 @@ class PropostaServiceTest {
         when(solicitacaoRepository.findById(50L)).thenReturn(Optional.of(solicitacao));
 
         assertThatThrownBy(() -> service.enviar(USUARIO_PROFISSIONAL_ID, 50L,
-                new PropostaRequest(new BigDecimal("180.00"), "Curativos diários com relatório semanal.", TERMINO, INICIO)))
+                new PropostaRequest(new BigDecimal("180.00"), "Curativos diários com relatório semanal.", TERMINO, INICIO, null)))
                 .hasMessage("O término precisa ser depois do início.");
     }
 
@@ -489,22 +562,49 @@ class PropostaServiceTest {
 
     private void mockProfissional(Profissional profissional) {
         when(profissionalRepository.findByUsuarioId(profissional.getUsuario().getId())).thenReturn(Optional.of(profissional));
+        lenient().when(validacaoService.atuacoesLiberadas(profissional)).thenReturn(profissional.atuacoesAtivas());
     }
 
     private Profissional profissional(Long id, Long usuarioId, ModalidadeAtendimento modalidade) {
-        return Profissional.builder()
+        Profissional novo = Profissional.builder()
                 .statusValidacao(StatusValidacao.APROVADO)
                 .id(id)
                 .usuario(Usuario.builder().id(usuarioId).nome("Profissional " + id).build())
-                .categoria(CategoriaProfissional.ENFERMEIRO)
                 .modalidadeAtendimento(modalidade)
                 .raioAtendimentoKm(new BigDecimal("10"))
                 .latitude(RUA_AUGUSTA.latitude())
                 .longitude(RUA_AUGUSTA.longitude())
                 .cidade("Sao Paulo")
                 .uf("SP")
-                .especialidades(Set.of(curativos))
                 .build();
+        novo.getAtuacoes().add(atuacao(id * 10, novo, CategoriaProfissional.ENFERMEIRO, curativos));
+        return novo;
+    }
+
+    private static Atuacao atuacao(Long id, Profissional profissional, CategoriaProfissional categoria,
+                                   Especialidade especialidade) {
+        return Atuacao.builder()
+                .id(id)
+                .profissional(profissional)
+                .categoria(categoria)
+                .especialidades(new LinkedHashSet<>(Set.of(especialidade)))
+                .registroProfissional("123456")
+                .registroProfissionalUf("SP")
+                .build();
+    }
+
+    private Atuacao incluirMedico() {
+        Especialidade clinica = Especialidade.builder().id(9L).nome("Clínica Médica").categoria(CategoriaProfissional.MEDICO).build();
+        Atuacao medico = atuacao(201L, profissional, CategoriaProfissional.MEDICO, clinica);
+        profissional.getAtuacoes().add(medico);
+        solicitacao.getProfissionais().add(SolicitacaoProfissional.builder()
+                .id(2L)
+                .solicitacao(solicitacao)
+                .categoria(CategoriaProfissional.MEDICO)
+                .especialidades(new LinkedHashSet<>(List.of(clinica)))
+                .quantidade(1)
+                .build());
+        return medico;
     }
 
     private Proposta proposta(Long id, Profissional autor, StatusProposta status) {
@@ -512,6 +612,7 @@ class PropostaServiceTest {
                 .id(id)
                 .solicitacao(solicitacao)
                 .profissional(autor)
+                .atuacao(autor.atuacoesAtivas().getFirst())
                 .valor(new BigDecimal("180.00"))
                 .abordagem("Curativos diários com relatório semanal.")
                 .inicio(INICIO)

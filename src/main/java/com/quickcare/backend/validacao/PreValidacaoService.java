@@ -1,6 +1,6 @@
 package com.quickcare.backend.validacao;
 
-import com.quickcare.backend.profissional.Profissional;
+import com.quickcare.backend.atuacao.Atuacao;
 import com.quickcare.backend.usuario.TipoDocumentoIdentidade;
 import com.quickcare.backend.usuario.Usuario;
 import com.quickcare.backend.validacao.dto.PreValidacaoResponse;
@@ -17,6 +17,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -31,19 +32,20 @@ public class PreValidacaoService {
     private final ConsultaCnpjService consultaCnpjService;
 
     @Transactional(readOnly = true)
-    public PreValidacaoResponse preValidar(Long adminUsuarioId, PerfilValidado perfil, Long id, TipoEtapaValidacao tipo) {
+    public PreValidacaoResponse preValidar(Long adminUsuarioId, PerfilValidado perfil, Long id, TipoEtapaValidacao tipo,
+                                           Long atuacaoId) {
         validacaoService.exigirAdministrador(adminUsuarioId);
         CadastroAvaliado cadastro = validacaoService.carregar(perfil, id);
 
-        if (!EtapasAtuais.de(validacaoService.etapas(cadastro)).containsKey(tipo)) {
-            throw new EtapaNaoEncontradaException();
-        }
+        EtapaValidacao etapa = Optional.ofNullable(EtapasAtuais.de(validacaoService.etapas(cadastro))
+                        .get(ChaveEtapa.de(tipo, atuacaoId)))
+                .orElseThrow(EtapaNaoEncontradaException::new);
 
         List<VerificacaoExterna> verificacoes = switch (tipo) {
             case CPF -> List.of(verificarCpf(cadastro));
             case IDENTIDADE -> List.of(verificarDocumentoIdentidade(cadastro.usuario()));
             case CNPJ -> List.of(consultaCnpjService.verificar(cadastro.profissional().getCnpj(), cadastro.usuario().getNome()));
-            case REGISTRO_PROFISSIONAL -> List.of(verificarRegistro(cadastro.profissional()));
+            case REGISTRO_PROFISSIONAL -> List.of(verificarRegistro(etapa.getAtuacao()));
         };
 
         Parecer parecer = Parecer.geral(verificacoes.stream().map(VerificacaoExterna::parecer).toList());
@@ -75,11 +77,11 @@ public class PreValidacaoService {
                 List.of("Número " + numero + " está no formato válido (conferido no cadastro)."));
     }
 
-    private VerificacaoExterna verificarRegistro(Profissional profissional) {
-        return VerificacaoExterna.semApi("Registro profissional",
+    private VerificacaoExterna verificarRegistro(Atuacao atuacao) {
+        return VerificacaoExterna.semApi("Registro profissional (" + atuacao.rotulo() + ")",
                 "Não há API pública gratuita dos conselhos profissionais; consulte o portal do conselho.",
-                List.of("Registro informado: " + profissional.getRegistroProfissional()
-                        + " / " + profissional.getRegistroProfissionalUf() + "."));
+                List.of("Registro informado: " + atuacao.getRegistroProfissional()
+                        + " / " + atuacao.getRegistroProfissionalUf() + "."));
     }
 
     private String sugestaoJustificativa(List<VerificacaoExterna> verificacoes, Instant consultadoEm) {

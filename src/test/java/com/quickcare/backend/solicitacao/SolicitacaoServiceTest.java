@@ -2,6 +2,8 @@ package com.quickcare.backend.solicitacao;
 
 import com.quickcare.backend.atendimento.AtendimentoRepository;
 import com.quickcare.backend.atendimento.AtendimentoService;
+import com.quickcare.backend.atuacao.Atuacao;
+import com.quickcare.backend.atuacao.dto.AtuacaoResumoResponse;
 import com.quickcare.backend.notificacao.Notificador;
 import com.quickcare.backend.ocorrencia.OcorrenciaService;
 import com.quickcare.backend.cadastro.exception.EspecialidadeInvalidaException;
@@ -45,7 +47,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -58,6 +59,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
@@ -438,11 +440,43 @@ class SolicitacaoServiceTest {
         semProposta.setId(51L);
         when(solicitacaoRepository.findDisponiveisPara(any(), any(), any(), any()))
                 .thenReturn(List.of(comProposta, semProposta));
-        when(propostaRepository.findSolicitacaoIdsComPropostaDoProfissional(20L, StatusProposta.ATIVAS))
-                .thenReturn(Set.of(50L));
+        when(propostaRepository.findAtuacoesComPropostaDoProfissional(20L, StatusProposta.ATIVAS))
+                .thenReturn(List.of(par(50L, 200L)));
 
         assertThat(service.listarDisponiveis(USUARIO_PROFISSIONAL_ID))
                 .extracting(SolicitacaoResponse::id).containsExactly(51L);
+    }
+
+    @Test
+    void comPropostaDeUmaAtuacaoContinuaDisponivelParaAOutra() {
+        Profissional profissional = mockProfissional(CategoriaProfissional.ENFERMEIRO, curativos, sondagem);
+        Atuacao cuidador = atuacao(201L, profissional, CategoriaProfissional.CUIDADOR, cuidadorIdosos);
+        profissional.getAtuacoes().add(cuidador);
+        Solicitacao duasVagas = solicitacaoPedindoEnfermeiroCurativosESondagem();
+        duasVagas.getProfissionais().add(SolicitacaoProfissional.builder()
+                .id(2L)
+                .solicitacao(duasVagas)
+                .categoria(CategoriaProfissional.CUIDADOR)
+                .especialidades(new LinkedHashSet<>(List.of(cuidadorIdosos)))
+                .quantidade(1)
+                .build());
+        when(solicitacaoRepository.findDisponiveisPara(any(), any(), any(), any())).thenReturn(List.of(duasVagas));
+        when(propostaRepository.findAtuacoesComPropostaDoProfissional(20L, StatusProposta.ATIVAS))
+                .thenReturn(List.of(par(50L, 200L)));
+
+        List<SolicitacaoResponse> disponiveis = service.listarDisponiveis(USUARIO_PROFISSIONAL_ID);
+
+        assertThat(disponiveis).singleElement().satisfies(solicitacao ->
+                assertThat(solicitacao.atuacoesParaProposta()).extracting(AtuacaoResumoResponse::id).containsExactly(201L));
+    }
+
+    @Test
+    void atuacaoComRegistroEmValidacaoNaoListaSolicitacoes() {
+        Profissional profissional = mockProfissional(CategoriaProfissional.ENFERMEIRO, curativos, sondagem);
+        when(validacaoService.atuacoesLiberadas(profissional)).thenReturn(List.of());
+
+        assertThat(service.listarDisponiveis(USUARIO_PROFISSIONAL_ID)).isEmpty();
+        verify(solicitacaoRepository, never()).findDisponiveisPara(any(), any(), any(), any());
     }
 
     @Test
@@ -451,10 +485,10 @@ class SolicitacaoServiceTest {
                 .statusValidacao(StatusValidacao.APROVADO)
                 .id(21L)
                 .modalidadeAtendimento(ModalidadeAtendimento.AMBOS)
-                .categoria(CategoriaProfissional.ENFERMEIRO)
-                .especialidades(Set.of(curativos, sondagem))
                 .build();
+        mesmoUsuario.getAtuacoes().add(atuacao(210L, mesmoUsuario, CategoriaProfissional.ENFERMEIRO, curativos, sondagem));
         when(profissionalRepository.findByUsuarioId(USUARIO_PACIENTE_ID)).thenReturn(Optional.of(mesmoUsuario));
+        when(validacaoService.atuacoesLiberadas(mesmoUsuario)).thenReturn(mesmoUsuario.atuacoesAtivas());
         when(solicitacaoRepository.findDisponiveisPara(any(), any(), any(), any()))
                 .thenReturn(List.of(solicitacaoPedindoEnfermeiroCurativosESondagem()));
 
@@ -468,8 +502,32 @@ class SolicitacaoServiceTest {
         service.listarDisponiveis(USUARIO_PROFISSIONAL_ID);
 
         verify(solicitacaoRepository).findDisponiveisPara(
-                CategoriaProfissional.ENFERMEIRO, Set.of(curativos.getId()),
+                Set.of(CategoriaProfissional.ENFERMEIRO), Set.of(curativos.getId()),
                 Set.of(ModalidadeSolicitacao.ONLINE), StatusSolicitacao.RECEBENDO_PROPOSTAS_STATUS);
+    }
+
+    private static Atuacao atuacao(Long id, Profissional profissional, CategoriaProfissional categoria,
+                                   Especialidade... especialidades) {
+        return Atuacao.builder()
+                .id(id)
+                .profissional(profissional)
+                .categoria(categoria)
+                .especialidades(new LinkedHashSet<>(Arrays.asList(especialidades)))
+                .build();
+    }
+
+    private static PropostaRepository.PropostaPorAtuacao par(Long solicitacaoId, Long atuacaoId) {
+        return new PropostaRepository.PropostaPorAtuacao() {
+            @Override
+            public Long getSolicitacaoId() {
+                return solicitacaoId;
+            }
+
+            @Override
+            public Long getAtuacaoId() {
+                return atuacaoId;
+            }
+        };
     }
 
     private static Especialidade especialidade(Long id, String nome, CategoriaProfissional categoria) {
@@ -480,8 +538,8 @@ class SolicitacaoServiceTest {
         when(pacienteRepository.findByUsuarioId(USUARIO_PACIENTE_ID)).thenReturn(Optional.of(paciente));
     }
 
-    private void mockProfissional(CategoriaProfissional categoria, Especialidade... especialidades) {
-        mockProfissional(ModalidadeAtendimento.AMBOS, categoria, especialidades);
+    private Profissional mockProfissional(CategoriaProfissional categoria, Especialidade... especialidades) {
+        return mockProfissional(ModalidadeAtendimento.AMBOS, categoria, especialidades);
     }
 
     private Profissional mockProfissional(ModalidadeAtendimento modalidade, CategoriaProfissional categoria,
@@ -490,10 +548,10 @@ class SolicitacaoServiceTest {
                 .statusValidacao(StatusValidacao.APROVADO)
                 .id(20L)
                 .modalidadeAtendimento(modalidade)
-                .categoria(categoria)
-                .especialidades(Set.of(especialidades))
                 .build();
+        profissional.getAtuacoes().add(atuacao(200L, profissional, categoria, especialidades));
         when(profissionalRepository.findByUsuarioId(USUARIO_PROFISSIONAL_ID)).thenReturn(Optional.of(profissional));
+        lenient().when(validacaoService.atuacoesLiberadas(profissional)).thenAnswer(invocation -> profissional.atuacoesAtivas());
         return profissional;
     }
 

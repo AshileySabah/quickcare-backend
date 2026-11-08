@@ -1,5 +1,8 @@
 package com.quickcare.backend.validacao;
 
+import com.quickcare.backend.atuacao.Atuacao;
+import com.quickcare.backend.atuacao.AtuacaoEventoRepository;
+import com.quickcare.backend.atuacao.AtuacaoRepository;
 import com.quickcare.backend.cadastro.exception.CpfJaCadastradoException;
 import com.quickcare.backend.notificacao.Notificador;
 import com.quickcare.backend.administrador.AdministradorRepository;
@@ -72,6 +75,10 @@ class ValidacaoServiceTest {
     private ArmazenamentoDocumentoService armazenamentoDocumentoService;
     @Mock
     private ValidacaoResponses responses;
+    @Mock
+    private AtuacaoRepository atuacaoRepository;
+    @Mock
+    private AtuacaoEventoRepository atuacaoEventoRepository;
 
     @Mock
     private Notificador notificador;
@@ -81,6 +88,7 @@ class ValidacaoServiceTest {
 
     private Usuario usuario;
     private Profissional profissional;
+    private Atuacao enfermeiro;
 
     @BeforeEach
     void setUp() {
@@ -88,11 +96,10 @@ class ValidacaoServiceTest {
         profissional = Profissional.builder()
                 .id(20L)
                 .usuario(usuario)
-                .categoria(CategoriaProfissional.ENFERMEIRO)
                 .cnpj("00000000000191")
-                .registroProfissional("123456")
-                .registroProfissionalUf("SP")
                 .build();
+        enfermeiro = atuacao(200L, CategoriaProfissional.ENFERMEIRO, "123456");
+        profissional.getAtuacoes().add(enfermeiro);
 
         lenient().when(administradorRepository.existsByUsuarioId(ADMIN_ID)).thenReturn(true);
         lenient().when(etapaRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -103,8 +110,10 @@ class ValidacaoServiceTest {
     void profissionalComCnpjERegistroPassaPorQuatroEtapas() {
         Documento cpf = Documento.builder().tipoDocumento(TipoDocumento.COMPROVANTE_CPF).build();
         Documento rg = Documento.builder().tipoDocumento(TipoDocumento.VALIDACAO_CPF).build();
+        Documento coren = Documento.builder().tipoDocumento(TipoDocumento.REGISTRO_PROFISSIONAL).build();
 
-        service.iniciar(profissional, Map.of(TipoDocumento.COMPROVANTE_CPF, cpf, TipoDocumento.VALIDACAO_CPF, rg));
+        service.iniciar(profissional, Map.of(TipoDocumento.COMPROVANTE_CPF, cpf, TipoDocumento.VALIDACAO_CPF, rg),
+                Map.of(enfermeiro, coren));
 
         ArgumentCaptor<EtapaValidacao> etapas = ArgumentCaptor.forClass(EtapaValidacao.class);
         verify(etapaRepository, times(4)).save(etapas.capture());
@@ -113,6 +122,23 @@ class ValidacaoServiceTest {
         assertThat(etapas.getAllValues()).allMatch(etapa -> etapa.getStatus() == StatusEtapa.PENDENTE);
         assertThat(etapas.getAllValues().get(0).getDocumento()).isSameAs(cpf);
         assertThat(etapas.getAllValues().get(1).getDocumento()).isSameAs(rg);
+        assertThat(etapas.getAllValues().get(3).getAtuacao()).isSameAs(enfermeiro);
+        assertThat(etapas.getAllValues().get(3).getDocumento()).isSameAs(coren);
+    }
+
+    @Test
+    void cadaAtuacaoComRegistroGanhaASuaEtapa() {
+        Atuacao psicologia = atuacao(201L, CategoriaProfissional.OUTRO, "CRP 06/1234");
+        Atuacao cuidador = atuacao(202L, CategoriaProfissional.CUIDADOR, null);
+        profissional.getAtuacoes().addAll(List.of(psicologia, cuidador));
+        profissional.setCnpj(null);
+
+        service.iniciar(profissional, Map.of(), Map.of());
+
+        ArgumentCaptor<EtapaValidacao> etapas = ArgumentCaptor.forClass(EtapaValidacao.class);
+        verify(etapaRepository, times(4)).save(etapas.capture());
+        assertThat(etapas.getAllValues()).extracting(EtapaValidacao::getAtuacao)
+                .containsExactly(null, null, enfermeiro, psicologia);
     }
 
     @Test
@@ -130,9 +156,9 @@ class ValidacaoServiceTest {
     @Test
     void cuidadorSemCnpjPassaSoPelaIdentidade() {
         profissional.setCnpj(null);
-        profissional.setRegistroProfissional(null);
+        enfermeiro.setCategoria(CategoriaProfissional.CUIDADOR);
 
-        service.iniciar(profissional, Map.of());
+        service.iniciar(profissional, Map.of(), Map.of());
 
         ArgumentCaptor<EtapaValidacao> etapas = ArgumentCaptor.forClass(EtapaValidacao.class);
         verify(etapaRepository, times(2)).save(etapas.capture());
@@ -143,7 +169,7 @@ class ValidacaoServiceTest {
     @Test
     void soAdministradorDecide() {
         assertThatThrownBy(() -> service.decidir(USUARIO_ID, PerfilValidado.PROFISSIONAL, 20L,
-                TipoEtapaValidacao.CNPJ, new DecisaoEtapaRequest(StatusEtapa.APROVADA, "CNPJ ativo na Receita."), null))
+                TipoEtapaValidacao.CNPJ, null, new DecisaoEtapaRequest(StatusEtapa.APROVADA, "CNPJ ativo na Receita."), null))
                 .isInstanceOf(PerfilNaoAutorizadoException.class);
     }
 
@@ -151,7 +177,7 @@ class ValidacaoServiceTest {
     void aprovarUmaEtapaComOutrasPendentesMantemCadastroPendente() {
         comEtapas(pendente(TipoEtapaValidacao.IDENTIDADE), pendente(TipoEtapaValidacao.CNPJ));
 
-        service.decidir(ADMIN_ID, PerfilValidado.PROFISSIONAL, 20L, TipoEtapaValidacao.CNPJ,
+        service.decidir(ADMIN_ID, PerfilValidado.PROFISSIONAL, 20L, TipoEtapaValidacao.CNPJ, null,
                 new DecisaoEtapaRequest(StatusEtapa.APROVADA, "  CNPJ ativo na Receita.  "), null);
 
         assertThat(profissional.getStatusValidacao()).isEqualTo(StatusValidacao.PENDENTE);
@@ -163,7 +189,7 @@ class ValidacaoServiceTest {
         EtapaValidacao cnpj = pendente(TipoEtapaValidacao.CNPJ);
         comEtapas(identidade, cnpj);
 
-        service.decidir(ADMIN_ID, PerfilValidado.PROFISSIONAL, 20L, TipoEtapaValidacao.CNPJ,
+        service.decidir(ADMIN_ID, PerfilValidado.PROFISSIONAL, 20L, TipoEtapaValidacao.CNPJ, null,
                 new DecisaoEtapaRequest(StatusEtapa.APROVADA, "  CNPJ ativo na Receita.  "), null);
 
         assertThat(profissional.getStatusValidacao()).isEqualTo(StatusValidacao.APROVADO);
@@ -177,7 +203,7 @@ class ValidacaoServiceTest {
         comEtapas(pendente(TipoEtapaValidacao.IDENTIDADE), cnpj);
         when(armazenamentoDocumentoService.enviarAnexoValidacao(ARQUIVO)).thenReturn("anexos-validacao/x.pdf");
 
-        service.decidir(ADMIN_ID, PerfilValidado.PROFISSIONAL, 20L, TipoEtapaValidacao.CNPJ,
+        service.decidir(ADMIN_ID, PerfilValidado.PROFISSIONAL, 20L, TipoEtapaValidacao.CNPJ, null,
                 new DecisaoEtapaRequest(StatusEtapa.REPROVADA, "CNPJ baixado na Receita."), ARQUIVO);
 
         assertThat(profissional.getStatusValidacao()).isEqualTo(StatusValidacao.REPROVADO);
@@ -189,7 +215,7 @@ class ValidacaoServiceTest {
     void naoReavaliaEtapaJaDecidida() {
         comEtapas(aprovada(TipoEtapaValidacao.CNPJ));
 
-        assertThatThrownBy(() -> service.decidir(ADMIN_ID, PerfilValidado.PROFISSIONAL, 20L, TipoEtapaValidacao.CNPJ,
+        assertThatThrownBy(() -> service.decidir(ADMIN_ID, PerfilValidado.PROFISSIONAL, 20L, TipoEtapaValidacao.CNPJ, null,
                 new DecisaoEtapaRequest(StatusEtapa.REPROVADA, "Mudei de ideia."), null))
                 .isInstanceOf(TransicaoEtapaInvalidaException.class);
     }
@@ -198,7 +224,7 @@ class ValidacaoServiceTest {
     void naoDecideEtapaQueNaoSeAplica() {
         comEtapas(pendente(TipoEtapaValidacao.IDENTIDADE));
 
-        assertThatThrownBy(() -> service.decidir(ADMIN_ID, PerfilValidado.PROFISSIONAL, 20L, TipoEtapaValidacao.CNPJ,
+        assertThatThrownBy(() -> service.decidir(ADMIN_ID, PerfilValidado.PROFISSIONAL, 20L, TipoEtapaValidacao.CNPJ, null,
                 new DecisaoEtapaRequest(StatusEtapa.APROVADA, "CNPJ ativo na Receita."), null))
                 .isInstanceOf(EtapaNaoEncontradaException.class);
     }
@@ -209,7 +235,7 @@ class ValidacaoServiceTest {
         comEtapasDoUsuario(cnpj);
         when(armazenamentoDocumentoService.enviar(TipoDocumento.VALIDACAO_CNPJ, ARQUIVO)).thenReturn("validacao_cnpj/novo.pdf");
 
-        service.reenviar(USUARIO_ID, PerfilValidado.PROFISSIONAL, TipoEtapaValidacao.CNPJ, reenvioCnpj("11222333000181"), ARQUIVO);
+        service.reenviar(USUARIO_ID, PerfilValidado.PROFISSIONAL, TipoEtapaValidacao.CNPJ, null, reenvioCnpj("11222333000181"), ARQUIVO);
 
         assertThat(profissional.getCnpj()).isEqualTo("11222333000181");
         assertThat(cnpj.getDocumento().getStorageKey()).isEqualTo("validacao_cnpj/novo.pdf");
@@ -223,7 +249,7 @@ class ValidacaoServiceTest {
         reprovada.setDocumento(anterior);
         comEtapasDoUsuario(reprovada);
 
-        service.reenviar(USUARIO_ID, PerfilValidado.PROFISSIONAL, TipoEtapaValidacao.CNPJ, reenvioCnpj("00000000000191"), null);
+        service.reenviar(USUARIO_ID, PerfilValidado.PROFISSIONAL, TipoEtapaValidacao.CNPJ, null, reenvioCnpj("00000000000191"), null);
 
         ArgumentCaptor<EtapaValidacao> nova = ArgumentCaptor.forClass(EtapaValidacao.class);
         verify(etapaRepository).save(nova.capture());
@@ -236,7 +262,7 @@ class ValidacaoServiceTest {
         profissional.setCnpj(null);
         comEtapasDoUsuario(aprovada(TipoEtapaValidacao.IDENTIDADE));
 
-        assertThatThrownBy(() -> service.reenviar(USUARIO_ID, PerfilValidado.PROFISSIONAL, TipoEtapaValidacao.CNPJ,
+        assertThatThrownBy(() -> service.reenviar(USUARIO_ID, PerfilValidado.PROFISSIONAL, TipoEtapaValidacao.CNPJ, null,
                 reenvioCnpj("11222333000181"), null))
                 .isInstanceOf(ValidacaoInvalidaException.class)
                 .hasMessageContaining("Envie o documento");
@@ -268,7 +294,7 @@ class ValidacaoServiceTest {
         aprovada.setDocumento(atual);
         comEtapasDoUsuario(aprovada);
 
-        service.reenviar(USUARIO_ID, PerfilValidado.PROFISSIONAL, TipoEtapaValidacao.CNPJ, reenvioCnpj("11222333000181"), null);
+        service.reenviar(USUARIO_ID, PerfilValidado.PROFISSIONAL, TipoEtapaValidacao.CNPJ, null, reenvioCnpj("11222333000181"), null);
 
         assertThat(profissional.getCnpj()).isEqualTo("11222333000181");
         ArgumentCaptor<EtapaValidacao> nova = ArgumentCaptor.forClass(EtapaValidacao.class);
@@ -282,7 +308,7 @@ class ValidacaoServiceTest {
         comEtapasDoUsuario(aprovada(TipoEtapaValidacao.CNPJ));
         when(armazenamentoDocumentoService.enviar(TipoDocumento.VALIDACAO_CNPJ, ARQUIVO)).thenReturn("validacao_cnpj/legivel.pdf");
 
-        service.reenviar(USUARIO_ID, PerfilValidado.PROFISSIONAL, TipoEtapaValidacao.CNPJ, reenvioCnpj("00000000000191"), ARQUIVO);
+        service.reenviar(USUARIO_ID, PerfilValidado.PROFISSIONAL, TipoEtapaValidacao.CNPJ, null, reenvioCnpj("00000000000191"), ARQUIVO);
 
         ArgumentCaptor<EtapaValidacao> nova = ArgumentCaptor.forClass(EtapaValidacao.class);
         verify(etapaRepository).save(nova.capture());
@@ -300,7 +326,7 @@ class ValidacaoServiceTest {
         comEtapasDoUsuario(aprovada(TipoEtapaValidacao.IDENTIDADE), aprovada(TipoEtapaValidacao.CNPJ));
         when(armazenamentoDocumentoService.enviar(TipoDocumento.VALIDACAO_CPF, ARQUIVO)).thenReturn("validacao_cpf/novo.pdf");
 
-        service.reenviar(USUARIO_ID, PerfilValidado.PROFISSIONAL, TipoEtapaValidacao.IDENTIDADE,
+        service.reenviar(USUARIO_ID, PerfilValidado.PROFISSIONAL, TipoEtapaValidacao.IDENTIDADE, null,
                 new ReenvioEtapaRequest(null, "52998224725", TipoDocumentoIdentidade.CNH, "02650306461", null,
                         LocalDate.of(1990, 1, 2), Genero.FEMININO, null, null, null), ARQUIVO);
 
@@ -329,7 +355,7 @@ class ValidacaoServiceTest {
         comEtapasDoUsuario(aprovada(TipoEtapaValidacao.IDENTIDADE));
         when(armazenamentoDocumentoService.enviar(TipoDocumento.VALIDACAO_CNPJ, ARQUIVO)).thenReturn("validacao_cnpj/novo.pdf");
 
-        service.reenviar(USUARIO_ID, PerfilValidado.PROFISSIONAL, TipoEtapaValidacao.CNPJ, reenvioCnpj("11222333000181"), ARQUIVO);
+        service.reenviar(USUARIO_ID, PerfilValidado.PROFISSIONAL, TipoEtapaValidacao.CNPJ, null, reenvioCnpj("11222333000181"), ARQUIVO);
 
         ArgumentCaptor<EtapaValidacao> nova = ArgumentCaptor.forClass(EtapaValidacao.class);
         verify(etapaRepository).save(nova.capture());
@@ -342,7 +368,7 @@ class ValidacaoServiceTest {
         profissional.setStatusValidacao(StatusValidacao.APROVADO);
         comEtapas(aprovada(TipoEtapaValidacao.IDENTIDADE), pendente(TipoEtapaValidacao.CNPJ));
 
-        service.decidir(ADMIN_ID, PerfilValidado.PROFISSIONAL, 20L, TipoEtapaValidacao.CNPJ,
+        service.decidir(ADMIN_ID, PerfilValidado.PROFISSIONAL, 20L, TipoEtapaValidacao.CNPJ, null,
                 new DecisaoEtapaRequest(StatusEtapa.APROVADA, "CNPJ novo ativo na Receita."), null);
 
         verify(notificador).revalidacaoAprovada(usuario, TipoPerfil.PROFISSIONAL);
@@ -355,7 +381,7 @@ class ValidacaoServiceTest {
         profissional.setStatusValidacao(StatusValidacao.REPROVADO);
         when(armazenamentoDocumentoService.enviar(TipoDocumento.VALIDACAO_CNPJ, ARQUIVO)).thenReturn("validacao_cnpj/novo.pdf");
 
-        service.reenviar(USUARIO_ID, PerfilValidado.PROFISSIONAL, TipoEtapaValidacao.CNPJ, reenvioCnpj("11222333000181"), ARQUIVO);
+        service.reenviar(USUARIO_ID, PerfilValidado.PROFISSIONAL, TipoEtapaValidacao.CNPJ, null, reenvioCnpj("11222333000181"), ARQUIVO);
 
         assertThat(profissional.getCnpj()).isEqualTo("11222333000181");
         assertThat(profissional.getStatusValidacao()).isEqualTo(StatusValidacao.PENDENTE);
@@ -375,7 +401,7 @@ class ValidacaoServiceTest {
 
         ReenvioEtapaRequest request = new ReenvioEtapaRequest("Maria Souza Lima", "52998224725",
                 TipoDocumentoIdentidade.CNH, "02650306461", null, null, null, null, null, null);
-        service.reenviar(USUARIO_ID, PerfilValidado.PROFISSIONAL, TipoEtapaValidacao.IDENTIDADE, request, ARQUIVO);
+        service.reenviar(USUARIO_ID, PerfilValidado.PROFISSIONAL, TipoEtapaValidacao.IDENTIDADE, null, request, ARQUIVO);
 
         assertThat(usuario.getNome()).isEqualTo("Maria Souza Lima");
         assertThat(usuario.getDocumentoIdentidadeTipo()).isEqualTo(TipoDocumentoIdentidade.CNH);
@@ -393,7 +419,7 @@ class ValidacaoServiceTest {
                 .thenReturn(new ArrayList<>(List.of(aprovada(TipoEtapaValidacao.CPF), aprovada(TipoEtapaValidacao.IDENTIDADE))));
         when(armazenamentoDocumentoService.enviar(TipoDocumento.COMPROVANTE_CPF, ARQUIVO)).thenReturn("comprovante_cpf/novo.pdf");
 
-        service.reenviar(USUARIO_ID, PerfilValidado.PROFISSIONAL, TipoEtapaValidacao.CPF,
+        service.reenviar(USUARIO_ID, PerfilValidado.PROFISSIONAL, TipoEtapaValidacao.CPF, null,
                 new ReenvioEtapaRequest(null, "11144477735", null, null, null, null, null, null, null, null), ARQUIVO);
 
         assertThat(usuario.getCpf()).isEqualTo("11144477735");
@@ -409,7 +435,7 @@ class ValidacaoServiceTest {
         comEtapasDoUsuario(aprovada(TipoEtapaValidacao.CPF));
         when(usuarioRepository.findByCpf("11144477735")).thenReturn(Optional.of(Usuario.builder().id(5L).build()));
 
-        assertThatThrownBy(() -> service.reenviar(USUARIO_ID, PerfilValidado.PROFISSIONAL, TipoEtapaValidacao.CPF,
+        assertThatThrownBy(() -> service.reenviar(USUARIO_ID, PerfilValidado.PROFISSIONAL, TipoEtapaValidacao.CPF, null,
                 new ReenvioEtapaRequest(null, "11144477735", null, null, null, null, null, null, null, null), ARQUIVO))
                 .isInstanceOf(CpfJaCadastradoException.class);
     }
@@ -423,7 +449,7 @@ class ValidacaoServiceTest {
 
         ReenvioEtapaRequest request = new ReenvioEtapaRequest("Maria Souza", "52998224725",
                 TipoDocumentoIdentidade.RG, "24.678.131-2", "SP", null, null, null, null, null);
-        service.reenviar(USUARIO_ID, PerfilValidado.PROFISSIONAL, TipoEtapaValidacao.IDENTIDADE, request, ARQUIVO);
+        service.reenviar(USUARIO_ID, PerfilValidado.PROFISSIONAL, TipoEtapaValidacao.IDENTIDADE, null, request, ARQUIVO);
 
         assertThat(usuario.getDocumentoIdentidadeNumero()).isEqualTo("246781312");
         verify(pacienteRepository, never()).findByUsuarioId(any());
@@ -443,8 +469,115 @@ class ValidacaoServiceTest {
         return new ReenvioEtapaRequest(null, null, null, null, null, null, null, cnpj, null, null);
     }
 
+    @Test
+    void registroDeAtuacaoNovaEmAnaliseNaoTravaAContaNemTiraOAprovado() {
+        profissional.setStatusValidacao(StatusValidacao.APROVADO);
+        Atuacao medico = atuacao(201L, CategoriaProfissional.MEDICO, "98765");
+        profissional.getAtuacoes().add(medico);
+        when(etapaRepository.findByProfissionalIdOrderByCriadoEmAscIdAsc(20L)).thenReturn(new ArrayList<>(List.of(
+                aprovada(TipoEtapaValidacao.CPF), aprovada(TipoEtapaValidacao.IDENTIDADE),
+                registro(enfermeiro, StatusEtapa.APROVADA), registro(medico, StatusEtapa.PENDENTE))));
+
+        assertThat(service.emRevalidacao(profissional)).isFalse();
+        assertThat(service.atuacoesLiberadas(profissional)).containsExactly(enfermeiro);
+        assertThat(service.atuacaoLiberada(medico)).isFalse();
+    }
+
+    @Test
+    void comUmRegistroAprovadoOCadastroEhAprovadoMesmoComOutroReprovado() {
+        Atuacao medico = atuacao(201L, CategoriaProfissional.MEDICO, "98765");
+        profissional.getAtuacoes().add(medico);
+        EtapaValidacao registroMedico = registro(medico, StatusEtapa.PENDENTE);
+        comEtapas(aprovada(TipoEtapaValidacao.CPF), aprovada(TipoEtapaValidacao.IDENTIDADE),
+                aprovada(TipoEtapaValidacao.CNPJ), registro(enfermeiro, StatusEtapa.APROVADA), registroMedico);
+
+        service.decidir(ADMIN_ID, PerfilValidado.PROFISSIONAL, 20L, TipoEtapaValidacao.REGISTRO_PROFISSIONAL, 201L,
+                new DecisaoEtapaRequest(StatusEtapa.REPROVADA, "CRM não encontrado no portal do CFM."), null);
+
+        assertThat(registroMedico.getStatus()).isEqualTo(StatusEtapa.REPROVADA);
+        assertThat(profissional.getStatusValidacao()).isEqualTo(StatusValidacao.APROVADO);
+        verify(notificador).etapaReprovada(usuario, TipoPerfil.PROFISSIONAL, "Registro profissional — Médico(a)",
+                "CRM não encontrado no portal do CFM.");
+    }
+
+    @Test
+    void todosOsRegistrosReprovadosReprovaOCadastro() {
+        comEtapas(aprovada(TipoEtapaValidacao.CPF), aprovada(TipoEtapaValidacao.IDENTIDADE),
+                aprovada(TipoEtapaValidacao.CNPJ), registro(enfermeiro, StatusEtapa.PENDENTE));
+
+        service.decidir(ADMIN_ID, PerfilValidado.PROFISSIONAL, 20L, TipoEtapaValidacao.REGISTRO_PROFISSIONAL, 200L,
+                new DecisaoEtapaRequest(StatusEtapa.REPROVADA, "COREN suspenso no conselho."), null);
+
+        assertThat(profissional.getStatusValidacao()).isEqualTo(StatusValidacao.REPROVADO);
+    }
+
+    @Test
+    void aprovarRegistroDeAtuacaoNovaAvisaQueElaFoiLiberada() {
+        profissional.setStatusValidacao(StatusValidacao.APROVADO);
+        Atuacao medico = atuacao(201L, CategoriaProfissional.MEDICO, "98765");
+        profissional.getAtuacoes().add(medico);
+        comEtapas(aprovada(TipoEtapaValidacao.CPF), aprovada(TipoEtapaValidacao.IDENTIDADE),
+                registro(enfermeiro, StatusEtapa.APROVADA), registro(medico, StatusEtapa.PENDENTE));
+
+        service.decidir(ADMIN_ID, PerfilValidado.PROFISSIONAL, 20L, TipoEtapaValidacao.REGISTRO_PROFISSIONAL, 201L,
+                new DecisaoEtapaRequest(StatusEtapa.APROVADA, "CRM ativo no portal do CFM."), null);
+
+        verify(notificador).registroAprovado(usuario, "Médico(a)");
+        verify(notificador, never()).revalidacaoAprovada(any(), any());
+    }
+
+    @Test
+    void editarORegistroDeUmaAtuacaoAbreNovaEtapaSoDela() {
+        profissional.setStatusValidacao(StatusValidacao.APROVADO);
+        comEtapasDoUsuario(aprovada(TipoEtapaValidacao.CPF), registro(enfermeiro, StatusEtapa.APROVADA));
+        when(atuacaoRepository.findByIdAndProfissionalId(200L, 20L)).thenReturn(Optional.of(enfermeiro));
+        when(armazenamentoDocumentoService.enviar(TipoDocumento.REGISTRO_PROFISSIONAL, ARQUIVO)).thenReturn("registro/novo.pdf");
+
+        service.reenviar(USUARIO_ID, PerfilValidado.PROFISSIONAL, TipoEtapaValidacao.REGISTRO_PROFISSIONAL, 200L,
+                new ReenvioEtapaRequest(null, null, null, null, null, null, null, null, "654321", "rj"), ARQUIVO);
+
+        assertThat(enfermeiro.getRegistroProfissional()).isEqualTo("654321");
+        assertThat(enfermeiro.getRegistroProfissionalUf()).isEqualTo("RJ");
+        ArgumentCaptor<EtapaValidacao> nova = ArgumentCaptor.forClass(EtapaValidacao.class);
+        verify(etapaRepository).save(nova.capture());
+        assertThat(nova.getValue().getAtuacao()).isSameAs(enfermeiro);
+        assertThat(nova.getValue().getStatus()).isEqualTo(StatusEtapa.PENDENTE);
+        verify(atuacaoEventoRepository).save(any());
+        assertThat(service.emRevalidacao(profissional)).isFalse();
+    }
+
+    @Test
+    void etapasDeAtuacaoRemovidaNaoContam() {
+        Atuacao medico = atuacao(201L, CategoriaProfissional.MEDICO, "98765");
+        medico.setRemovidoEm(java.time.Instant.parse("2026-11-01T10:00:00Z"));
+        profissional.getAtuacoes().add(medico);
+        when(etapaRepository.findByProfissionalIdOrderByCriadoEmAscIdAsc(20L)).thenReturn(new ArrayList<>(List.of(
+                aprovada(TipoEtapaValidacao.CPF), aprovada(TipoEtapaValidacao.IDENTIDADE),
+                registro(enfermeiro, StatusEtapa.PENDENTE), registro(medico, StatusEtapa.APROVADA))));
+
+        service.recalcular(profissional);
+
+        assertThat(profissional.getStatusValidacao()).isEqualTo(StatusValidacao.PENDENTE);
+    }
+
+    private Atuacao atuacao(Long id, CategoriaProfissional categoria, String registro) {
+        return Atuacao.builder()
+                .id(id)
+                .profissional(profissional)
+                .categoria(categoria)
+                .registroProfissional(registro)
+                .registroProfissionalUf(registro == null ? null : "SP")
+                .build();
+    }
+
+    private EtapaValidacao registro(Atuacao atuacao, StatusEtapa status) {
+        EtapaValidacao etapa = EtapaValidacao.pendente(TipoEtapaValidacao.REGISTRO_PROFISSIONAL, null, null, profissional, atuacao);
+        etapa.setStatus(status);
+        return etapa;
+    }
+
     private EtapaValidacao pendente(TipoEtapaValidacao tipo) {
-        return EtapaValidacao.pendente(tipo, null, null, profissional);
+        return EtapaValidacao.pendente(tipo, null, null, profissional, null);
     }
 
     private EtapaValidacao aprovada(TipoEtapaValidacao tipo) {

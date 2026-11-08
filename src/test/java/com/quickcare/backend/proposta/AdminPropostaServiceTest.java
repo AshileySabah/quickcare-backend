@@ -3,7 +3,9 @@ package com.quickcare.backend.proposta;
 import com.quickcare.backend.administrador.AcessoAdmin;
 import com.quickcare.backend.atendimento.AtendimentoRepository;
 import com.quickcare.backend.atendimento.AtendimentoService;
+import com.quickcare.backend.atuacao.Atuacao;
 import com.quickcare.backend.bloqueiousuario.BloqueioUsuarioRepository;
+import com.quickcare.backend.especialidade.CategoriaProfissional;
 import com.quickcare.backend.notificacao.Notificador;
 import com.quickcare.backend.paciente.Paciente;
 import com.quickcare.backend.profissional.Profissional;
@@ -85,14 +87,14 @@ class AdminPropostaServiceTest {
     @Test
     void naoReativaSeOProfissionalJaTemOutraValendoOuEstaoBloqueados() {
         Proposta proposta = proposta(StatusProposta.CANCELADA);
-        when(propostaRepository.existsBySolicitacaoIdAndProfissionalIdAndStatusIn(50L, 20L, StatusProposta.ATIVAS))
+        when(propostaRepository.existsBySolicitacaoIdAndAtuacaoIdAndStatusIn(50L, 200L, StatusProposta.ATIVAS))
                 .thenReturn(true);
 
         assertThatThrownBy(() -> service.alterarStatus(1L, 100L, AcaoAdminProposta.REATIVAR, "Teste"))
                 .isInstanceOf(TransicaoStatusInvalidaException.class)
                 .hasMessageContaining("outra proposta valendo");
 
-        when(propostaRepository.existsBySolicitacaoIdAndProfissionalIdAndStatusIn(50L, 20L, StatusProposta.ATIVAS))
+        when(propostaRepository.existsBySolicitacaoIdAndAtuacaoIdAndStatusIn(50L, 200L, StatusProposta.ATIVAS))
                 .thenReturn(false);
         when(bloqueioUsuarioRepository.existsByPacienteIdAndProfissionalId(10L, 20L)).thenReturn(true);
 
@@ -112,11 +114,24 @@ class AdminPropostaServiceTest {
         verify(atendimentoService, never()).cancelarPeloAdmin(any());
     }
 
+    @Test
+    void naoReativaPropostaDeAtuacaoRemovida() {
+        Proposta proposta = proposta(StatusProposta.CANCELADA);
+        proposta.getAtuacao().setRemovidoEm(Instant.parse("2026-11-01T10:00:00Z"));
+
+        assertThatThrownBy(() -> service.alterarStatus(1L, 100L, AcaoAdminProposta.REATIVAR, "Teste"))
+                .isInstanceOf(TransicaoStatusInvalidaException.class)
+                .hasMessageContaining("removeu a atuação");
+    }
+
     private Proposta proposta(StatusProposta status) {
+        Profissional profissional = Profissional.builder().id(20L)
+                .usuario(Usuario.builder().id(2L).nome("Prof").email("x@x").build()).build();
         Proposta proposta = Proposta.builder()
                 .id(100L)
                 .solicitacao(solicitacao)
-                .profissional(Profissional.builder().id(20L).usuario(Usuario.builder().id(2L).nome("Prof").email("x@x").build()).build())
+                .profissional(profissional)
+                .atuacao(Atuacao.builder().id(200L).profissional(profissional).categoria(CategoriaProfissional.ENFERMEIRO).build())
                 .status(status)
                 .valor(new BigDecimal("150"))
                 .inicio(Instant.parse("2026-12-01T11:00:00Z"))

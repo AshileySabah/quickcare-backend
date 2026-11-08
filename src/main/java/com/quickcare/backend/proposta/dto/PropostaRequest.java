@@ -14,6 +14,7 @@ public record PropostaRequest(
         @NotNull @DecimalMin("1.00") @Digits(integer = 8, fraction = 2) BigDecimal valor,
         @NotBlank @Size(min = 20, max = 1000) String abordagem,
         @NotNull @Future Instant inicio,
-        @NotNull Instant termino
+        @NotNull Instant termino,
+        Long atuacaoId
 ) {
 }

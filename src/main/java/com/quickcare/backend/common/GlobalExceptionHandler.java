@@ -26,6 +26,7 @@ import com.quickcare.backend.solicitacao.exception.TransicaoStatusInvalidaExcept
 import com.quickcare.backend.validacao.exception.CadastroNaoEncontradoException;
 import com.quickcare.backend.validacao.exception.CadastroNaoValidadoException;
 import com.quickcare.backend.validacao.exception.EtapaNaoEncontradaException;
+import com.quickcare.backend.atuacao.AtuacaoNaoEncontradaException;
 import com.quickcare.backend.validacao.exception.TransicaoEtapaInvalidaException;
 import com.quickcare.backend.validacao.exception.ValidacaoInvalidaException;
 import org.springframework.http.HttpStatus;
@@ -173,6 +174,11 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(EtapaNaoEncontradaException.class)
     public ResponseEntity<ApiError> handleEtapaNaoEncontrada(EtapaNaoEncontradaException ex) {
+        return build(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    @ExceptionHandler(AtuacaoNaoEncontradaException.class)
+    public ResponseEntity<ApiError> handleAtuacaoNaoEncontrada(AtuacaoNaoEncontradaException ex) {
         return build(HttpStatus.NOT_FOUND, ex.getMessage());
     }
 

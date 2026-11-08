@@ -65,10 +65,11 @@ public class AdminValidacaoController {
             @PathVariable String perfil,
             @PathVariable Long id,
             @PathVariable TipoEtapaValidacao tipo,
+            @RequestParam(required = false) Long atuacao,
             @Valid @RequestPart("dados") DecisaoEtapaRequest request,
             @RequestPart(value = "anexo", required = false) MultipartFile anexo
     ) {
-        return validacaoService.decidir(usuarioId, PerfilNaUrl.ler(perfil), id, tipo, request, anexo);
+        return validacaoService.decidir(usuarioId, PerfilNaUrl.ler(perfil), id, tipo, atuacao, request, anexo);
     }
 
     @PostMapping("/{perfil}/{id}/etapas/{tipo}/pre-validacao")
@@ -76,9 +77,10 @@ public class AdminValidacaoController {
             @AuthenticationPrincipal Long usuarioId,
             @PathVariable String perfil,
             @PathVariable Long id,
-            @PathVariable TipoEtapaValidacao tipo
+            @PathVariable TipoEtapaValidacao tipo,
+            @RequestParam(required = false) Long atuacao
     ) {
-        return preValidacaoService.preValidar(usuarioId, PerfilNaUrl.ler(perfil), id, tipo);
+        return preValidacaoService.preValidar(usuarioId, PerfilNaUrl.ler(perfil), id, tipo, atuacao);
     }
 
 }

@@ -1,6 +1,11 @@
 package com.quickcare.backend.validacao;
 
 import com.quickcare.backend.administrador.AdministradorRepository;
+import com.quickcare.backend.atuacao.Atuacao;
+import com.quickcare.backend.atuacao.AtuacaoEvento;
+import com.quickcare.backend.atuacao.AtuacaoEventoRepository;
+import com.quickcare.backend.atuacao.AtuacaoRepository;
+import com.quickcare.backend.atuacao.TipoEventoAtuacao;
 import com.quickcare.backend.cadastro.DocumentoIdentidade;
 import com.quickcare.backend.cadastro.exception.CpfJaCadastradoException;
 import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
@@ -34,12 +39,15 @@ import org.springframework.web.multipart.MultipartFile;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.stream.Stream;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -51,6 +59,8 @@ public class ValidacaoService {
     private final AdministradorRepository administradorRepository;
     private final UsuarioRepository usuarioRepository;
     private final DocumentoRepository documentoRepository;
+    private final AtuacaoRepository atuacaoRepository;
+    private final AtuacaoEventoRepository atuacaoEventoRepository;
     private final ArmazenamentoDocumentoService armazenamentoDocumentoService;
     private final ValidacaoResponses responses;
     private final Notificador notificador;
@@ -61,20 +71,75 @@ public class ValidacaoService {
                 etapaRepository.save(cadastro.novaEtapaPendente(tipo, documentos.get(tipo.getTipoDocumento()))));
     }
 
-    public void iniciar(Profissional profissional, Map<TipoDocumento, Documento> documentos) {
+    public void iniciar(Profissional profissional, Map<TipoDocumento, Documento> documentos,
+                        Map<Atuacao, Documento> documentosDeRegistro) {
         CadastroAvaliado cadastro = CadastroAvaliado.de(profissional);
-        etapasAplicaveis(profissional).forEach(tipo ->
+        List<TipoEtapaValidacao> daConta = new ArrayList<>(List.of(TipoEtapaValidacao.CPF, TipoEtapaValidacao.IDENTIDADE));
+        if (profissional.getCnpj() != null && !profissional.getCnpj().isBlank()) {
+            daConta.add(TipoEtapaValidacao.CNPJ);
+        }
+        daConta.forEach(tipo ->
                 etapaRepository.save(cadastro.novaEtapaPendente(tipo, documentos.get(tipo.getTipoDocumento()))));
+        profissional.atuacoesAtivas().stream()
+                .filter(Atuacao::exigeRegistro)
+                .forEach(atuacao -> etapaRepository.save(cadastro.novaEtapaDeRegistro(atuacao, documentosDeRegistro.get(atuacao))));
     }
 
-    private List<TipoEtapaValidacao> etapasAplicaveis(Profissional profissional) {
-        return Stream.of(TipoEtapaValidacao.values())
-                .filter(tipo -> switch (tipo) {
-                    case CPF, IDENTIDADE -> true;
-                    case CNPJ -> profissional.getCnpj() != null && !profissional.getCnpj().isBlank();
-                    case REGISTRO_PROFISSIONAL -> profissional.getRegistroProfissional() != null;
-                })
+    @Transactional
+    public void iniciarAtuacao(Atuacao atuacao, Documento documento) {
+        Profissional profissional = atuacao.getProfissional();
+        CadastroAvaliado cadastro = CadastroAvaliado.de(profissional);
+        List<EtapaValidacao> todas = etapas(cadastro);
+        if (atuacao.exigeRegistro()) {
+            todas.add(etapaRepository.save(cadastro.novaEtapaDeRegistro(atuacao, documento)));
+        }
+        recalcularStatus(cadastro, todas);
+    }
+
+    @Transactional
+    public void recalcular(Profissional profissional) {
+        CadastroAvaliado cadastro = CadastroAvaliado.de(profissional);
+        recalcularStatus(cadastro, etapas(cadastro));
+    }
+
+    @Transactional(readOnly = true)
+    public Map<Long, StatusEtapa> statusDosRegistros(Profissional profissional) {
+        Map<Long, StatusEtapa> status = new HashMap<>();
+        EtapasAtuais.de(etapas(CadastroAvaliado.de(profissional))).values().stream()
+                .filter(etapa -> etapa.getAtuacao() != null)
+                .forEach(etapa -> status.put(etapa.getAtuacao().getId(), etapa.getStatus()));
+        return status;
+    }
+
+    @Transactional(readOnly = true)
+    public List<Atuacao> atuacoesLiberadas(Profissional profissional) {
+        Map<Long, StatusEtapa> registros = statusDosRegistros(profissional);
+        return profissional.atuacoesAtivas().stream()
+                .filter(atuacao -> liberada(atuacao, registros))
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public boolean atuacaoLiberada(Atuacao atuacao) {
+        return atuacao.ativa() && liberada(atuacao, statusDosRegistros(atuacao.getProfissional()));
+    }
+
+    @Transactional(readOnly = true)
+    public void exigirAtuacaoLiberada(Atuacao atuacao) {
+        if (!atuacao.ativa()) {
+            throw new CadastroNaoValidadoException("Você removeu a atuação " + atuacao.rotulo()
+                    + " do seu perfil. As propostas dela não podem mais ser enviadas nem editadas.");
+        }
+        if (!atuacaoLiberada(atuacao)) {
+            throw new CadastroNaoValidadoException("O seu registro de " + atuacao.rotulo() + " está em validação. "
+                    + "Até o administrador concluir, você não pode enviar nem editar propostas dessa atuação; "
+                    + "o que já está em andamento continua normalmente.");
+        }
+    }
+
+    public static boolean liberada(Atuacao atuacao, Map<Long, StatusEtapa> registros) {
+        StatusEtapa status = registros.get(atuacao.getId());
+        return !atuacao.exigeRegistro() || status == null || status == StatusEtapa.APROVADA;
     }
 
     @Transactional(readOnly = true)
@@ -111,6 +176,7 @@ public class ValidacaoService {
             PerfilValidado perfil,
             Long id,
             TipoEtapaValidacao tipo,
+            Long atuacaoId,
             DecisaoEtapaRequest request,
             MultipartFile anexo
     ) {
@@ -122,7 +188,7 @@ public class ValidacaoService {
 
         CadastroAvaliado cadastro = carregar(perfil, id);
         List<EtapaValidacao> todas = etapas(cadastro);
-        EtapaValidacao etapa = Optional.ofNullable(EtapasAtuais.de(todas).get(tipo))
+        EtapaValidacao etapa = Optional.ofNullable(EtapasAtuais.de(todas).get(ChaveEtapa.de(tipo, atuacaoId)))
                 .orElseThrow(EtapaNaoEncontradaException::new);
 
         if (etapa.getStatus() != StatusEtapa.PENDENTE) {
@@ -140,9 +206,8 @@ public class ValidacaoService {
         etapa.setAvaliadoEm(Instant.now());
 
         StatusValidacao anterior = cadastro.statusValidacao();
-        boolean revalidando = anterior == StatusValidacao.APROVADO;
         recalcularStatus(cadastro, todas);
-        avisarDecisao(cadastro, etapa, anterior, revalidando && EtapasAtuais.todasAprovadas(EtapasAtuais.de(todas).values()));
+        avisarDecisao(cadastro, etapa, anterior, EtapasAtuais.de(todas).values());
         return responses.detalhe(cadastro, todas, true);
     }
 
@@ -157,12 +222,14 @@ public class ValidacaoService {
             Long usuarioId,
             PerfilValidado perfil,
             TipoEtapaValidacao tipo,
+            Long atuacaoId,
             ReenvioEtapaRequest request,
             MultipartFile arquivo
     ) {
         CadastroAvaliado cadastro = carregarDoUsuario(usuarioId, perfil);
         List<EtapaValidacao> todas = etapas(cadastro);
-        EtapaValidacao atual = EtapasAtuais.de(todas).get(tipo);
+        Atuacao atuacao = tipo == TipoEtapaValidacao.REGISTRO_PROFISSIONAL ? atuacaoDoCadastro(cadastro, atuacaoId) : null;
+        EtapaValidacao atual = EtapasAtuais.de(todas).get(ChaveEtapa.de(tipo, atuacaoId));
         boolean novoArquivo = arquivo != null && !arquivo.isEmpty();
 
         if (atual == null && !(tipo == TipoEtapaValidacao.CNPJ && cadastro.profissional() != null)) {
@@ -173,7 +240,7 @@ public class ValidacaoService {
             case CPF -> aplicarCpf(cadastro.usuario(), request);
             case IDENTIDADE -> aplicarIdentidade(cadastro, request);
             case CNPJ -> aplicarCnpj(cadastro.profissional(), request);
-            case REGISTRO_PROFISSIONAL -> aplicarRegistro(cadastro.profissional(), request);
+            case REGISTRO_PROFISSIONAL -> aplicarRegistro(atuacao, request, novoArquivo);
         };
         Documento anterior = atual == null ? null : atual.getDocumento();
         if (!novoArquivo && anterior == null) {
@@ -183,6 +250,8 @@ public class ValidacaoService {
         Documento documento = novoArquivo ? salvarDocumento(tipo.getTipoDocumento(), arquivo, cadastro) : anterior;
         if (atual != null && atual.getStatus() == StatusEtapa.PENDENTE) {
             atual.setDocumento(documento);
+        } else if (atuacao != null) {
+            todas.add(etapaRepository.save(cadastro.novaEtapaDeRegistro(atuacao, documento)));
         } else {
             todas.add(etapaRepository.save(cadastro.novaEtapaPendente(tipo, documento)));
         }
@@ -227,12 +296,12 @@ public class ValidacaoService {
 
     @Transactional(readOnly = true)
     public boolean emRevalidacao(Paciente paciente) {
-        return emRevalidacao(CadastroAvaliado.de(paciente));
+        return bloqueiaCriacao(CadastroAvaliado.de(paciente));
     }
 
     @Transactional(readOnly = true)
     public boolean emRevalidacao(Profissional profissional) {
-        return emRevalidacao(CadastroAvaliado.de(profissional));
+        return bloqueiaCriacao(CadastroAvaliado.de(profissional));
     }
 
     @Transactional(readOnly = true)
@@ -251,8 +320,18 @@ public class ValidacaoService {
         }
     }
 
-    boolean emRevalidacao(CadastroAvaliado cadastro) {
-        return ValidacaoResponses.emRevalidacao(cadastro, etapas(cadastro));
+    boolean bloqueiaCriacao(CadastroAvaliado cadastro) {
+        return ValidacaoResponses.bloqueiaCriacao(cadastro, etapas(cadastro));
+    }
+
+    private Atuacao atuacaoDoCadastro(CadastroAvaliado cadastro, Long atuacaoId) {
+        if (cadastro.profissional() == null || atuacaoId == null) {
+            throw new EtapaNaoEncontradaException();
+        }
+        return atuacaoRepository.findByIdAndProfissionalId(atuacaoId, cadastro.profissional().getId())
+                .filter(Atuacao::ativa)
+                .filter(Atuacao::exigeRegistro)
+                .orElseThrow(EtapaNaoEncontradaException::new);
     }
 
     private boolean aplicarCpf(Usuario usuario, ReenvioEtapaRequest request) {
@@ -300,13 +379,22 @@ public class ValidacaoService {
         return false;
     }
 
-    private boolean aplicarRegistro(Profissional profissional, ReenvioEtapaRequest request) {
+    private boolean aplicarRegistro(Atuacao atuacao, ReenvioEtapaRequest request, boolean novoArquivo) {
         if (request.registroProfissional() == null || request.registroProfissional().isBlank()
                 || request.registroProfissionalUf() == null) {
             throw new ValidacaoInvalidaException("Informe o número e a UF do registro profissional.");
         }
-        profissional.setRegistroProfissional(request.registroProfissional().trim());
-        profissional.setRegistroProfissionalUf(request.registroProfissionalUf().toUpperCase(Locale.ROOT));
+        String numero = request.registroProfissional().trim();
+        String uf = request.registroProfissionalUf().toUpperCase(Locale.ROOT);
+        String antes = atuacao.getRegistroProfissional() + " / " + atuacao.getRegistroProfissionalUf();
+
+        atuacao.setRegistroProfissional(numero);
+        atuacao.setRegistroProfissionalUf(uf);
+        atuacaoEventoRepository.save(AtuacaoEvento.builder()
+                .atuacao(atuacao)
+                .tipo(TipoEventoAtuacao.REGISTRO_ALTERADO)
+                .detalhe("De " + antes + " para " + numero + " / " + uf + (novoArquivo ? ", com documento novo." : "."))
+                .build());
         return false;
     }
 
@@ -319,7 +407,7 @@ public class ValidacaoService {
 
     private void reabrir(CadastroAvaliado cadastro, TipoEtapaValidacao tipo, Documento documento) {
         List<EtapaValidacao> todas = etapas(cadastro);
-        EtapaValidacao atual = EtapasAtuais.de(todas).get(tipo);
+        EtapaValidacao atual = EtapasAtuais.de(todas).get(ChaveEtapa.de(tipo, null));
         if (atual != null && atual.getStatus() == StatusEtapa.PENDENTE) {
             return;
         }
@@ -370,20 +458,29 @@ public class ValidacaoService {
     }
 
     private void avisarDecisao(CadastroAvaliado cadastro, EtapaValidacao etapa, StatusValidacao anterior,
-                               boolean revalidacaoConcluida) {
+                               Collection<EtapaValidacao> atuais) {
         TipoPerfil perfil = cadastro.perfil() == PerfilValidado.PACIENTE ? TipoPerfil.PACIENTE : TipoPerfil.PROFISSIONAL;
+        boolean jaAprovado = anterior == StatusValidacao.APROVADO;
 
         if (etapa.getStatus() == StatusEtapa.REPROVADA) {
-            notificador.etapaReprovada(cadastro.usuario(), perfil, etapa.getTipo(), etapa.getJustificativa());
-        } else if (revalidacaoConcluida) {
+            notificador.etapaReprovada(cadastro.usuario(), perfil, etapa.descricao(), etapa.getJustificativa());
+        } else if (jaAprovado && etapa.getAtuacao() != null) {
+            notificador.registroAprovado(cadastro.usuario(), etapa.getAtuacao().rotulo());
+        } else if (jaAprovado && EtapasAtuais.contaAprovada(atuais)) {
             notificador.revalidacaoAprovada(cadastro.usuario(), perfil);
-        } else if (cadastro.statusValidacao() == StatusValidacao.APROVADO && anterior != StatusValidacao.APROVADO) {
+        } else if (cadastro.statusValidacao() == StatusValidacao.APROVADO && !jaAprovado) {
             notificador.cadastroAprovado(cadastro.usuario(), perfil);
         }
     }
 
     private void recalcularStatus(CadastroAvaliado cadastro, List<EtapaValidacao> todas) {
-        cadastro.definirStatusValidacao(EtapasAtuais.statusDo(EtapasAtuais.de(todas).values(), cadastro.statusValidacao()));
+        Collection<EtapaValidacao> atuais = EtapasAtuais.de(todas).values();
+        Set<Long> atuacoesComEtapa = atuais.stream()
+                .filter(etapa -> etapa.getAtuacao() != null)
+                .map(etapa -> etapa.getAtuacao().getId())
+                .collect(Collectors.toSet());
+        cadastro.definirStatusValidacao(EtapasAtuais.statusDo(atuais, cadastro.statusValidacao(),
+                cadastro.profissional() != null, cadastro.temAtuacaoLiberadaSemEtapa(atuacoesComEtapa)));
     }
 
 }

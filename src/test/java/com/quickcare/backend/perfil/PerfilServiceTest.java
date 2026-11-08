@@ -1,8 +1,6 @@
 package com.quickcare.backend.perfil;
 
 import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
-import com.quickcare.backend.especialidade.CategoriaProfissional;
-import com.quickcare.backend.especialidade.Especialidade;
 import com.quickcare.backend.geolocalizacao.GeocodificacaoService;
 import com.quickcare.backend.paciente.Paciente;
 import com.quickcare.backend.paciente.PacienteRepository;
@@ -12,6 +10,7 @@ import com.quickcare.backend.perfil.dto.PerfilProfissionalResponse;
 import com.quickcare.backend.profissional.ModalidadeAtendimento;
 import com.quickcare.backend.profissional.Profissional;
 import com.quickcare.backend.profissional.ProfissionalRepository;
+import com.quickcare.backend.usuario.ContatoEmergencia;
 import com.quickcare.backend.usuario.Genero;
 import com.quickcare.backend.usuario.Usuario;
 import org.junit.jupiter.api.Test;
@@ -22,7 +21,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 
@@ -70,24 +68,17 @@ class PerfilServiceTest {
     }
 
     @Test
-    void oPerfilDoProfissionalTrazCategoriaEspecialidadesERegistro() {
+    void oPerfilDoProfissionalTrazAModalidadeEOsContatos() {
         Profissional profissional = Profissional.builder().id(20L).usuario(usuario)
-                .categoria(CategoriaProfissional.ENFERMEIRO)
-                .especialidades(new LinkedHashSet<>(List.of(
-                        Especialidade.builder().id(6L).nome("Sondagem").build(),
-                        Especialidade.builder().id(5L).nome("Curativos").build())))
-                .registroProfissional("123456")
-                .registroProfissionalUf("SP")
                 .modalidadeAtendimento(ModalidadeAtendimento.AMBOS)
-                .contatosEmergencia(new ArrayList<>())
+                .contatosEmergencia(new ArrayList<>(List.of(new ContatoEmergencia("Marcos", "11911112222"))))
                 .build();
         when(profissionalRepository.findByUsuarioId(USUARIO_ID)).thenReturn(Optional.of(profissional));
 
         PerfilProfissionalResponse perfil = service.buscarProfissional(USUARIO_ID);
 
-        assertThat(perfil.registro().categoria()).isEqualTo(CategoriaProfissional.ENFERMEIRO);
-        assertThat(perfil.registro().especialidadeIds()).containsExactly(5L, 6L);
-        assertThat(perfil.registro().registroProfissional()).isEqualTo("123456");
+        assertThat(perfil.modalidadeAtendimento()).isEqualTo(ModalidadeAtendimento.AMBOS);
+        assertThat(perfil.contatosEmergencia()).hasSize(1);
     }
 
     private Paciente paciente() {

@@ -5,6 +5,7 @@ import com.quickcare.backend.atendimento.AtendimentoRepository;
 import com.quickcare.backend.atendimento.AtendimentoService;
 import com.quickcare.backend.bloqueiousuario.BloqueioUsuarioRepository;
 import com.quickcare.backend.atendimento.StatusAtendimento;
+import com.quickcare.backend.atuacao.Atuacao;
 import com.quickcare.backend.cadastro.exception.EspecialidadeInvalidaException;
 import com.quickcare.backend.especialidade.Especialidade;
 import com.quickcare.backend.especialidade.EspecialidadeRepository;
@@ -39,6 +40,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -104,28 +106,42 @@ public class SolicitacaoService {
             throw new CadastroNaoValidadoException("Seu cadastro ainda não foi aprovado.");
         }
 
-        Set<Long> especialidadeIds = idsDasEspecialidades(profissional);
+        List<Atuacao> liberadas = validacaoService.atuacoesLiberadas(profissional);
+        Set<Long> especialidadeIds = liberadas.stream()
+                .flatMap(atuacao -> atuacao.especialidadeIds().stream())
+                .collect(Collectors.toSet());
 
         if (especialidadeIds.isEmpty()) {
             return List.of();
         }
 
         List<Solicitacao> candidatas = solicitacaoRepository.findDisponiveisPara(
-                profissional.getCategoria(),
+                liberadas.stream().map(Atuacao::getCategoria).collect(Collectors.toSet()),
                 especialidadeIds,
                 ModalidadeSolicitacao.atendidasPor(profissional.getModalidadeAtendimento()),
                 StatusSolicitacao.RECEBENDO_PROPOSTAS_STATUS);
 
-        Set<Long> comProposta = propostaRepository.findSolicitacaoIdsComPropostaDoProfissional(
-                profissional.getId(), StatusProposta.ATIVAS);
+        Set<List<Long>> comProposta = propostaRepository.findAtuacoesComPropostaDoProfissional(
+                        profissional.getId(), StatusProposta.ATIVAS).stream()
+                .map(par -> List.of(par.getSolicitacaoId(), par.getAtuacaoId()))
+                .collect(Collectors.toSet());
         Set<Long> pacientesBloqueados = bloqueioUsuarioRepository.findPacienteIdsBloqueadosCom(profissional.getId());
 
-        return responder(candidatas.stream()
+        Map<Long, List<Atuacao>> paraProposta = new HashMap<>();
+        candidatas.stream()
                 .filter(solicitacao -> !solicitacao.ehDoUsuario(usuarioId))
                 .filter(solicitacao -> !pacientesBloqueados.contains(solicitacao.getPaciente().getId()))
-                .filter(solicitacao -> !comProposta.contains(solicitacao.getId()))
-                .filter(solicitacao -> solicitacao.atendidaPor(profissional))
-                .toList());
+                .forEach(solicitacao -> {
+                    List<Atuacao> livres = solicitacao.atuacoesQueAtendem(profissional, liberadas).stream()
+                            .filter(atuacao -> !comProposta.contains(List.of(solicitacao.getId(), atuacao.getId())))
+                            .toList();
+                    if (!livres.isEmpty()) {
+                        paraProposta.put(solicitacao.getId(), livres);
+                    }
+                });
+
+        return responder(candidatas.stream().filter(solicitacao -> paraProposta.containsKey(solicitacao.getId())).toList(),
+                paraProposta);
     }
 
     @Transactional(readOnly = true)
@@ -134,19 +150,30 @@ public class SolicitacaoService {
         Solicitacao solicitacao = solicitacaoRepository.findById(id)
                 .orElseThrow(SolicitacaoNaoEncontradaException::new);
 
-        boolean ehDono = solicitacao.ehDoUsuario(usuarioId);
-        boolean ehProfissionalEnvolvido = profissionalRepository.findByUsuarioId(usuarioId)
-                .map(profissional -> propostaRepository.existsBySolicitacaoIdAndProfissionalIdAndStatusNot(
-                                id, profissional.getId(), StatusProposta.CANCELADA)
-                        || (solicitacao.atendidaPor(profissional) && !bloqueioUsuarioRepository
-                                .existsByPacienteIdAndProfissionalId(solicitacao.getPaciente().getId(), profissional.getId())))
-                .orElse(false);
+        if (solicitacao.ehDoUsuario(usuarioId)) {
+            return responder(solicitacao);
+        }
+        Profissional profissional = profissionalRepository.findByUsuarioId(usuarioId)
+                .orElseThrow(SolicitacaoNaoEncontradaException::new);
 
-        if (!ehDono && !ehProfissionalEnvolvido) {
+        boolean bloqueados = bloqueioUsuarioRepository.existsByPacienteIdAndProfissionalId(
+                solicitacao.getPaciente().getId(), profissional.getId());
+        List<Atuacao> liberadas = validacaoService.atuacoesLiberadas(profissional);
+        List<Atuacao> livres = bloqueados || !solicitacao.getStatus().recebePropostas()
+                ? List.of()
+                : solicitacao.atuacoesQueAtendem(profissional, liberadas).stream()
+                        .filter(atuacao -> !propostaRepository.existsBySolicitacaoIdAndAtuacaoIdAndStatusIn(
+                                id, atuacao.getId(), StatusProposta.ATIVAS))
+                        .toList();
+        boolean envolvido = propostaRepository.existsBySolicitacaoIdAndProfissionalIdAndStatusNot(
+                id, profissional.getId(), StatusProposta.CANCELADA)
+                || (!bloqueados && solicitacao.atendidaPor(profissional, liberadas));
+
+        if (!envolvido) {
             throw new SolicitacaoNaoEncontradaException();
         }
 
-        return responder(solicitacao);
+        return responder(List.of(solicitacao), Map.of(solicitacao.getId(), livres)).getFirst();
     }
 
     @Transactional
@@ -201,6 +228,10 @@ public class SolicitacaoService {
     }
 
     private List<SolicitacaoResponse> responder(List<Solicitacao> solicitacoes) {
+        return responder(solicitacoes, Map.of());
+    }
+
+    private List<SolicitacaoResponse> responder(List<Solicitacao> solicitacoes, Map<Long, List<Atuacao>> paraProposta) {
         if (solicitacoes.isEmpty()) {
             return List.of();
         }
@@ -218,7 +249,8 @@ public class SolicitacaoService {
                 .map(solicitacao -> SolicitacaoResponse.de(
                         solicitacao,
                         totalPorSolicitacao.getOrDefault(solicitacao.getId(), 0L),
-                        ativosPorSolicitacao.getOrDefault(solicitacao.getId(), List.of())))
+                        ativosPorSolicitacao.getOrDefault(solicitacao.getId(), List.of()),
+                        paraProposta.getOrDefault(solicitacao.getId(), List.of())))
                 .toList();
     }
 
@@ -312,12 +344,6 @@ public class SolicitacaoService {
         Paciente paciente = buscarPacienteAtivo(usuarioId);
         return solicitacaoRepository.findByIdAndPacienteId(id, paciente.getId())
                 .orElseThrow(SolicitacaoNaoEncontradaException::new);
-    }
-
-    private Set<Long> idsDasEspecialidades(Profissional profissional) {
-        return profissional.getEspecialidades().stream()
-                .map(Especialidade::getId)
-                .collect(Collectors.toSet());
     }
 
 }

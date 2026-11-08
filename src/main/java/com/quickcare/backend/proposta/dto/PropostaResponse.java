@@ -48,9 +48,8 @@ public record PropostaResponse(
                         : SolicitacaoResumoResponse.de(proposta.getSolicitacao(), aceita,
                                 aceita ? avatarDe.apply(proposta.getSolicitacao().getPaciente().getUsuario()) : null),
                 ocultar == Ocultar.PROFISSIONAL
-                        ? ProfissionalPropostaResponse.indisponivel(proposta.getProfissional())
-                        : ProfissionalPropostaResponse.de(proposta.getProfissional(),
-                                avatarDe.apply(proposta.getProfissional().getUsuario())),
+                        ? ProfissionalPropostaResponse.indisponivel(proposta)
+                        : ProfissionalPropostaResponse.de(proposta, avatarDe.apply(proposta.getProfissional().getUsuario())),
                 proposta.getValor(),
                 proposta.getAbordagem(),
                 proposta.getInicio(),

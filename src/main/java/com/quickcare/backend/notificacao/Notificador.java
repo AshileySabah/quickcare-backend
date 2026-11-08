@@ -18,7 +18,6 @@ import com.quickcare.backend.solicitacao.AcaoAdminSolicitacao;
 import com.quickcare.backend.solicitacao.Solicitacao;
 import com.quickcare.backend.usuario.TipoPerfil;
 import com.quickcare.backend.usuario.Usuario;
-import com.quickcare.backend.validacao.TipoEtapaValidacao;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -394,12 +393,19 @@ public class Notificador {
                 "Revalidação aprovada", mensagem, inicioDo(perfil), true);
     }
 
-    public void etapaReprovada(Usuario usuario, TipoPerfil perfil, TipoEtapaValidacao etapa, String justificativa) {
+    public void etapaReprovada(Usuario usuario, TipoPerfil perfil, String etapa, String justificativa) {
         notificacaoService.notificar(usuario, perfil, TipoNotificacao.ETAPA_REPROVADA,
                 "Cadastro precisa de ajustes",
-                limitar("A etapa " + etapa.getDescricao() + " foi reprovada: " + comPontoFinal(justificativa)
+                limitar("A etapa " + etapa + " foi reprovada: " + comPontoFinal(justificativa)
                         + " Corrija os dados e reenvie o documento."),
                 validacaoDo(perfil), true);
+    }
+
+    public void registroAprovado(Usuario usuario, String atuacao) {
+        notificacaoService.notificar(usuario, TipoPerfil.PROFISSIONAL, TipoNotificacao.CADASTRO_APROVADO,
+                "Registro aprovado",
+                limitar("O seu registro de " + atuacao + " foi aprovado. Você já pode enviar propostas dessa atuação."),
+                inicioDo(TipoPerfil.PROFISSIONAL), true);
     }
 
     private enum Destaque {

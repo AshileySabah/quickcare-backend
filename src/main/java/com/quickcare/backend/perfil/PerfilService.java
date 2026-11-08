@@ -3,7 +3,6 @@ package com.quickcare.backend.perfil;
 import com.quickcare.backend.cadastro.dto.ContatoEmergenciaRequest;
 import com.quickcare.backend.cadastro.exception.RaioAtendimentoObrigatorioException;
 import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
-import com.quickcare.backend.especialidade.Especialidade;
 import com.quickcare.backend.geolocalizacao.GeocodificacaoService;
 import com.quickcare.backend.paciente.Paciente;
 import com.quickcare.backend.paciente.PacienteRepository;
@@ -11,7 +10,6 @@ import com.quickcare.backend.perfil.dto.AtualizarPerfilPacienteRequest;
 import com.quickcare.backend.perfil.dto.AtualizarPerfilProfissionalRequest;
 import com.quickcare.backend.perfil.dto.ContatoEmergenciaResponse;
 import com.quickcare.backend.perfil.dto.DeclaracoesResponse;
-import com.quickcare.backend.perfil.dto.RegistroProfissionalResponse;
 import com.quickcare.backend.perfil.dto.PerfilPacienteResponse;
 import com.quickcare.backend.perfil.dto.PerfilProfissionalResponse;
 import com.quickcare.backend.profissional.ModalidadeAtendimento;
@@ -168,12 +166,7 @@ public class PerfilService {
                 profissional.getBairro(),
                 profissional.getCidade(),
                 profissional.getUf(),
-                new DeclaracoesResponse(profissional.isConfirmacaoInformacoesVerdadeiras(), profissional.isConsentimentoLgpd()),
-                new RegistroProfissionalResponse(
-                        profissional.getCategoria(),
-                        profissional.getEspecialidades().stream().map(Especialidade::getId).sorted().toList(),
-                        profissional.getRegistroProfissional(),
-                        profissional.getRegistroProfissionalUf())
+                new DeclaracoesResponse(profissional.isConfirmacaoInformacoesVerdadeiras(), profissional.isConsentimentoLgpd())
         );
     }
 

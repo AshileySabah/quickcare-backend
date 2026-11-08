@@ -1,5 +1,6 @@
 package com.quickcare.backend.proposta;
 
+import com.quickcare.backend.atuacao.Atuacao;
 import com.quickcare.backend.profissional.Profissional;
 import com.quickcare.backend.solicitacao.Solicitacao;
 import com.quickcare.backend.solicitacao.SolicitacaoProfissional;
@@ -45,6 +46,10 @@ public class Proposta {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "profissional_id", nullable = false)
     private Profissional profissional;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "atuacao_id", nullable = false)
+    private Atuacao atuacao;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "solicitacao_profissional_id")

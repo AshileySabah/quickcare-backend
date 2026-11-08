@@ -1,8 +1,9 @@
 package com.quickcare.backend.validacao;
 
+import com.quickcare.backend.atuacao.Atuacao;
+import com.quickcare.backend.atuacao.dto.AtuacaoResumoResponse;
 import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
 import com.quickcare.backend.documento.Documento;
-import com.quickcare.backend.especialidade.Especialidade;
 import com.quickcare.backend.paciente.Paciente;
 import com.quickcare.backend.profissional.Profissional;
 import com.quickcare.backend.usuario.Usuario;
@@ -16,7 +17,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -32,6 +33,7 @@ class ValidacaoResponses {
                 cadastro.perfil(),
                 cadastro.statusValidacao(),
                 emRevalidacao(cadastro, todasEtapas),
+                bloqueiaCriacao(cadastro, todasEtapas),
                 cadastro.criadoEm(),
                 dados(cadastro),
                 etapas(cadastro, todasEtapas, exibirAvaliador)
@@ -49,7 +51,9 @@ class ValidacaoResponses {
                 cadastro.perfil(),
                 usuario.getNome(),
                 usuario.getEmail(),
-                cadastro.profissional() != null ? cadastro.profissional().getCategoria() : null,
+                cadastro.profissional() == null
+                        ? List.of()
+                        : cadastro.profissional().atuacoesAtivas().stream().map(Atuacao::rotulo).toList(),
                 cadastro.statusValidacao(),
                 emRevalidacao(cadastro, todasEtapas),
                 cadastro.criadoEm(),
@@ -60,6 +64,11 @@ class ValidacaoResponses {
     static boolean emRevalidacao(CadastroAvaliado cadastro, List<EtapaValidacao> todasEtapas) {
         return cadastro.statusValidacao() == StatusValidacao.APROVADO
                 && !EtapasAtuais.todasAprovadas(EtapasAtuais.de(todasEtapas).values());
+    }
+
+    static boolean bloqueiaCriacao(CadastroAvaliado cadastro, List<EtapaValidacao> todasEtapas) {
+        return cadastro.statusValidacao() == StatusValidacao.APROVADO
+                && !EtapasAtuais.contaAprovada(EtapasAtuais.de(todasEtapas).values());
     }
 
     private DadosCadastraisResponse dados(CadastroAvaliado cadastro) {
@@ -86,19 +95,18 @@ class ValidacaoResponses {
                 ehPaciente ? paciente.getBairro() : profissional.getBairro(),
                 ehPaciente ? paciente.getCidade() : profissional.getCidade(),
                 ehPaciente ? paciente.getUf() : profissional.getUf(),
-                ehPaciente ? null : profissional.getCategoria(),
-                ehPaciente ? null : profissional.getEspecialidades().stream().map(Especialidade::getNome).sorted().toList(),
-                ehPaciente ? null : profissional.getCnpj(),
-                ehPaciente ? null : profissional.getRegistroProfissional(),
-                ehPaciente ? null : profissional.getRegistroProfissionalUf()
+                ehPaciente ? List.of() : profissional.atuacoesAtivas().stream().map(AtuacaoResumoResponse::de).toList(),
+                ehPaciente ? null : profissional.getCnpj()
         );
     }
 
     private List<EtapaValidacaoResponse> etapas(CadastroAvaliado cadastro, List<EtapaValidacao> todasEtapas, boolean paraOAdmin) {
-        Map<TipoEtapaValidacao, List<EtapaValidacao>> porTipo = new EnumMap<>(TipoEtapaValidacao.class);
-        todasEtapas.forEach(etapa -> porTipo.computeIfAbsent(etapa.getTipo(), tipo -> new ArrayList<>()).add(etapa));
+        Map<ChaveEtapa, List<EtapaValidacao>> porChave = new LinkedHashMap<>();
+        todasEtapas.stream()
+                .filter(EtapaValidacao::vigente)
+                .forEach(etapa -> porChave.computeIfAbsent(etapa.chave(), chave -> new ArrayList<>()).add(etapa));
 
-        return porTipo.values().stream()
+        return porChave.values().stream()
                 .map(avaliacoes -> {
                     List<EtapaValidacao> maisRecentesPrimeiro = new ArrayList<>(avaliacoes);
                     Collections.reverse(maisRecentesPrimeiro);
@@ -116,7 +124,8 @@ class ValidacaoResponses {
         return new EtapaValidacaoResponse(
                 etapa.getId(),
                 etapa.getTipo(),
-                etapa.getTipo().getDescricao(),
+                etapa.descricao(),
+                etapa.getAtuacao() == null ? null : AtuacaoResumoResponse.de(etapa.getAtuacao()),
                 etapa.getStatus(),
                 etapa.getJustificativa(),
                 documento(cadastro, etapa, paraOAdmin),

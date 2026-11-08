@@ -1,8 +1,8 @@
 package com.quickcare.backend.cadastro.dto;
 
+import com.quickcare.backend.atuacao.dto.AtuacaoRequest;
 import com.quickcare.backend.common.validation.Cnpj;
 import com.quickcare.backend.common.validation.Cpf;
-import com.quickcare.backend.especialidade.CategoriaProfissional;
 import com.quickcare.backend.profissional.ModalidadeAtendimento;
 import com.quickcare.backend.usuario.Genero;
 import com.quickcare.backend.usuario.TipoDocumentoIdentidade;
@@ -32,10 +32,7 @@ public record CadastroProfissionalRequest(
         @NotBlank @Size(max = 20) String documentoIdentidadeNumero,
         @Pattern(regexp = "(?i)^[a-z]{2}$") String documentoIdentidadeUf,
         @Pattern(regexp = "\\d{14}") @Cnpj String cnpj,
-        @NotNull CategoriaProfissional categoria,
-        @NotEmpty List<Long> especialidadeIds,
-        String registroProfissional,
-        @Pattern(regexp = "(?i)^[a-z]{2}$") String registroProfissionalUf,
+        @NotEmpty @Valid List<AtuacaoRequest> atuacoes,
         @NotNull @Past LocalDate dataNascimento,
         @NotNull Genero genero,
         @Valid List<ContatoEmergenciaRequest> contatosEmergencia,
@@ -54,10 +51,9 @@ public record CadastroProfissionalRequest(
 ) {
 
     public NovoPerfilProfissionalRequest perfil() {
-        return new NovoPerfilProfissionalRequest(cnpj, categoria, especialidadeIds, registroProfissional,
-                registroProfissionalUf, dataNascimento, genero, contatosEmergencia, confirmacaoInformacoesVerdadeiras,
-                consentimentoLgpd, possuiSeguroResponsabilidadeCivil, modalidadeAtendimento, raioAtendimentoKm,
-                cep, logradouro, numero, complemento, bairro, cidade, uf);
+        return new NovoPerfilProfissionalRequest(cnpj, atuacoes, dataNascimento, genero, contatosEmergencia,
+                confirmacaoInformacoesVerdadeiras, consentimentoLgpd, possuiSeguroResponsabilidadeCivil,
+                modalidadeAtendimento, raioAtendimentoKm, cep, logradouro, numero, complemento, bairro, cidade, uf);
     }
 
 }
