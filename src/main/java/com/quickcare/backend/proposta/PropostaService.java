@@ -119,7 +119,8 @@ public class PropostaService {
     @Transactional(readOnly = true)
     public List<PropostaResponse> listarDoProfissional(Long usuarioId) {
         atendimentoService.processarVencidos();
-        Profissional profissional = buscarProfissionalAtivo(usuarioId);
+        Profissional profissional = profissionalRepository.findByUsuarioId(usuarioId)
+                .orElseThrow(() -> new PerfilNaoAutorizadoException("Apenas profissionais podem gerenciar propostas."));
         return responder(propostaRepository.findByProfissionalIdOrderByCriadoEmDesc(profissional.getId()), usuarioId);
     }
 

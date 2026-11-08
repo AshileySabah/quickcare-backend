@@ -107,7 +107,7 @@ public class Denuncia {
             criadoEm = Instant.now();
         }
         if (status == null) {
-            status = StatusDenuncia.ABERTA;
+            status = StatusDenuncia.EM_ANALISE;
         }
     }
 
@@ -133,14 +133,6 @@ public class Denuncia {
 
     public TipoPerfil perfilDenunciado() {
         return denunciante == LadoAtendimento.PACIENTE ? TipoPerfil.PROFISSIONAL : TipoPerfil.PACIENTE;
-    }
-
-    public void iniciarAnalise(Usuario admin, Instant agora) {
-        exigir(status == StatusDenuncia.ABERTA, status == StatusDenuncia.EM_ANALISE
-                ? "Esta denúncia já está em análise." : "Esta denúncia já foi julgada.");
-        status = StatusDenuncia.EM_ANALISE;
-        analisadaPor = admin;
-        analiseIniciadaEm = agora;
     }
 
     public void julgar(StatusDenuncia resultado, ConsequenciaDenuncia consequencia, String justificativa,

@@ -1350,7 +1350,8 @@ BEGIN
     INSERT INTO denuncia (paciente_id, profissional_id, denunciante, motivo, descricao, status, consequencia,
                           justificativa_decisao, analise_iniciada_em, analisada_por_usuario_id,
                           decidida_em, decidida_por_usuario_id, ocorrencia_id, criado_em)
-    VALUES (v_paciente, v_profissional, p_denunciante, p_motivo, p_descricao, p_status, p_consequencia,
+    VALUES (v_paciente, v_profissional, p_denunciante, p_motivo, p_descricao,
+            CASE p_status WHEN 'ABERTA' THEN 'EM_ANALISE' ELSE p_status END, p_consequencia,
             CASE WHEN p_status IN ('PROCEDENTE', 'IMPROCEDENTE') THEN p_justificativa END,
             CASE WHEN p_status <> 'ABERTA' THEN now() - make_interval(hours => p_horas_atras * 3 / 4) END,
             CASE WHEN p_status <> 'ABERTA' THEN v_admin END,
@@ -1379,3 +1380,237 @@ SELECT pg_temp.seed_denuncia('helena@quickcare.dev', 'fabio@quickcare.dev', 'PAC
 SELECT pg_temp.seed_denuncia('maria@quickcare.dev', 'bruno@quickcare.dev', 'PROFISSIONAL', 'COMPORTAMENTO_INADEQUADO',
        'Teste denúncia: a família gritou comigo durante o plantão e me impediu de registrar a medicação.',
        'ABERTA', NULL, NULL, 3, NULL);
+CREATE OR REPLACE FUNCTION pg_temp.resetar_massa(p_emails TEXT[]) RETURNS VOID AS $$
+DECLARE
+    v_usuarios BIGINT[];
+    v_pacientes BIGINT[];
+    v_profissionais BIGINT[];
+BEGIN
+    SELECT array_agg(id) INTO v_usuarios FROM usuario WHERE email = ANY (p_emails);
+    IF v_usuarios IS NULL THEN
+        RETURN;
+    END IF;
+    SELECT array_agg(id) INTO v_pacientes FROM paciente WHERE usuario_id = ANY (v_usuarios);
+    SELECT array_agg(id) INTO v_profissionais FROM profissional WHERE usuario_id = ANY (v_usuarios);
+
+    DELETE FROM banimento WHERE usuario_id = ANY (v_usuarios);
+    DELETE FROM denuncia WHERE paciente_id = ANY (coalesce(v_pacientes, '{}')) OR profissional_id = ANY (coalesce(v_profissionais, '{}'));
+    DELETE FROM solicitacao WHERE paciente_id = ANY (coalesce(v_pacientes, '{}'));
+    DELETE FROM proposta WHERE profissional_id = ANY (coalesce(v_profissionais, '{}'));
+    DELETE FROM ocorrencia WHERE usuario_id = ANY (v_usuarios);
+    DELETE FROM bloqueio WHERE usuario_id = ANY (v_usuarios);
+    DELETE FROM bloqueio_usuario
+    WHERE paciente_id = ANY (coalesce(v_pacientes, '{}')) OR profissional_id = ANY (coalesce(v_profissionais, '{}'));
+    DELETE FROM notificacao WHERE usuario_id = ANY (v_usuarios);
+    UPDATE paciente SET banido = FALSE WHERE id = ANY (coalesce(v_pacientes, '{}'));
+    UPDATE profissional SET banido = FALSE WHERE id = ANY (coalesce(v_profissionais, '{}'));
+END;
+$$ LANGUAGE plpgsql;
+
+SELECT pg_temp.resetar_massa(ARRAY['igor@quickcare.dev', 'joana@quickcare.dev', 'kleber@quickcare.dev',
+                                   'leandro@quickcare.dev', 'nina@quickcare.dev']);
+INSERT INTO usuario (nome, email, senha_hash, cpf, telefone,
+                     documento_identidade_tipo, documento_identidade_numero, documento_identidade_uf)
+VALUES ('Igor Lima', 'igor@quickcare.dev', '$2a$10$ZgmQejKpnZ53yyHq49/Ey.D/MF1qIcHNerLZC7U1L2sh.ZS6xV3aq',
+        '86249173508', '11961110011', 'RG', '246781312', 'SP'),
+       ('Joana Pires', 'joana@quickcare.dev', '$2a$10$ZgmQejKpnZ53yyHq49/Ey.D/MF1qIcHNerLZC7U1L2sh.ZS6xV3aq',
+        '97351284619', '11961110012', 'RG', '246781312', 'SP'),
+       ('Kleber Souza', 'kleber@quickcare.dev', '$2a$10$ZgmQejKpnZ53yyHq49/Ey.D/MF1qIcHNerLZC7U1L2sh.ZS6xV3aq',
+        '18462395720', '11961110013', 'RG', '246781312', 'SP'),
+       ('Leandro Melo', 'leandro@quickcare.dev', '$2a$10$ZgmQejKpnZ53yyHq49/Ey.D/MF1qIcHNerLZC7U1L2sh.ZS6xV3aq',
+        '29573416831', '11961110014', 'RG', '246781312', 'SP'),
+       ('Nina Costa', 'nina@quickcare.dev', '$2a$10$ZgmQejKpnZ53yyHq49/Ey.D/MF1qIcHNerLZC7U1L2sh.ZS6xV3aq',
+        '30684527942', '11961110015', 'RG', '246781312', 'SP')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO paciente (usuario_id, status_validacao, data_nascimento, genero, confirmacao_informacoes_verdadeiras,
+                      consentimento_lgpd, cep, logradouro, numero, bairro, cidade, uf)
+SELECT u.id, 'APROVADO', p.nascimento, p.genero, TRUE, TRUE,
+       '01311200', 'Rua Haddock Lobo', p.numero, 'Cerqueira César', 'São Paulo', 'SP'
+FROM (VALUES ('igor@quickcare.dev', DATE '1979-02-11', 'MASCULINO', '510'),
+             ('joana@quickcare.dev', DATE '1965-07-19', 'FEMININO', '520'),
+             ('nina@quickcare.dev', DATE '1990-03-05', 'FEMININO', '530')) AS p (email, nascimento, genero, numero)
+JOIN usuario u ON u.email = p.email
+ON CONFLICT DO NOTHING;
+
+INSERT INTO profissional (usuario_id, status_validacao,
+                          data_nascimento, genero, confirmacao_informacoes_verdadeiras, consentimento_lgpd,
+                          possui_seguro_responsabilidade_civil, modalidade_atendimento, raio_atendimento_km,
+                          cep, logradouro, numero, bairro, cidade, uf, latitude, longitude)
+SELECT u.id, 'APROVADO', p.nascimento, p.genero, TRUE, TRUE, TRUE, 'AMBOS', 20,
+       '01311000', 'Rua Augusta', p.numero, 'Consolação', 'São Paulo', 'SP', -23.555000, -46.655000
+FROM (VALUES ('kleber@quickcare.dev', DATE '1983-05-22', 'MASCULINO', '1800'),
+             ('leandro@quickcare.dev', DATE '1986-09-14', 'MASCULINO', '1900')) AS p (email, nascimento, genero, numero)
+JOIN usuario u ON u.email = p.email
+ON CONFLICT DO NOTHING;
+
+SELECT pg_temp.seed_atuacao('kleber@quickcare.dev', 'ENFERMEIRO', '466666', 'SP', ARRAY['Curativos']);
+SELECT pg_temp.seed_atuacao('leandro@quickcare.dev', 'ENFERMEIRO', '477777', 'SP', ARRAY['Curativos']);
+
+SELECT pg_temp.seed_etapa_profissional(e.email, e.tipo, e.categoria, 'APROVADA', 30, e.justificativa, e.arquivo)
+FROM (VALUES ('kleber@quickcare.dev', 'CPF', NULL, 'CPF regular na Receita.', 'cpf-kleber.pdf'),
+             ('kleber@quickcare.dev', 'IDENTIDADE', NULL, 'RG legível, dados conferem.', 'rg-kleber.pdf'),
+             ('kleber@quickcare.dev', 'REGISTRO_PROFISSIONAL', 'ENFERMEIRO', 'COREN ativo no portal do conselho.', 'coren-kleber.pdf'),
+             ('leandro@quickcare.dev', 'CPF', NULL, 'CPF regular na Receita.', 'cpf-leandro.pdf'),
+             ('leandro@quickcare.dev', 'IDENTIDADE', NULL, 'RG legível, dados conferem.', 'rg-leandro.pdf'),
+             ('leandro@quickcare.dev', 'REGISTRO_PROFISSIONAL', 'ENFERMEIRO', 'COREN ativo no portal do conselho.', 'coren-leandro.pdf'))
+     AS e (email, tipo, categoria, justificativa, arquivo);
+
+SELECT pg_temp.seed_solicitacao('joana@quickcare.dev', s.descricao, 'PRESENCIAL', 'ENFERMEIRO', 'Curativos', s.status, s.prazo, s.dias_atras)
+FROM (VALUES ('Teste banimento: curativo semanal, com proposta pendente do Leandro.', 'RECEBENDO_PROPOSTAS', 10, 2),
+             ('Teste banimento: curativo agendado com o Leandro para daqui a 5 dias.', 'EM_ANDAMENTO', 5, 6),
+             ('Teste banimento: curativo que terminou ontem com o Leandro.', 'EM_ANDAMENTO', -1, 8))
+     AS s (descricao, status, prazo, dias_atras);
+
+SELECT pg_temp.seed_proposta_da_atuacao(p.descricao, 'leandro@quickcare.dev', 'ENFERMEIRO', p.valor, p.abordagem, p.status, p.dias_atras)
+FROM (VALUES ('Teste banimento: curativo semanal, com proposta pendente do Leandro.', 140.00,
+              'Curativo semanal com registro da evolução da ferida.', 'PENDENTE', 1),
+             ('Teste banimento: curativo agendado com o Leandro para daqui a 5 dias.', 150.00,
+              'Curativo com troca de cobertura e orientação para a família.', 'ACEITA', 5),
+             ('Teste banimento: curativo que terminou ontem com o Leandro.', 145.00,
+              'Limpeza e curativo da ferida com orientação para os próximos dias.', 'ACEITA', 7))
+     AS p (descricao, valor, abordagem, status, dias_atras);
+
+INSERT INTO atendimento (proposta_id, solicitacao_id, status, inicio, termino, aceito_em, criado_em,
+                         lembrete_24h_em, lembrete_30min_em, lembrete_inicio_em)
+SELECT p.id, p.solicitacao_id,
+       CASE
+           WHEN now() < p.inicio THEN 'AGENDADO'
+           WHEN now() < p.termino THEN 'EM_ANDAMENTO'
+           WHEN now() < p.termino + INTERVAL '72 hours' THEN 'FINALIZADO'
+           ELSE 'CONCLUIDO'
+       END,
+       p.inicio, p.termino, now() - INTERVAL '4 days', now() - INTERVAL '4 days',
+       CASE WHEN now() >= p.inicio THEN p.inicio END,
+       CASE WHEN now() >= p.inicio THEN p.inicio END,
+       CASE WHEN now() >= p.inicio THEN p.inicio END
+FROM proposta p
+JOIN solicitacao s ON s.id = p.solicitacao_id
+WHERE s.descricao LIKE 'Teste banimento:%' AND p.status = 'ACEITA'
+  AND NOT EXISTS (SELECT 1 FROM atendimento a WHERE a.proposta_id = p.id);
+
+SELECT pg_temp.seed_denuncia('joana@quickcare.dev', 'leandro@quickcare.dev', 'PACIENTE', 'FRAUDE',
+       'Teste banimento: pediu o pagamento do próximo curativo por Pix, fora da plataforma, e disse que assim sairia mais barato.',
+       'ABERTA', NULL, NULL, 5, NULL);
+
+INSERT INTO banimento (usuario_id, perfil, tipo, inicio, fim, justificativa, aplicado_por_usuario_id,
+                       recurso_texto, recurso_status, recurso_criado_em, criado_em)
+SELECT u.id, b.perfil, b.tipo, now() - b.desde, CASE WHEN b.tipo = 'SUSPENSAO' THEN now() + b.ate END,
+       b.justificativa, adm.id, b.recurso, CASE WHEN b.recurso IS NOT NULL THEN 'EM_ANALISE' END,
+       CASE WHEN b.recurso IS NOT NULL THEN now() - INTERVAL '1 day' END, now() - b.desde
+FROM (VALUES ('igor@quickcare.dev', 'PACIENTE', 'SUSPENSAO', INTERVAL '2 days', INTERVAL '13 days',
+              'Ofendeu a profissional por mensagem depois do atendimento, com prints confirmados.', NULL),
+             ('kleber@quickcare.dev', 'PROFISSIONAL', 'PERMANENTE', INTERVAL '3 days', NULL,
+              'Documentos de registro falsificados, confirmados com o conselho.',
+              'O registro é verdadeiro, só estava desatualizado no portal do conselho. Posso enviar a carteira nova.'),
+             ('nina@quickcare.dev', 'PACIENTE', 'SUSPENSAO', INTERVAL '7 days', INTERVAL '3 minutes',
+              'Cancelou três atendimentos em cima da hora no mesmo mês.', NULL))
+     AS b (email, perfil, tipo, desde, ate, justificativa, recurso)
+JOIN usuario u ON u.email = b.email
+CROSS JOIN (SELECT usuario_id AS id FROM administrador ORDER BY id LIMIT 1) adm
+WHERE NOT EXISTS (SELECT 1 FROM banimento x WHERE x.usuario_id = u.id AND x.perfil = b.perfil);
+
+UPDATE paciente pa SET banido = TRUE
+FROM usuario u
+WHERE u.id = pa.usuario_id AND u.email IN ('igor@quickcare.dev', 'nina@quickcare.dev')
+  AND EXISTS (SELECT 1 FROM banimento b WHERE b.usuario_id = u.id AND b.perfil = 'PACIENTE'
+              AND b.encerrado_em IS NULL AND (b.fim IS NULL OR b.fim > now()));
+
+UPDATE profissional pr SET banido = TRUE
+FROM usuario u
+WHERE u.id = pr.usuario_id AND u.email = 'kleber@quickcare.dev'
+  AND EXISTS (SELECT 1 FROM banimento b WHERE b.usuario_id = u.id AND b.perfil = 'PROFISSIONAL'
+              AND b.encerrado_em IS NULL AND (b.fim IS NULL OR b.fim > now()));
+SELECT pg_temp.resetar_massa(ARRAY['rita@quickcare.dev', 'tania@quickcare.dev', 'vera@quickcare.dev',
+                                   'sergio@quickcare.dev', 'ulisses@quickcare.dev']);
+
+INSERT INTO usuario (nome, email, senha_hash, cpf, telefone,
+                     documento_identidade_tipo, documento_identidade_numero, documento_identidade_uf)
+VALUES ('Rita Gomes', 'rita@quickcare.dev', '$2a$10$ZgmQejKpnZ53yyHq49/Ey.D/MF1qIcHNerLZC7U1L2sh.ZS6xV3aq',
+        '41795638053', '11961110016', 'RG', '246781312', 'SP'),
+       ('Tânia Reis', 'tania@quickcare.dev', '$2a$10$ZgmQejKpnZ53yyHq49/Ey.D/MF1qIcHNerLZC7U1L2sh.ZS6xV3aq',
+        '52806749164', '11961110017', 'RG', '246781312', 'SP'),
+       ('Vera Lopes', 'vera@quickcare.dev', '$2a$10$ZgmQejKpnZ53yyHq49/Ey.D/MF1qIcHNerLZC7U1L2sh.ZS6xV3aq',
+        '63917850275', '11961110018', 'RG', '246781312', 'SP'),
+       ('Sérgio Alves', 'sergio@quickcare.dev', '$2a$10$ZgmQejKpnZ53yyHq49/Ey.D/MF1qIcHNerLZC7U1L2sh.ZS6xV3aq',
+        '74028961386', '11961110019', 'RG', '246781312', 'SP'),
+       ('Ulisses Faria', 'ulisses@quickcare.dev', '$2a$10$ZgmQejKpnZ53yyHq49/Ey.D/MF1qIcHNerLZC7U1L2sh.ZS6xV3aq',
+        '85139072497', '11961110020', 'RG', '246781312', 'SP')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO paciente (usuario_id, status_validacao, data_nascimento, genero, confirmacao_informacoes_verdadeiras,
+                      consentimento_lgpd, cep, logradouro, numero, bairro, cidade, uf)
+SELECT u.id, 'APROVADO', p.nascimento, p.genero, TRUE, TRUE,
+       '01311200', 'Rua Haddock Lobo', p.numero, 'Cerqueira César', 'São Paulo', 'SP'
+FROM (VALUES ('rita@quickcare.dev', DATE '1961-11-02', 'FEMININO', '610'),
+             ('tania@quickcare.dev', DATE '1974-06-17', 'FEMININO', '620'),
+             ('vera@quickcare.dev', DATE '1969-01-29', 'FEMININO', '630')) AS p (email, nascimento, genero, numero)
+JOIN usuario u ON u.email = p.email
+ON CONFLICT DO NOTHING;
+
+INSERT INTO profissional (usuario_id, status_validacao,
+                          data_nascimento, genero, confirmacao_informacoes_verdadeiras, consentimento_lgpd,
+                          possui_seguro_responsabilidade_civil, modalidade_atendimento, raio_atendimento_km,
+                          cep, logradouro, numero, bairro, cidade, uf, latitude, longitude)
+SELECT u.id, 'APROVADO', p.nascimento, p.genero, TRUE, TRUE, TRUE, 'AMBOS', 20,
+       '01311000', 'Rua Augusta', p.numero, 'Consolação', 'São Paulo', 'SP', -23.555000, -46.655000
+FROM (VALUES ('sergio@quickcare.dev', DATE '1980-04-08', 'MASCULINO', '2000'),
+             ('ulisses@quickcare.dev', DATE '1988-12-21', 'MASCULINO', '2100')) AS p (email, nascimento, genero, numero)
+JOIN usuario u ON u.email = p.email
+ON CONFLICT DO NOTHING;
+
+SELECT pg_temp.seed_atuacao('sergio@quickcare.dev', 'ENFERMEIRO', '488888', 'SP', ARRAY['Curativos']);
+SELECT pg_temp.seed_atuacao('ulisses@quickcare.dev', 'ENFERMEIRO', '499999', 'SP', ARRAY['Curativos']);
+
+SELECT pg_temp.seed_etapa_profissional(e.email, e.tipo, e.categoria, 'APROVADA', 30, e.justificativa, e.arquivo)
+FROM (VALUES ('sergio@quickcare.dev', 'CPF', NULL, 'CPF regular na Receita.', 'cpf-sergio.pdf'),
+             ('sergio@quickcare.dev', 'IDENTIDADE', NULL, 'RG legível, dados conferem.', 'rg-sergio.pdf'),
+             ('sergio@quickcare.dev', 'REGISTRO_PROFISSIONAL', 'ENFERMEIRO', 'COREN ativo no portal do conselho.', 'coren-sergio.pdf'),
+             ('ulisses@quickcare.dev', 'CPF', NULL, 'CPF regular na Receita.', 'cpf-ulisses.pdf'),
+             ('ulisses@quickcare.dev', 'IDENTIDADE', NULL, 'RG legível, dados conferem.', 'rg-ulisses.pdf'),
+             ('ulisses@quickcare.dev', 'REGISTRO_PROFISSIONAL', 'ENFERMEIRO', 'COREN ativo no portal do conselho.', 'coren-ulisses.pdf'))
+     AS e (email, tipo, categoria, justificativa, arquivo);
+
+SELECT pg_temp.seed_solicitacao(s.email, s.descricao, 'PRESENCIAL', 'ENFERMEIRO', 'Curativos', s.status, s.prazo, s.dias_atras)
+FROM (VALUES ('rita@quickcare.dev', 'Teste denúncia: curativo da Rita com o Sérgio.', 'CONCLUIDA', -6, 14),
+             ('tania@quickcare.dev', 'Teste denúncia: curativo da Tânia com o Ulisses.', 'CONCLUIDA', -8, 16),
+             ('rita@quickcare.dev', 'Teste denúncia: curativo da Rita com o Ulisses.', 'CONCLUIDA', -10, 18),
+             ('tania@quickcare.dev', 'Teste denúncia: curativo da Tânia com o Sérgio.', 'CONCLUIDA', -12, 20),
+             ('vera@quickcare.dev', 'Teste denúncia: curativo da Vera, só com proposta pendente do Sérgio.', 'RECEBENDO_PROPOSTAS', 10, 2))
+     AS s (email, descricao, status, prazo, dias_atras);
+
+SELECT pg_temp.seed_proposta_da_atuacao(p.descricao, p.email, 'ENFERMEIRO', p.valor, 'Curativo com troca de cobertura e orientação.',
+                                        p.status, p.dias_atras)
+FROM (VALUES ('Teste denúncia: curativo da Rita com o Sérgio.', 'sergio@quickcare.dev', 150.00, 'ACEITA', 13),
+             ('Teste denúncia: curativo da Tânia com o Ulisses.', 'ulisses@quickcare.dev', 155.00, 'ACEITA', 15),
+             ('Teste denúncia: curativo da Rita com o Ulisses.', 'ulisses@quickcare.dev', 160.00, 'ACEITA', 17),
+             ('Teste denúncia: curativo da Tânia com o Sérgio.', 'sergio@quickcare.dev', 145.00, 'ACEITA', 19),
+             ('Teste denúncia: curativo da Vera, só com proposta pendente do Sérgio.', 'sergio@quickcare.dev', 140.00, 'PENDENTE', 1))
+     AS p (descricao, email, valor, status, dias_atras);
+
+INSERT INTO atendimento (proposta_id, solicitacao_id, status, inicio, termino, aceito_em, criado_em,
+                         lembrete_24h_em, lembrete_30min_em, lembrete_inicio_em,
+                         lembrete_avaliacao_3d_em, lembrete_avaliacao_7d_em)
+SELECT p.id, p.solicitacao_id, 'CONCLUIDO', p.inicio, p.termino, p.inicio - INTERVAL '5 days', p.inicio - INTERVAL '5 days',
+       p.inicio, p.inicio, p.inicio, p.termino, p.termino
+FROM proposta p
+JOIN solicitacao s ON s.id = p.solicitacao_id
+WHERE s.descricao LIKE 'Teste denúncia: curativo%' AND p.status = 'ACEITA'
+  AND NOT EXISTS (SELECT 1 FROM atendimento a WHERE a.proposta_id = p.id);
+
+SELECT pg_temp.seed_denuncia('tania@quickcare.dev', 'ulisses@quickcare.dev', 'PACIENTE', 'COMPORTAMENTO_INADEQUADO',
+       'Teste denúncia: chegou atrasado, ficou no celular o tempo todo e foi grosseiro quando pedi para lavar as mãos.',
+       'ABERTA', NULL, NULL, 6, NULL);
+SELECT pg_temp.seed_denuncia('rita@quickcare.dev', 'ulisses@quickcare.dev', 'PACIENTE', 'COBRANCA_INDEVIDA',
+       'Teste denúncia: cobrou R$ 40 a mais em dinheiro no fim do atendimento dizendo que era o material.',
+       'EM_ANALISE', NULL, NULL, 30, NULL);
+SELECT pg_temp.seed_denuncia('tania@quickcare.dev', 'sergio@quickcare.dev', 'PACIENTE', 'NEGLIGENCIA',
+       'Teste denúncia: não trocou a cobertura do curativo e foi embora antes do horário combinado.',
+       'PROCEDENTE', 'OCORRENCIA', 'O relato bate com as fotos enviadas e com o horário registrado no atendimento.', 48, NULL);
+SELECT pg_temp.seed_denuncia('rita@quickcare.dev', 'sergio@quickcare.dev', 'PROFISSIONAL', 'DESRESPEITO_OU_ASSEDIO',
+       'Teste denúncia: a paciente me xingou e me expulsou de casa no meio do curativo.',
+       'PROCEDENTE', 'OCORRENCIA', 'Há áudio enviado pelo profissional confirmando as ofensas.', 72,
+       'Eu estava com muita dor e me exaltei, mas pedi desculpas logo depois. Não foi um xingamento.');
+SELECT pg_temp.seed_denuncia('tania@quickcare.dev', 'sergio@quickcare.dev', 'PROFISSIONAL', 'OUTRO',
+       'Teste denúncia: a paciente não estava em casa no horário e só chegou 15 minutos depois.',
+       'IMPROCEDENTE', NULL, 'Atraso pequeno e o atendimento aconteceu normalmente depois.', 40, NULL);

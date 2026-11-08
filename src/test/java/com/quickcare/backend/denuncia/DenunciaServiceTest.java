@@ -6,6 +6,8 @@ import com.quickcare.backend.administrador.AcessoAdmin;
 import com.quickcare.backend.administrador.TipoAcaoAdmin;
 import com.quickcare.backend.atendimento.AtendimentoRepository;
 import com.quickcare.backend.atendimento.LadoAtendimento;
+import com.quickcare.backend.banimento.BanimentoService;
+import com.quickcare.backend.banimento.TipoBanimento;
 import com.quickcare.backend.denuncia.dto.DecisaoDenunciaRequest;
 import com.quickcare.backend.denuncia.dto.DenunciaDetalheResponse;
 import com.quickcare.backend.denuncia.dto.DenunciaRequest;
@@ -37,7 +39,6 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -59,6 +60,7 @@ class DenunciaServiceTest {
     @Mock private AcaoAdminRepository acaoAdminRepository;
     @Mock private AcessoAdmin acessoAdmin;
     @Mock private Notificador notificador;
+    @Mock private BanimentoService banimentoService;
 
     private DenunciaService service;
     private Paciente paciente;
@@ -69,7 +71,7 @@ class DenunciaServiceTest {
     void setUp() {
         service = new DenunciaService(denunciaRepository, pacienteRepository, profissionalRepository, atendimentoRepository,
                 armazenamento, ocorrenciaService, acaoAdminRepository, acessoAdmin, notificador,
-                Clock.fixed(AGORA, ZoneOffset.UTC));
+                Clock.fixed(AGORA, ZoneOffset.UTC), banimentoService);
         paciente = Paciente.builder().id(10L)
                 .usuario(Usuario.builder().id(USUARIO_PACIENTE_ID).nome("Helena").email("helena@quickcare.dev").build()).build();
         profissional = Profissional.builder().id(20L)
@@ -86,7 +88,7 @@ class DenunciaServiceTest {
         when(profissionalRepository.findById(20L)).thenReturn(Optional.of(profissional));
     }
 
-    private Denuncia aberta() {
+    private Denuncia emJulgamento() {
         return Denuncia.builder()
                 .id(500L)
                 .paciente(paciente)
@@ -94,13 +96,13 @@ class DenunciaServiceTest {
                 .denunciante(LadoAtendimento.PACIENTE)
                 .motivo(MotivoDenuncia.NEGLIGENCIA)
                 .descricao("Não fez o curativo combinado.")
-                .status(StatusDenuncia.ABERTA)
+                .status(StatusDenuncia.EM_ANALISE)
                 .criadoEm(AGORA.minusSeconds(3600))
                 .build();
     }
 
     private Denuncia denunciaParaJulgar() {
-        Denuncia denuncia = aberta();
+        Denuncia denuncia = emJulgamento();
         when(acessoAdmin.exigir(ADMIN_ID)).thenReturn(admin);
         when(denunciaRepository.findWithPartesById(500L)).thenReturn(Optional.of(denuncia));
         return denuncia;
@@ -119,7 +121,7 @@ class DenunciaServiceTest {
 
         ArgumentCaptor<Denuncia> denuncia = ArgumentCaptor.forClass(Denuncia.class);
         verify(denunciaRepository).save(denuncia.capture());
-        assertThat(denuncia.getValue().getStatus()).isEqualTo(StatusDenuncia.ABERTA);
+        assertThat(denuncia.getValue().getStatus()).isEqualTo(StatusDenuncia.EM_ANALISE);
         assertThat(denuncia.getValue().getDenunciante()).isEqualTo(LadoAtendimento.PACIENTE);
         assertThat(denuncia.getValue().usuarioDenunciado()).isSameAs(profissional.getUsuario());
         assertThat(denuncia.getValue().getDescricao()).isEqualTo("Foi grosseiro durante todo o plantão.");
@@ -150,21 +152,8 @@ class DenunciaServiceTest {
 
         assertThatThrownBy(() -> service.denunciar(USUARIO_PACIENTE_ID, pedido(), null))
                 .isInstanceOf(TransicaoStatusInvalidaException.class)
-                .hasMessageContaining("já tem uma denúncia em análise");
+                .hasMessageContaining("já tem uma denúncia em julgamento");
         verify(armazenamento, never()).enviarAnexoDenuncia(any());
-    }
-
-    @Test
-    void iniciarAnaliseRegistraQuemAnalisa() {
-        Denuncia denuncia = denunciaParaJulgar();
-
-        service.iniciarAnalise(ADMIN_ID, 500L);
-
-        assertThat(denuncia.getStatus()).isEqualTo(StatusDenuncia.EM_ANALISE);
-        assertThat(denuncia.getAnalisadaPor()).isSameAs(admin);
-        assertThat(denuncia.getAnaliseIniciadaEm()).isEqualTo(AGORA);
-        verify(acessoAdmin).registrar(eq(admin), eq(TipoAcaoAdmin.DENUNCIA_EM_ANALISE), eq(AcaoAdmin.Alvo.DENUNCIA),
-                eq(500L), any(), anyString());
     }
 
     @Test
@@ -213,14 +202,29 @@ class DenunciaServiceTest {
     }
 
     @Test
-    void banimentoAindaNaoEstaDisponivel() {
+    void banimentoPrecisaDoTipo() {
         Denuncia denuncia = denunciaParaJulgar();
 
         assertThatThrownBy(() -> service.julgar(ADMIN_ID, 500L,
                 new DecisaoDenunciaRequest(StatusDenuncia.PROCEDENTE, ConsequenciaDenuncia.BANIMENTO, "Grave.")))
                 .isInstanceOf(TransicaoStatusInvalidaException.class)
-                .hasMessageContaining("banimento ainda não está disponível");
-        assertThat(denuncia.getStatus()).isEqualTo(StatusDenuncia.ABERTA);
+                .hasMessage("Escolha se o banimento é permanente ou uma suspensão.");
+        assertThat(denuncia.getStatus()).isEqualTo(StatusDenuncia.EM_ANALISE);
+    }
+
+    @Test
+    void procedenteComBanimentoBaneODenunciadoSemOcorrencia() {
+        Denuncia denuncia = denunciaParaJulgar();
+
+        service.julgar(ADMIN_ID, 500L, new DecisaoDenunciaRequest(StatusDenuncia.PROCEDENTE,
+                ConsequenciaDenuncia.BANIMENTO, "Golpe confirmado.", TipoBanimento.SUSPENSAO, 30));
+
+        assertThat(denuncia.getConsequencia()).isEqualTo(ConsequenciaDenuncia.BANIMENTO);
+        verify(banimentoService).banir(admin, profissional.getUsuario(), TipoPerfil.PROFISSIONAL,
+                TipoBanimento.SUSPENSAO, 30, "Golpe confirmado.", denuncia);
+        verify(ocorrenciaService, never()).lancarPorDenuncia(any(), any(), any(), any());
+        verify(notificador).denunciaJulgada(denuncia);
+        verify(notificador, never()).denunciaProcedente(any());
     }
 
     @Test

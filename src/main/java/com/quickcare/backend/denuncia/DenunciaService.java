@@ -9,6 +9,7 @@ import com.quickcare.backend.atendimento.Atendimento;
 import com.quickcare.backend.atendimento.AtendimentoRepository;
 import com.quickcare.backend.atendimento.LadoAtendimento;
 import com.quickcare.backend.atendimento.StatusAtendimento;
+import com.quickcare.backend.banimento.BanimentoService;
 import com.quickcare.backend.common.RecursoNaoEncontradoException;
 import com.quickcare.backend.denuncia.dto.DecisaoDenunciaRequest;
 import com.quickcare.backend.denuncia.dto.DenunciaDetalheResponse;
@@ -57,6 +58,7 @@ public class DenunciaService {
     private final AcessoAdmin acessoAdmin;
     private final Notificador notificador;
     private final Clock clock;
+    private final BanimentoService banimentoService;
 
     @Transactional
     public DenunciaEnviadaResponse denunciar(Long usuarioId, DenunciaRequest request, MultipartFile anexo) {
@@ -81,7 +83,7 @@ public class DenunciaService {
         if (denunciaRepository.existsByPacienteIdAndProfissionalIdAndDenuncianteAndStatusIn(
                 paciente.getId(), profissional.getId(), denunciante, StatusDenuncia.PENDENTES)) {
             throw new TransicaoStatusInvalidaException(
-                    "Você já tem uma denúncia em análise sobre este perfil. Aguarde o resultado antes de enviar outra.");
+                    "Você já tem uma denúncia em julgamento sobre este perfil. Aguarde o resultado antes de enviar outra.");
         }
 
         boolean comAnexo = anexo != null && !anexo.isEmpty();
@@ -91,7 +93,7 @@ public class DenunciaService {
                 .denunciante(denunciante)
                 .motivo(request.motivo())
                 .descricao(request.descricao().trim())
-                .status(StatusDenuncia.ABERTA)
+                .status(StatusDenuncia.EM_ANALISE)
                 .anexoNome(comAnexo ? nomeDoArquivo(anexo) : null)
                 .anexoContentType(comAnexo ? anexo.getContentType() : null)
                 .anexoTamanhoBytes(comAnexo ? anexo.getSize() : null)
@@ -122,7 +124,7 @@ public class DenunciaService {
     @Transactional(readOnly = true)
     public long contarAbertas(Long adminUsuarioId) {
         acessoAdmin.exigir(adminUsuarioId);
-        return denunciaRepository.countByStatus(StatusDenuncia.ABERTA);
+        return denunciaRepository.countByStatus(StatusDenuncia.EM_ANALISE);
     }
 
     @Transactional(readOnly = true)
@@ -132,22 +134,12 @@ public class DenunciaService {
     }
 
     @Transactional
-    public DenunciaDetalheResponse iniciarAnalise(Long adminUsuarioId, Long id) {
-        Usuario admin = acessoAdmin.exigir(adminUsuarioId);
-        Denuncia denuncia = buscar(id);
-        denuncia.iniciarAnalise(admin, Instant.now(clock));
-        acessoAdmin.registrar(admin, TipoAcaoAdmin.DENUNCIA_EM_ANALISE, AcaoAdmin.Alvo.DENUNCIA, denuncia.getId(),
-                null, "Análise iniciada.");
-        return detalhe(denuncia);
-    }
-
-    @Transactional
     public DenunciaDetalheResponse julgar(Long adminUsuarioId, Long id, DecisaoDenunciaRequest request) {
         Usuario admin = acessoAdmin.exigir(adminUsuarioId);
         Denuncia denuncia = buscar(id);
-        if (request.resultado() == StatusDenuncia.PROCEDENTE && request.consequencia() == ConsequenciaDenuncia.BANIMENTO) {
-            throw new TransicaoStatusInvalidaException(
-                    "O banimento ainda não está disponível. Por enquanto, escolha lançar uma ocorrência.");
+        boolean banir = request.resultado() == StatusDenuncia.PROCEDENTE && request.consequencia() == ConsequenciaDenuncia.BANIMENTO;
+        if (banir && request.tipoBanimento() == null) {
+            throw new TransicaoStatusInvalidaException("Escolha se o banimento é permanente ou uma suspensão.");
         }
 
         denuncia.julgar(request.resultado(), request.consequencia(), request.justificativa(), admin, Instant.now(clock));
@@ -155,6 +147,9 @@ public class DenunciaService {
             Ocorrencia ocorrencia = ocorrenciaService.lancarPorDenuncia(admin, denuncia.usuarioDenunciado(),
                     denuncia.perfilDenunciado(), request.justificativa());
             denuncia.vincularOcorrencia(ocorrencia);
+        } else if (banir) {
+            banimentoService.banir(admin, denuncia.usuarioDenunciado(), denuncia.perfilDenunciado(),
+                    request.tipoBanimento(), request.diasSuspensao(), request.justificativa(), denuncia);
         }
 
         boolean procedente = denuncia.getStatus() == StatusDenuncia.PROCEDENTE;
@@ -164,7 +159,7 @@ public class DenunciaService {
                 procedente ? "Consequência: " + denuncia.getConsequencia().name() : null,
                 request.justificativa());
         notificador.denunciaJulgada(denuncia);
-        if (procedente) {
+        if (procedente && denuncia.getConsequencia() == ConsequenciaDenuncia.OCORRENCIA) {
             notificador.denunciaProcedente(denuncia);
         }
         return detalhe(denuncia);
@@ -201,6 +196,7 @@ public class DenunciaService {
                 denuncia.getDecididaEm(),
                 denuncia.getDecididaPor() == null ? null : denuncia.getDecididaPor().getNome(),
                 ocorrenciaGerada(denuncia.getOcorrencia()),
+                banimentoService.daDenuncia(denuncia.getId()).orElse(null),
                 atendimentoRepository.findByPropostaProfissionalIdAndSolicitacaoPacienteIdAndStatusIn(
                                 profissionalId, pacienteId, QUALQUER_STATUS).stream()
                         .sorted(Comparator.comparing(Atendimento::getInicio, Comparator.reverseOrder()))

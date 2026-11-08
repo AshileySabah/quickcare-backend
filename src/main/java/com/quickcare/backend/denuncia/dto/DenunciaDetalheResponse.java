@@ -3,6 +3,7 @@ package com.quickcare.backend.denuncia.dto;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.quickcare.backend.administrador.dto.AcaoAdminResponse;
 import com.quickcare.backend.atendimento.StatusAtendimento;
+import com.quickcare.backend.banimento.dto.BanimentoResponse;
 import com.quickcare.backend.denuncia.ConsequenciaDenuncia;
 
 import java.time.Instant;
@@ -19,6 +20,7 @@ public record DenunciaDetalheResponse(
         @JsonInclude(JsonInclude.Include.NON_NULL) Instant decididaEm,
         @JsonInclude(JsonInclude.Include.NON_NULL) String decididaPor,
         @JsonInclude(JsonInclude.Include.NON_NULL) OcorrenciaGerada ocorrencia,
+        @JsonInclude(JsonInclude.Include.NON_NULL) BanimentoResponse banimento,
         List<AtendimentoVinculo> atendimentos,
         long outrasDenunciasContraODenunciado,
         List<AcaoAdminResponse> acoes

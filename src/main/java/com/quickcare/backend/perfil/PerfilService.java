@@ -38,7 +38,8 @@ public class PerfilService {
 
     @Transactional(readOnly = true)
     public PerfilPacienteResponse buscarPaciente(Long usuarioId) {
-        return paraResponse(buscarPacienteDoUsuario(usuarioId));
+        return paraResponse(pacienteRepository.findByUsuarioId(usuarioId)
+                .orElseThrow(() -> new PerfilNaoAutorizadoException("Você não possui um perfil de paciente.")));
     }
 
     @Transactional
@@ -64,7 +65,8 @@ public class PerfilService {
 
     @Transactional(readOnly = true)
     public PerfilProfissionalResponse buscarProfissional(Long usuarioId) {
-        return paraResponse(buscarProfissionalDoUsuario(usuarioId));
+        return paraResponse(profissionalRepository.findByUsuarioId(usuarioId)
+                .orElseThrow(() -> new PerfilNaoAutorizadoException("Você não possui um perfil de profissional.")));
     }
 
     @Transactional

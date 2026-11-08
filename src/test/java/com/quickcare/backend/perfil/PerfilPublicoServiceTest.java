@@ -5,6 +5,9 @@ import com.quickcare.backend.atendimento.StatusAtendimento;
 import com.quickcare.backend.atuacao.Atuacao;
 import com.quickcare.backend.atuacao.dto.AtuacaoResumoResponse;
 import com.quickcare.backend.avaliacao.AvaliacaoService;
+import com.quickcare.backend.atendimento.LadoAtendimento;
+import com.quickcare.backend.denuncia.DenunciaRepository;
+import com.quickcare.backend.denuncia.StatusDenuncia;
 import com.quickcare.backend.avaliacao.dto.ResumoAvaliacoesResponse;
 import com.quickcare.backend.bloqueiousuario.BloqueioUsuarioRepository;
 import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
@@ -60,6 +63,7 @@ class PerfilPublicoServiceTest {
     @Mock private BloqueioUsuarioRepository bloqueioUsuarioRepository;
     @Mock private ValidacaoService validacaoService;
     @Mock private AvaliacaoService avaliacaoService;
+    @Mock private DenunciaRepository denunciaRepository;
 
     @InjectMocks
     private PerfilPublicoService service;
@@ -118,6 +122,18 @@ class PerfilPublicoServiceTest {
         });
         assertThat(perfil.atendimentosConcluidos()).isEqualTo(4);
         assertThat(perfil.contatosEmergencia()).isNull();
+    }
+
+    @Test
+    void pacienteComDenunciaPendenteVeQueElaEstaEmAndamento() {
+        when(profissionalRepository.findById(PROFISSIONAL_ID)).thenReturn(Optional.of(profissional));
+        when(pacienteRepository.findByUsuarioId(USUARIO_PACIENTE_ID)).thenReturn(Optional.of(paciente));
+        when(denunciaRepository.existsByPacienteIdAndProfissionalIdAndDenuncianteAndStatusIn(
+                PACIENTE_ID, PROFISSIONAL_ID, LadoAtendimento.PACIENTE, StatusDenuncia.PENDENTES)).thenReturn(true);
+
+        PerfilPublicoProfissionalResponse perfil = service.buscarProfissional(USUARIO_PACIENTE_ID, PROFISSIONAL_ID);
+
+        assertThat(perfil.denunciaEmAndamento()).isTrue();
     }
 
     @Test
