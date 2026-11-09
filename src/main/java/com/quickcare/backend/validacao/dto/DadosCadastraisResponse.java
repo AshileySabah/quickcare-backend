@@ -1,6 +1,6 @@
 package com.quickcare.backend.validacao.dto;
 
-import com.quickcare.backend.especialidade.CategoriaProfissional;
+import com.quickcare.backend.atuacao.dto.AtuacaoResumoResponse;
 import com.quickcare.backend.usuario.Genero;
 import com.quickcare.backend.usuario.TipoDocumentoIdentidade;
 
@@ -25,10 +25,7 @@ public record DadosCadastraisResponse(
         String bairro,
         String cidade,
         String uf,
-        CategoriaProfissional categoria,
-        List<String> especialidades,
-        String cnpj,
-        String registroProfissional,
-        String registroProfissionalUf
+        List<AtuacaoResumoResponse> atuacoes,
+        String cnpj
 ) {
 }

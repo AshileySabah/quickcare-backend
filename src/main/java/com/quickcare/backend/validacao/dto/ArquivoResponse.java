@@ -7,6 +7,6 @@ public record ArquivoResponse(
         String contentType,
         Long tamanhoBytes,
         Instant enviadoEm,
-        String url
+        String caminho
 ) {
 }

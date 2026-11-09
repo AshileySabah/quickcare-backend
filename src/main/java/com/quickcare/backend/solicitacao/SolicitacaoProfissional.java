@@ -63,11 +63,6 @@ public class SolicitacaoProfissional {
     @Column(name = "vagas_reservadas", nullable = false)
     private int vagasReservadas;
 
-    public boolean atendidaPor(CategoriaProfissional categoriaProfissional, Set<Long> especialidadeIdsDoProfissional) {
-        return categoria == categoriaProfissional
-                && especialidades.stream().allMatch(especialidade -> especialidadeIdsDoProfissional.contains(especialidade.getId()));
-    }
-
     public boolean temVaga() {
         return vagasPreenchidas < quantidade;
     }

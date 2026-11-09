@@ -7,7 +7,8 @@ import lombok.RequiredArgsConstructor;
 @Getter
 @RequiredArgsConstructor
 public enum TipoEtapaValidacao {
-    IDENTIDADE("Identidade", TipoDocumento.VALIDACAO_CPF),
+    CPF("CPF", TipoDocumento.COMPROVANTE_CPF),
+    IDENTIDADE("Documento de identidade", TipoDocumento.VALIDACAO_CPF),
     CNPJ("CNPJ", TipoDocumento.VALIDACAO_CNPJ),
     REGISTRO_PROFISSIONAL("Registro profissional", TipoDocumento.REGISTRO_PROFISSIONAL);
 

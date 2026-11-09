@@ -2,10 +2,18 @@ package com.quickcare.backend.perfil;
 
 import com.quickcare.backend.atendimento.AtendimentoRepository;
 import com.quickcare.backend.atendimento.StatusAtendimento;
+import com.quickcare.backend.atuacao.Atuacao;
+import com.quickcare.backend.atuacao.dto.AtuacaoResumoResponse;
+import com.quickcare.backend.avaliacao.AvaliacaoService;
+import com.quickcare.backend.atendimento.LadoAtendimento;
+import com.quickcare.backend.denuncia.DenunciaRepository;
+import com.quickcare.backend.denuncia.StatusDenuncia;
+import com.quickcare.backend.avaliacao.dto.ResumoAvaliacoesResponse;
 import com.quickcare.backend.bloqueiousuario.BloqueioUsuarioRepository;
 import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
 import com.quickcare.backend.especialidade.CategoriaProfissional;
 import com.quickcare.backend.especialidade.Especialidade;
+import com.quickcare.backend.especialidade.dto.EspecialidadeResponse;
 import com.quickcare.backend.paciente.Paciente;
 import com.quickcare.backend.paciente.PacienteRepository;
 import com.quickcare.backend.perfil.dto.PerfilPublicoPacienteResponse;
@@ -19,6 +27,7 @@ import com.quickcare.backend.solicitacao.StatusSolicitacao;
 import com.quickcare.backend.usuario.ContatoEmergencia;
 import com.quickcare.backend.usuario.Usuario;
 import com.quickcare.backend.validacao.StatusValidacao;
+import com.quickcare.backend.validacao.ValidacaoService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,6 +37,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -51,11 +61,15 @@ class PerfilPublicoServiceTest {
     @Mock private AtendimentoRepository atendimentoRepository;
     @Mock private ArmazenamentoDocumentoService armazenamentoDocumentoService;
     @Mock private BloqueioUsuarioRepository bloqueioUsuarioRepository;
+    @Mock private ValidacaoService validacaoService;
+    @Mock private AvaliacaoService avaliacaoService;
+    @Mock private DenunciaRepository denunciaRepository;
 
     @InjectMocks
     private PerfilPublicoService service;
 
     private Profissional profissional;
+    private Atuacao enfermeiro;
     private Paciente paciente;
 
     @BeforeEach
@@ -64,17 +78,23 @@ class PerfilPublicoServiceTest {
                 .id(PROFISSIONAL_ID)
                 .usuario(Usuario.builder().id(USUARIO_PROFISSIONAL_ID).nome("Joana Enfermeira").build())
                 .statusValidacao(StatusValidacao.APROVADO)
-                .categoria(CategoriaProfissional.ENFERMEIRO)
-                .registroProfissional("123456")
-                .registroProfissionalUf("SP")
                 .cidade("São Paulo")
                 .uf("SP")
-                .especialidades(Set.of(
-                        Especialidade.builder().id(6L).nome("Sondagem").build(),
-                        Especialidade.builder().id(5L).nome("Curativos").build()))
                 .contatosEmergencia(List.of(new ContatoEmergencia("Marcos", "11911112222")))
                 .criadoEm(Instant.parse("2026-01-10T12:00:00Z"))
                 .build();
+        enfermeiro = Atuacao.builder()
+                .id(200L)
+                .profissional(profissional)
+                .categoria(CategoriaProfissional.ENFERMEIRO)
+                .registroProfissional("123456")
+                .registroProfissionalUf("SP")
+                .especialidades(new LinkedHashSet<>(List.of(
+                        Especialidade.builder().id(6L).nome("Sondagem").categoria(CategoriaProfissional.ENFERMEIRO).build(),
+                        Especialidade.builder().id(5L).nome("Curativos").categoria(CategoriaProfissional.ENFERMEIRO).build())))
+                .build();
+        profissional.getAtuacoes().add(enfermeiro);
+        lenient().when(validacaoService.atuacoesLiberadas(profissional)).thenReturn(List.of(enfermeiro));
         paciente = Paciente.builder()
                 .id(PACIENTE_ID)
                 .usuario(Usuario.builder().id(USUARIO_PACIENTE_ID).nome("Paciente Teste").build())
@@ -90,13 +110,47 @@ class PerfilPublicoServiceTest {
     void mostraOProfissionalAprovadoSemDadosDeContato() {
         when(profissionalRepository.findById(PROFISSIONAL_ID)).thenReturn(Optional.of(profissional));
         when(atendimentoRepository.countByPropostaProfissionalIdAndStatusIn(PROFISSIONAL_ID, StatusAtendimento.REALIZADOS)).thenReturn(4L);
+        ResumoAvaliacoesResponse avaliacoes = new ResumoAvaliacoesResponse(4.5, 2, List.of());
+        when(avaliacaoService.resumoDoProfissional(PROFISSIONAL_ID)).thenReturn(avaliacoes);
 
         PerfilPublicoProfissionalResponse perfil = service.buscarProfissional(USUARIO_PROFISSIONAL_ID, PROFISSIONAL_ID);
 
-        assertThat(perfil.especialidades()).containsExactly("Curativos", "Sondagem");
-        assertThat(perfil.siglaRegistro()).isEqualTo("COREN");
+        assertThat(perfil.avaliacoes()).isSameAs(avaliacoes);
+        assertThat(perfil.atuacoes()).singleElement().satisfies(atuacao -> {
+            assertThat(atuacao.especialidades()).extracting(EspecialidadeResponse::nome).containsExactly("Curativos", "Sondagem");
+            assertThat(atuacao.siglaRegistro()).isEqualTo("COREN");
+        });
         assertThat(perfil.atendimentosConcluidos()).isEqualTo(4);
         assertThat(perfil.contatosEmergencia()).isNull();
+    }
+
+    @Test
+    void pacienteComDenunciaPendenteVeQueElaEstaEmAndamento() {
+        when(profissionalRepository.findById(PROFISSIONAL_ID)).thenReturn(Optional.of(profissional));
+        when(pacienteRepository.findByUsuarioId(USUARIO_PACIENTE_ID)).thenReturn(Optional.of(paciente));
+        when(denunciaRepository.existsByPacienteIdAndProfissionalIdAndDenuncianteAndStatusIn(
+                PACIENTE_ID, PROFISSIONAL_ID, LadoAtendimento.PACIENTE, StatusDenuncia.PENDENTES)).thenReturn(true);
+
+        PerfilPublicoProfissionalResponse perfil = service.buscarProfissional(USUARIO_PACIENTE_ID, PROFISSIONAL_ID);
+
+        assertThat(perfil.denunciaEmAndamento()).isTrue();
+    }
+
+    @Test
+    void mostraSoAsAtuacoesLiberadas() {
+        Atuacao medico = Atuacao.builder()
+                .id(201L)
+                .profissional(profissional)
+                .categoria(CategoriaProfissional.MEDICO)
+                .registroProfissional("98765")
+                .registroProfissionalUf("SP")
+                .build();
+        profissional.getAtuacoes().add(medico);
+        when(profissionalRepository.findById(PROFISSIONAL_ID)).thenReturn(Optional.of(profissional));
+
+        PerfilPublicoProfissionalResponse perfil = service.buscarProfissional(USUARIO_PROFISSIONAL_ID, PROFISSIONAL_ID);
+
+        assertThat(perfil.atuacoes()).extracting(AtuacaoResumoResponse::id).containsExactly(200L);
     }
 
     @Test

@@ -1,5 +1,6 @@
 package com.quickcare.backend.perfil.dto;
 
+import com.quickcare.backend.avaliacao.dto.ResumoAvaliacoesResponse;
 import com.quickcare.backend.usuario.Genero;
 
 import java.time.LocalDate;
@@ -22,6 +23,8 @@ public record PerfilPacienteResponse(
         String complemento,
         String bairro,
         String cidade,
-        String uf
+        String uf,
+        DeclaracoesResponse declaracoes,
+        ResumoAvaliacoesResponse avaliacoes
 ) {
 }

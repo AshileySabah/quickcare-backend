@@ -1,5 +1,6 @@
 package com.quickcare.backend.perfil;
 
+import com.quickcare.backend.avaliacao.AvaliacaoService;
 import com.quickcare.backend.cadastro.dto.ContatoEmergenciaRequest;
 import com.quickcare.backend.cadastro.exception.RaioAtendimentoObrigatorioException;
 import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
@@ -9,6 +10,7 @@ import com.quickcare.backend.paciente.PacienteRepository;
 import com.quickcare.backend.perfil.dto.AtualizarPerfilPacienteRequest;
 import com.quickcare.backend.perfil.dto.AtualizarPerfilProfissionalRequest;
 import com.quickcare.backend.perfil.dto.ContatoEmergenciaResponse;
+import com.quickcare.backend.perfil.dto.DeclaracoesResponse;
 import com.quickcare.backend.perfil.dto.PerfilPacienteResponse;
 import com.quickcare.backend.perfil.dto.PerfilProfissionalResponse;
 import com.quickcare.backend.profissional.ModalidadeAtendimento;
@@ -32,10 +34,12 @@ public class PerfilService {
     private final ProfissionalRepository profissionalRepository;
     private final ArmazenamentoDocumentoService armazenamentoDocumentoService;
     private final GeocodificacaoService geocodificacaoService;
+    private final AvaliacaoService avaliacaoService;
 
     @Transactional(readOnly = true)
     public PerfilPacienteResponse buscarPaciente(Long usuarioId) {
-        return paraResponse(buscarPacienteDoUsuario(usuarioId));
+        return paraResponse(pacienteRepository.findByUsuarioId(usuarioId)
+                .orElseThrow(() -> new PerfilNaoAutorizadoException("Você não possui um perfil de paciente.")));
     }
 
     @Transactional
@@ -44,8 +48,6 @@ public class PerfilService {
 
         atualizarUsuario(paciente.getUsuario(), request.nome(), request.telefone(), avatar, request.removerAvatar());
 
-        paciente.setDataNascimento(request.dataNascimento());
-        paciente.setGenero(request.genero());
         substituirContatos(paciente.getContatosEmergencia(), request.contatosEmergencia());
         paciente.setAlergias(request.alergias());
         paciente.setCondicoesSaude(request.condicoesSaude());
@@ -63,7 +65,8 @@ public class PerfilService {
 
     @Transactional(readOnly = true)
     public PerfilProfissionalResponse buscarProfissional(Long usuarioId) {
-        return paraResponse(buscarProfissionalDoUsuario(usuarioId));
+        return paraResponse(profissionalRepository.findByUsuarioId(usuarioId)
+                .orElseThrow(() -> new PerfilNaoAutorizadoException("Você não possui um perfil de profissional.")));
     }
 
     @Transactional
@@ -77,8 +80,6 @@ public class PerfilService {
 
         atualizarUsuario(profissional.getUsuario(), request.nome(), request.telefone(), avatar, request.removerAvatar());
 
-        profissional.setDataNascimento(request.dataNascimento());
-        profissional.setGenero(request.genero());
         substituirContatos(profissional.getContatosEmergencia(), request.contatosEmergencia());
         profissional.setPossuiSeguroResponsabilidadeCivil(request.possuiSeguroResponsabilidadeCivil());
         profissional.setModalidadeAtendimento(request.modalidadeAtendimento());
@@ -144,7 +145,9 @@ public class PerfilService {
                 paciente.getComplemento(),
                 paciente.getBairro(),
                 paciente.getCidade(),
-                paciente.getUf()
+                paciente.getUf(),
+                new DeclaracoesResponse(paciente.isConfirmacaoInformacoesVerdadeiras(), paciente.isConsentimentoLgpd()),
+                avaliacaoService.resumoDoPaciente(paciente.getId())
         );
     }
 
@@ -167,10 +170,10 @@ public class PerfilService {
                 profissional.getComplemento(),
                 profissional.getBairro(),
                 profissional.getCidade(),
-                profissional.getUf()
+                profissional.getUf(),
+                new DeclaracoesResponse(profissional.isConfirmacaoInformacoesVerdadeiras(), profissional.isConsentimentoLgpd()),
+                avaliacaoService.resumoDoProfissional(profissional.getId())
         );
     }
-
-
 
 }

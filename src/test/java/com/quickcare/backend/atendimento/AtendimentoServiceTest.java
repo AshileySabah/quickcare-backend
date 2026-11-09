@@ -2,6 +2,7 @@ package com.quickcare.backend.atendimento;
 
 import com.quickcare.backend.atendimento.dto.AtendimentoResponse;
 import com.quickcare.backend.atendimento.dto.RemarcacaoRequest;
+import com.quickcare.backend.atuacao.Atuacao;
 import com.quickcare.backend.especialidade.CategoriaProfissional;
 import com.quickcare.backend.especialidade.Especialidade;
 import com.quickcare.backend.notificacao.Notificador;
@@ -161,7 +162,8 @@ class AtendimentoServiceTest {
         assertThat(linha.getVagasPreenchidas()).isEqualTo(1);
         assertThat(linha.getVagasReservadas()).isEqualTo(1);
         assertThat(solicitacao.getStatus()).isEqualTo(StatusSolicitacao.RECEBENDO_PROPOSTAS);
-        assertThat(solicitacao.atendidaPor(profissional(30L, 7L))).isTrue();
+        Profissional outro = profissional(30L, 7L);
+        assertThat(solicitacao.atendidaPor(outro, outro.atuacoesAtivas())).isTrue();
     }
 
     @Test
@@ -421,7 +423,7 @@ class AtendimentoServiceTest {
         relogio.avancar(Duration.ofHours(8));
         service.processarVencidos();
         assertThat(atendimento.getStatus()).isEqualTo(StatusAtendimento.FINALIZADO);
-        verify(notificador).atendimentoFinalizado(atendimento);
+        verify(notificador).atendimentoFinalizado(atendimento, atendimento.getTermino().plus(Duration.ofDays(30)));
         assertThat(solicitacao.getStatus()).isEqualTo(StatusSolicitacao.CONCLUIDA);
 
         relogio.avancar(Duration.ofHours(72));
@@ -512,14 +514,19 @@ class AtendimentoServiceTest {
     }
 
     private Profissional profissional(Long id, Long usuarioId) {
-        return Profissional.builder()
+        Profissional profissional = Profissional.builder()
                 .id(id)
                 .usuario(Usuario.builder().id(usuarioId).nome("Profissional " + id).build())
-                .categoria(CategoriaProfissional.ENFERMEIRO)
                 .modalidadeAtendimento(ModalidadeAtendimento.AMBOS)
-                .especialidades(Set.of(curativos))
                 .raioAtendimentoKm(new BigDecimal("10"))
                 .build();
+        profissional.getAtuacoes().add(Atuacao.builder()
+                .id(id * 10)
+                .profissional(profissional)
+                .categoria(CategoriaProfissional.ENFERMEIRO)
+                .especialidades(new LinkedHashSet<>(Set.of(curativos)))
+                .build());
+        return profissional;
     }
 
     private Proposta pendente(Long id, Profissional profissional, Duration antecedencia) {
@@ -527,6 +534,7 @@ class AtendimentoServiceTest {
                 .id(id)
                 .solicitacao(solicitacao)
                 .profissional(profissional)
+                .atuacao(profissional.atuacoesAtivas().getFirst())
                 .status(StatusProposta.PENDENTE)
                 .inicio(relogio.instant().plus(antecedencia))
                 .termino(relogio.instant().plus(antecedencia).plus(Duration.ofHours(8)))

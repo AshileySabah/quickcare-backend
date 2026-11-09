@@ -3,6 +3,7 @@ package com.quickcare.backend.proposta;
 import com.quickcare.backend.atendimento.Atendimento;
 import com.quickcare.backend.atendimento.AtendimentoRepository;
 import com.quickcare.backend.atendimento.AtendimentoService;
+import com.quickcare.backend.atuacao.Atuacao;
 import com.quickcare.backend.bloqueiousuario.BloqueioUsuarioRepository;
 import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
 import com.quickcare.backend.notificacao.Notificador;
@@ -22,6 +23,7 @@ import com.quickcare.backend.solicitacao.exception.SolicitacaoNaoEncontradaExcep
 import com.quickcare.backend.solicitacao.exception.TransicaoStatusInvalidaException;
 import com.quickcare.backend.usuario.TipoPerfil;
 import com.quickcare.backend.validacao.StatusValidacao;
+import com.quickcare.backend.validacao.ValidacaoService;
 import com.quickcare.backend.validacao.exception.CadastroNaoValidadoException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -51,6 +53,7 @@ public class PropostaService {
     private final Notificador notificador;
     private final OcorrenciaService ocorrenciaService;
     private final BloqueioUsuarioRepository bloqueioUsuarioRepository;
+    private final ValidacaoService validacaoService;
     private final Clock clock;
 
     @Transactional
@@ -59,23 +62,23 @@ public class PropostaService {
         if (profissional.getStatusValidacao() != StatusValidacao.APROVADO) {
             throw new CadastroNaoValidadoException("Só profissionais com cadastro aprovado podem enviar propostas.");
         }
+        validacaoService.exigirLiberadoParaCriar(profissional);
         ocorrenciaService.exigirSemBloqueio(usuarioId, TipoPerfil.PROFISSIONAL);
+        List<Atuacao> liberadas = validacaoService.atuacoesLiberadas(profissional);
         Solicitacao solicitacao = solicitacaoRepository.findById(solicitacaoId)
                 .filter(s -> !s.ehDoUsuario(usuarioId))
-                .filter(s -> s.atendidaPor(profissional))
+                .filter(s -> s.atendidaPor(profissional, profissional.atuacoesAtivas()))
                 .orElseThrow(SolicitacaoNaoEncontradaException::new);
 
         if (!solicitacao.getStatus().recebePropostas() || bloqueados(solicitacao, profissional)) {
             throw new TransicaoStatusInvalidaException("Esta solicitação não está mais recebendo propostas.");
         }
-        if (propostaRepository.existsBySolicitacaoIdAndProfissionalIdAndStatusIn(
-                solicitacaoId, profissional.getId(), StatusProposta.ATIVAS)) {
-            throw new PropostaJaEnviadaException();
-        }
+        Atuacao atuacao = escolherAtuacao(solicitacao, profissional, liberadas, request.atuacaoId());
 
         Proposta proposta = Proposta.builder()
                 .solicitacao(solicitacao)
                 .profissional(profissional)
+                .atuacao(atuacao)
                 .status(StatusProposta.PENDENTE)
                 .build();
         aplicarDados(proposta, request);
@@ -106,7 +109,7 @@ public class PropostaService {
         List<Proposta> minhas = propostaRepository
                 .findBySolicitacaoIdAndProfissionalIdOrderByCriadoEmAsc(solicitacaoId, profissional.getId());
 
-        if (minhas.isEmpty() && !solicitacao.atendidaPor(profissional)) {
+        if (minhas.isEmpty() && !solicitacao.atendidaPor(profissional, validacaoService.atuacoesLiberadas(profissional))) {
             throw new SolicitacaoNaoEncontradaException();
         }
 
@@ -116,7 +119,8 @@ public class PropostaService {
     @Transactional(readOnly = true)
     public List<PropostaResponse> listarDoProfissional(Long usuarioId) {
         atendimentoService.processarVencidos();
-        Profissional profissional = buscarProfissionalAtivo(usuarioId);
+        Profissional profissional = profissionalRepository.findByUsuarioId(usuarioId)
+                .orElseThrow(() -> new PerfilNaoAutorizadoException("Apenas profissionais podem gerenciar propostas."));
         return responder(propostaRepository.findByProfissionalIdOrderByCriadoEmDesc(profissional.getId()), usuarioId);
     }
 
@@ -133,6 +137,7 @@ public class PropostaService {
     @Transactional
     public PropostaResponse atualizar(Long usuarioId, Long id, PropostaRequest request) {
         Proposta proposta = buscarAlteravelDoProfissional(usuarioId, id, "editada");
+        validacaoService.exigirAtuacaoLiberada(proposta.getAtuacao());
         boolean estavaAceita = proposta.getStatus() == StatusProposta.ACEITA;
 
         if (estavaAceita) {
@@ -150,7 +155,12 @@ public class PropostaService {
     @Transactional
     public PropostaResponse cancelar(Long usuarioId, Long id) {
         Proposta proposta = buscarAlteravelDoProfissional(usuarioId, id, "cancelada");
+        encerrarPeloProfissional(proposta);
+        return responder(proposta, usuarioId);
+    }
 
+    @Transactional
+    public void encerrarPeloProfissional(Proposta proposta) {
         if (proposta.getStatus() == StatusProposta.ACEITA) {
             atendimentoService.cancelarPeloProfissional(proposta);
         } else {
@@ -159,8 +169,55 @@ public class PropostaService {
             recalcularSolicitacao(proposta.getSolicitacao());
             notificador.propostaCancelada(proposta, false);
         }
+    }
 
-        return responder(proposta, usuarioId);
+    private Atuacao escolherAtuacao(Solicitacao solicitacao, Profissional profissional, List<Atuacao> liberadas,
+                                    Long atuacaoId) {
+        List<Atuacao> candidatas = solicitacao.atuacoesQueAtendem(profissional, liberadas).stream()
+                .filter(candidata -> !propostaRepository.existsBySolicitacaoIdAndAtuacaoIdAndStatusIn(
+                        solicitacao.getId(), candidata.getId(), StatusProposta.ATIVAS))
+                .toList();
+
+        if (atuacaoId != null) {
+            return candidatas.stream()
+                    .filter(candidata -> candidata.getId().equals(atuacaoId))
+                    .findFirst()
+                    .orElseThrow(() -> atuacaoIndisponivel(solicitacao, profissional, atuacaoId));
+        }
+        if (candidatas.size() == 1) {
+            return candidatas.getFirst();
+        }
+        if (candidatas.isEmpty()) {
+            throw semAtuacaoDisponivel(solicitacao, profissional);
+        }
+        throw new SolicitacaoInvalidaException("Escolha para qual vaga da solicitação é esta proposta.");
+    }
+
+    private RuntimeException atuacaoIndisponivel(Solicitacao solicitacao, Profissional profissional, Long atuacaoId) {
+        boolean jaEnviada = propostaRepository.existsBySolicitacaoIdAndAtuacaoIdAndStatusIn(
+                solicitacao.getId(), atuacaoId, StatusProposta.ATIVAS);
+        if (jaEnviada) {
+            return new PropostaJaEnviadaException();
+        }
+        return profissional.atuacoesAtivas().stream()
+                .filter(atuacao -> atuacao.getId().equals(atuacaoId))
+                .findFirst()
+                .<RuntimeException>map(atuacao -> validacaoService.atuacaoLiberada(atuacao)
+                        ? new SolicitacaoInvalidaException("Esta solicitação não tem vaga aberta para a atuação escolhida.")
+                        : new CadastroNaoValidadoException("O seu registro de " + atuacao.rotulo()
+                                + " ainda está em validação. Até o administrador aprovar, você não pode enviar propostas dela."))
+                .orElseGet(() -> new SolicitacaoInvalidaException("Atuação inválida para esta proposta."));
+    }
+
+    private RuntimeException semAtuacaoDisponivel(Solicitacao solicitacao, Profissional profissional) {
+        boolean temPropostaAtiva = solicitacao.atuacoesQueAtendem(profissional, profissional.atuacoesAtivas()).stream()
+                .anyMatch(atuacao -> propostaRepository.existsBySolicitacaoIdAndAtuacaoIdAndStatusIn(
+                        solicitacao.getId(), atuacao.getId(), StatusProposta.ATIVAS));
+        if (temPropostaAtiva) {
+            return new PropostaJaEnviadaException();
+        }
+        return new CadastroNaoValidadoException("O seu registro da atuação desta vaga ainda está em validação. "
+                + "Até o administrador aprovar, você não pode enviar propostas dela.");
     }
 
     @Transactional

@@ -73,6 +73,17 @@ public class OcorrenciaService {
     }
 
     @Transactional
+    public Ocorrencia lancarPorDenuncia(Usuario admin, Usuario usuario, TipoPerfil perfil, String justificativa) {
+        return salvarEAvaliar(Ocorrencia.builder()
+                .usuario(usuario)
+                .perfil(perfil)
+                .motivo(MotivoOcorrencia.DENUNCIA_PROCEDENTE)
+                .justificativa(justificativa.trim())
+                .criadoPor(admin)
+                .criadoEm(agora()));
+    }
+
+    @Transactional
     public Ocorrencia anular(Usuario admin, Long ocorrenciaId, String justificativa) {
         Ocorrencia ocorrencia = ocorrenciaRepository.findById(ocorrenciaId)
                 .orElseThrow(() -> new RecursoNaoEncontradoException("Ocorrência não encontrada."));

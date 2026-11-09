@@ -6,7 +6,8 @@ public enum MotivoOcorrencia {
     NAO_COMPARECIMENTO,
     DECISAO_DISPUTA,
     MANUAL,
-    BLOQUEIO_TARDIO;
+    BLOQUEIO_TARDIO,
+    DENUNCIA_PROCEDENTE;
 
     public boolean recorrivel() {
         return this != NAO_COMPARECIMENTO && this != DECISAO_DISPUTA && this != BLOQUEIO_TARDIO;

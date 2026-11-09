@@ -1,5 +1,6 @@
 package com.quickcare.backend.validacao;
 
+import com.quickcare.backend.atuacao.Atuacao;
 import com.quickcare.backend.documento.Documento;
 import com.quickcare.backend.paciente.Paciente;
 import com.quickcare.backend.profissional.Profissional;
@@ -45,6 +46,10 @@ public class EtapaValidacao {
     @JoinColumn(name = "profissional_id")
     private Profissional profissional;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "atuacao_id")
+    private Atuacao atuacao;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private TipoEtapaValidacao tipo;
@@ -86,14 +91,28 @@ public class EtapaValidacao {
         }
     }
 
-    public static EtapaValidacao pendente(TipoEtapaValidacao tipo, Documento documento, Paciente paciente, Profissional profissional) {
+    public static EtapaValidacao pendente(TipoEtapaValidacao tipo, Documento documento, Paciente paciente,
+                                          Profissional profissional, Atuacao atuacao) {
         return EtapaValidacao.builder()
                 .tipo(tipo)
                 .status(StatusEtapa.PENDENTE)
                 .documento(documento)
                 .paciente(paciente)
                 .profissional(profissional)
+                .atuacao(atuacao)
                 .build();
+    }
+
+    public ChaveEtapa chave() {
+        return new ChaveEtapa(tipo, atuacao == null ? null : atuacao.getId());
+    }
+
+    public boolean vigente() {
+        return atuacao == null || atuacao.ativa();
+    }
+
+    public String descricao() {
+        return atuacao == null ? tipo.getDescricao() : "Registro profissional — " + atuacao.rotulo();
     }
 
 }

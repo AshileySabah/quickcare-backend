@@ -2,6 +2,11 @@ package com.quickcare.backend.notificacao;
 
 import com.quickcare.backend.atendimento.Atendimento;
 import com.quickcare.backend.atendimento.LadoAtendimento;
+import com.quickcare.backend.banimento.Banimento;
+import com.quickcare.backend.banimento.TipoBanimento;
+import com.quickcare.backend.denuncia.ConsequenciaDenuncia;
+import com.quickcare.backend.denuncia.Denuncia;
+import com.quickcare.backend.denuncia.StatusDenuncia;
 import com.quickcare.backend.especialidade.Especialidade;
 import com.quickcare.backend.ocorrencia.Bloqueio;
 import com.quickcare.backend.ocorrencia.MotivoBloqueioTardio;
@@ -18,7 +23,6 @@ import com.quickcare.backend.solicitacao.AcaoAdminSolicitacao;
 import com.quickcare.backend.solicitacao.Solicitacao;
 import com.quickcare.backend.usuario.TipoPerfil;
 import com.quickcare.backend.usuario.Usuario;
-import com.quickcare.backend.validacao.TipoEtapaValidacao;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -200,13 +204,31 @@ public class Notificador {
         paraProfissional(proposta, Destaque.PROPOSTA, TipoNotificacao.LEMBRETE_ATENDIMENTO, titulo, mensagem, true);
     }
 
-    public void atendimentoFinalizado(Atendimento atendimento) {
+    public void atendimentoFinalizado(Atendimento atendimento, Instant prazoAvaliacao) {
         Proposta proposta = atendimento.getProposta();
         String mensagem = "O atendimento de " + servico(proposta) + " terminou.";
-        paraPaciente(proposta, Destaque.PROPOSTA, TipoNotificacao.ATENDIMENTO_FINALIZADO, "Atendimento finalizado",
-                mensagem + " Em breve você poderá avaliar " + nomeDoProfissional(proposta) + ".", true);
-        paraProfissional(proposta, Destaque.PROPOSTA, TipoNotificacao.ATENDIMENTO_FINALIZADO, "Atendimento finalizado",
-                mensagem + " Em breve você poderá avaliar o paciente.", true);
+        String prazo = " A avaliação fica aberta até " + DIA.format(prazoAvaliacao.atZone(FUSO)) + ".";
+        notificacaoService.notificar(proposta.getSolicitacao().getPaciente().getUsuario(), TipoPerfil.PACIENTE,
+                TipoNotificacao.ATENDIMENTO_FINALIZADO, "Atendimento finalizado: avalie",
+                limitar(mensagem + " Conte como foi com " + nomeDoProfissional(proposta) + "." + prazo),
+                avaliacoesDo(TipoPerfil.PACIENTE), true);
+        notificacaoService.notificar(proposta.getProfissional().getUsuario(), TipoPerfil.PROFISSIONAL,
+                TipoNotificacao.ATENDIMENTO_FINALIZADO, "Atendimento finalizado: avalie",
+                limitar(mensagem + " Conte como foi com o paciente." + prazo),
+                avaliacoesDo(TipoPerfil.PROFISSIONAL), true);
+    }
+
+    public void lembreteDeAvaliacao(Atendimento atendimento, LadoAtendimento lado, Instant prazoAvaliacao) {
+        Proposta proposta = atendimento.getProposta();
+        TipoPerfil perfil = lado == LadoAtendimento.PACIENTE ? TipoPerfil.PACIENTE : TipoPerfil.PROFISSIONAL;
+        Usuario usuario = lado == LadoAtendimento.PACIENTE
+                ? proposta.getSolicitacao().getPaciente().getUsuario()
+                : proposta.getProfissional().getUsuario();
+        notificacaoService.notificar(usuario, perfil, TipoNotificacao.AVALIACAO_PENDENTE, "Avalie o atendimento",
+                limitar("Você ainda não avaliou o atendimento de " + servico(proposta) + " que terminou em "
+                        + DIA.format(atendimento.getTermino().atZone(FUSO)) + ". A avaliação fica aberta até "
+                        + DIA.format(prazoAvaliacao.atZone(FUSO)) + "."),
+                avaliacoesDo(perfil), true);
     }
 
     public void problemaRelatado(ProblemaAtendimento problema) {
@@ -386,12 +408,27 @@ public class Notificador {
                 "Cadastro aprovado", mensagem, inicioDo(perfil), true);
     }
 
-    public void etapaReprovada(Usuario usuario, TipoPerfil perfil, TipoEtapaValidacao etapa, String justificativa) {
+    public void revalidacaoAprovada(Usuario usuario, TipoPerfil perfil) {
+        String mensagem = perfil == TipoPerfil.PACIENTE
+                ? "Seus dados foram revalidados. Você já pode criar novas solicitações."
+                : "Seus dados foram revalidados. Você já pode enviar novas propostas.";
+        notificacaoService.notificar(usuario, perfil, TipoNotificacao.CADASTRO_APROVADO,
+                "Revalidação aprovada", mensagem, inicioDo(perfil), true);
+    }
+
+    public void etapaReprovada(Usuario usuario, TipoPerfil perfil, String etapa, String justificativa) {
         notificacaoService.notificar(usuario, perfil, TipoNotificacao.ETAPA_REPROVADA,
                 "Cadastro precisa de ajustes",
-                limitar("A etapa " + etapa.getDescricao() + " foi reprovada: " + comPontoFinal(justificativa)
+                limitar("A etapa " + etapa + " foi reprovada: " + comPontoFinal(justificativa)
                         + " Corrija os dados e reenvie o documento."),
                 validacaoDo(perfil), true);
+    }
+
+    public void registroAprovado(Usuario usuario, String atuacao) {
+        notificacaoService.notificar(usuario, TipoPerfil.PROFISSIONAL, TipoNotificacao.CADASTRO_APROVADO,
+                "Registro aprovado",
+                limitar("O seu registro de " + atuacao + " foi aprovado. Você já pode enviar propostas dessa atuação."),
+                inicioDo(TipoPerfil.PROFISSIONAL), true);
     }
 
     private enum Destaque {
@@ -434,10 +471,124 @@ public class Notificador {
             MotivoOcorrencia.NAO_COMPARECIMENTO, "Um atendimento ficou registrado como não comparecimento seu.",
             MotivoOcorrencia.DECISAO_DISPUTA, "Um administrador decidiu uma disputa contra você.",
             MotivoOcorrencia.MANUAL, "Um administrador registrou uma ocorrência no seu perfil.",
-            MotivoOcorrencia.BLOQUEIO_TARDIO, "Você bloqueou alguém a menos de 48h de um atendimento aceito.");
+            MotivoOcorrencia.BLOQUEIO_TARDIO, "Você bloqueou alguém a menos de 48h de um atendimento aceito.",
+            MotivoOcorrencia.DENUNCIA_PROCEDENTE, "Um administrador considerou procedente uma denúncia contra você.");
+
+    public void banimentoAplicado(Banimento banimento) {
+        String perfil = banimento.getPerfil() == TipoPerfil.PACIENTE ? "paciente" : "profissional";
+        String duracao = banimento.getTipo() == TipoBanimento.PERMANENTE
+                ? " de forma permanente"
+                : " até " + DIA.format(banimento.getFim().atZone(FUSO)) + " às " + HORA.format(banimento.getFim().atZone(FUSO));
+        notificacaoService.notificar(banimento.getUsuario(), banimento.getPerfil(), TipoNotificacao.BANIMENTO_APLICADO,
+                "Perfil banido",
+                limitar("Um administrador baniu o seu perfil de " + perfil + duracao + ": "
+                        + comPontoFinal(banimento.getJustificativa())
+                        + " Você ainda pode entrar e consultar o histórico, mas não pode criar nem alterar nada."
+                        + " Se discordar, pode recorrer uma vez."),
+                inicioDo(banimento.getPerfil()), true);
+    }
+
+    public void perfilRecuperado(Usuario usuario, TipoPerfil perfil, List<String> pendencias) {
+        String nomeDoPerfil = perfil == TipoPerfil.PACIENTE ? "paciente" : "profissional";
+        String detalhe = pendencias.isEmpty()
+                ? " Tudo o que estava parado voltou a andar."
+                : " Continuam valendo: " + String.join("; ", pendencias) + ".";
+        notificacaoService.notificar(usuario, perfil, TipoNotificacao.PERFIL_RECUPERADO, "Perfil recuperado",
+                limitar("Seu perfil de " + nomeDoPerfil + " foi recuperado. O que foi cancelado no encerramento não volta."
+                        + detalhe),
+                inicioDo(perfil), true);
+    }
+
+    public void pendenciasDoDocumento(Usuario usuario, TipoPerfil perfil, List<String> pendencias) {
+        notificacaoService.notificar(usuario, perfil, TipoNotificacao.PENDENCIAS_DO_DOCUMENTO,
+                "Pendências de uma conta anterior",
+                limitar("Encontramos uma conta encerrada com o seu documento. Por isso, continuam valendo neste perfil: "
+                        + String.join("; ", pendencias) + "."),
+                inicioDo(perfil), true);
+    }
+
+    public void banimentoEncerrado(Banimento banimento) {
+        String perfil = banimento.getPerfil() == TipoPerfil.PACIENTE ? "paciente" : "profissional";
+        String mensagem = switch (banimento.getEncerramento()) {
+            case EXPIROU -> "A suspensão do seu perfil de " + perfil + " terminou. Você já pode usar a plataforma de novo.";
+            case REMOVIDO -> "Um administrador removeu o banimento do seu perfil de " + perfil + ": "
+                    + comPontoFinal(banimento.getJustificativaEncerramento());
+            case RECURSO_ACEITO -> "Um administrador aceitou o seu recurso e removeu o banimento do seu perfil de " + perfil + ": "
+                    + comPontoFinal(banimento.getJustificativaEncerramento());
+        };
+        notificacaoService.notificar(banimento.getUsuario(), banimento.getPerfil(), TipoNotificacao.BANIMENTO_ENCERRADO,
+                "Banimento encerrado", limitar(mensagem), inicioDo(banimento.getPerfil()), true);
+    }
+
+    public void recursoDeBanimentoDecidido(Banimento banimento) {
+        if (banimento.getRecursoStatus() == Banimento.StatusRecurso.ACEITO) {
+            banimentoEncerrado(banimento);
+            return;
+        }
+        notificacaoService.notificar(banimento.getUsuario(), banimento.getPerfil(), TipoNotificacao.RECURSO_BANIMENTO_DECIDIDO,
+                "Recurso de banimento negado",
+                limitar("Um administrador analisou o seu recurso e manteve o banimento: "
+                        + comPontoFinal(banimento.getRecursoJustificativa())),
+                inicioDo(banimento.getPerfil()), true);
+    }
+
+    public void encerradoPorBanimentoDoPaciente(Collection<Proposta> afetadas) {
+        afetadas.forEach(proposta -> paraProfissional(proposta, Destaque.SOLICITACAO, TipoNotificacao.SOLICITACAO_CANCELADA,
+                "Solicitação encerrada",
+                "A solicitação de " + servico(proposta) + " foi encerrada porque o paciente não está mais disponível"
+                        + " na plataforma. A sua proposta ou atendimento foi encerrado, sem penalidade para você.", true));
+    }
+
+    public void encerradoPorBanimentoDoProfissional(Proposta proposta, boolean estavaAceita) {
+        String mensagem = estavaAceita
+                ? "O atendimento de " + servico(proposta) + " com " + nomeDoProfissional(proposta)
+                        + " foi cancelado porque o profissional não está mais disponível na plataforma."
+                        + " A vaga voltou a receber propostas, sem penalidade para você."
+                : "A proposta de " + nomeDoProfissional(proposta) + " para " + servico(proposta)
+                        + " foi encerrada porque o profissional não está mais disponível na plataforma.";
+        paraPaciente(proposta, Destaque.SOLICITACAO,
+                estavaAceita ? TipoNotificacao.ATENDIMENTO_CANCELADO : TipoNotificacao.PROPOSTA_CANCELADA,
+                estavaAceita ? "Atendimento cancelado" : "Proposta encerrada", mensagem, estavaAceita);
+    }
+
+    public void denunciaRecebida(Denuncia denuncia) {
+        notificacaoService.notificar(denuncia.usuarioDenunciante(), denuncia.perfilDenunciante(),
+                TipoNotificacao.DENUNCIA_RECEBIDA, "Recebemos a sua denúncia",
+                "Um administrador vai analisar a denúncia de " + denuncia.getMotivo().getRotulo().toLowerCase()
+                        + ". Avisaremos você quando ela for julgada. Quem foi denunciado não sabe que foi você.",
+                inicioDo(denuncia.perfilDenunciante()), true);
+    }
+
+    public void denunciaJulgada(Denuncia denuncia) {
+        String resultado = denuncia.getStatus() == StatusDenuncia.PROCEDENTE
+                ? "Um administrador analisou a sua denúncia e a considerou procedente: "
+                : "Um administrador analisou a sua denúncia e a considerou improcedente: ";
+        notificacaoService.notificar(denuncia.usuarioDenunciante(), denuncia.perfilDenunciante(),
+                TipoNotificacao.DENUNCIA_JULGADA, "Denúncia analisada",
+                limitar(resultado + comPontoFinal(denuncia.getJustificativaDecisao())),
+                inicioDo(denuncia.perfilDenunciante()), true);
+    }
+
+    public void denunciaProcedente(Denuncia denuncia) {
+        String efeito = denuncia.getConsequencia() == ConsequenciaDenuncia.OCORRENCIA
+                ? " Isso gerou uma ocorrência no seu perfil. Se discordar, você pode recorrer uma vez pelo quadro de ocorrências."
+                : " Por isso, o seu perfil foi banido.";
+        notificacaoService.notificar(denuncia.usuarioDenunciado(), denuncia.perfilDenunciado(),
+                TipoNotificacao.DENUNCIA_PROCEDENTE, "Denúncia procedente",
+                limitar("Um administrador analisou uma denúncia sobre o seu perfil e a considerou procedente: "
+                        + comPontoFinal(denuncia.getJustificativaDecisao()) + efeito),
+                denuncia.getConsequencia() == ConsequenciaDenuncia.OCORRENCIA
+                        ? ocorrenciasDo(denuncia.perfilDenunciado())
+                        : inicioDo(denuncia.perfilDenunciado()),
+                true);
+    }
 
     private static String ocorrenciasDo(TipoPerfil perfil) {
         return inicioDo(perfil) + "?" + PARAMETRO_DESTAQUE + "=ocorrencias";
+    }
+
+    private static String avaliacoesDo(TipoPerfil perfil) {
+        return inicioDo(perfil) + "?" + PARAMETRO_DESTAQUE + "=avaliacoes";
     }
 
     private void paraProfissional(

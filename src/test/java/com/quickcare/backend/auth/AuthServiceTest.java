@@ -70,13 +70,13 @@ class AuthServiceTest {
     }
 
     @Test
-    void naoTrocaParaPerfilBanido() {
+    void trocaParaPerfilBanidoSoParaConsulta() {
         usuario.setUltimoPerfil(TipoPerfil.PACIENTE);
         when(profissionalRepository.findByUsuarioId(1L)).thenReturn(Optional.of(Profissional.builder().banido(true).build()));
 
-        assertThatThrownBy(() -> service.definirPerfilAtivo(1L, TipoPerfil.PROFISSIONAL))
-                .isInstanceOf(PerfilNaoAutorizadoException.class);
-        assertThat(usuario.getUltimoPerfil()).isEqualTo(TipoPerfil.PACIENTE);
+        service.definirPerfilAtivo(1L, TipoPerfil.PROFISSIONAL);
+
+        assertThat(usuario.getUltimoPerfil()).isEqualTo(TipoPerfil.PROFISSIONAL);
     }
 
 }
