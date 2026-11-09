@@ -8,6 +8,7 @@ public record MensagemChatResponse(
         Long id,
         Long remetenteId,
         Long solicitacaoId,
+        Long profissionalUsuarioId,
         String conteudo,
         Instant dataEnvio,
         String anexoUrl,
@@ -16,13 +17,14 @@ public record MensagemChatResponse(
 
     /**
      * A URL do anexo é assinada e temporária, então é gerada pelo service a cada leitura e apenas
-     * repassada aqui.
+     * repassada aqui. {@code profissionalUsuarioId} nulo indica mensagem do grupo.
      */
     public static MensagemChatResponse de(Mensagem mensagem, String anexoUrl) {
         return new MensagemChatResponse(
                 mensagem.getId(),
                 mensagem.getRemetenteId(),
                 mensagem.getSolicitacaoId(),
+                mensagem.getProfissionalUsuarioId(),
                 mensagem.getConteudo(),
                 mensagem.getDataEnvio(),
                 anexoUrl,

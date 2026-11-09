@@ -17,9 +17,10 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.List;
 
 /**
- * Persiste as mensagens e as repassa em tempo real a cada participante da conversa, exceto o
- * remetente, pela fila privada de cada um ({@code /user/queue/mensagens}). Não há canais
- * públicos: o cliente nunca publica nem assina {@code /topic}.
+ * Persiste as mensagens e as repassa em tempo real aos participantes do canal que ainda estão
+ * na conversa, exceto o remetente, pela fila privada de cada um ({@code /user/queue/mensagens}).
+ * Não há canais públicos: o cliente nunca publica nem assina {@code /topic}. Quem saiu da
+ * conversa lê o histórico até a saída, mas não envia nem recebe mensagens novas.
  */
 @Slf4j
 @Service
@@ -36,7 +37,8 @@ public class MensagemService {
     @Transactional
     public MensagemChatResponse enviar(Long remetenteId, EnviarMensagemRequest request, MultipartFile arquivo) {
         Long solicitacaoId = request.solicitacaoId();
-        conversaService.exigirParticipante(solicitacaoId, remetenteId);
+        Long profissionalId = request.profissionalUsuarioId();
+        conversaService.exigirPodeEscrever(solicitacaoId, profissionalId, remetenteId);
 
         boolean possuiArquivo = arquivo != null && !arquivo.isEmpty();
         String conteudo = request.conteudo() == null ? "" : request.conteudo().trim();
@@ -44,7 +46,7 @@ public class MensagemService {
             throw new MensagemVaziaException();
         }
 
-        Mensagem mensagem = new Mensagem(remetenteId, solicitacaoId, conteudo);
+        Mensagem mensagem = new Mensagem(remetenteId, solicitacaoId, profissionalId, conteudo);
         if (possuiArquivo) {
             String storageKey = armazenamentoDocumentoService.enviarAnexoChat(arquivo);
             mensagem.anexar(storageKey, arquivo.getOriginalFilename(), arquivo.getContentType());
@@ -52,16 +54,21 @@ public class MensagemService {
 
         MensagemChatResponse response = paraResponse(mensagemRepository.save(mensagem));
 
-        notificarParticipantes(solicitacaoId, remetenteId, response);
+        notificarParticipantes(solicitacaoId, profissionalId, remetenteId, response);
 
         return response;
     }
 
-    @Transactional(readOnly = true)
-    public List<MensagemChatResponse> listarPorConversa(Long usuarioId, Long solicitacaoId) {
-        conversaService.exigirParticipante(solicitacaoId, usuarioId);
+    /**
+     * Histórico do canal ({@code profissionalId} nulo é o grupo). Não é somente leitura porque o
+     * acesso sincroniza a participação com as propostas antes de responder.
+     */
+    @Transactional
+    public List<MensagemChatResponse> listarPorConversa(Long usuarioId, Long solicitacaoId, Long profissionalId) {
+        AcessoAoCanal acesso = conversaService.acessoDe(solicitacaoId, profissionalId, usuarioId);
 
-        return mensagemRepository.findBySolicitacaoIdAndAtivoTrueOrderByDataEnvioAsc(solicitacaoId).stream()
+        return mensagemRepository.listarDoCanal(solicitacaoId, profissionalId).stream()
+                .filter(m -> acesso.enxerga(m.getDataEnvio()))
                 .map(this::paraResponse)
                 .toList();
     }
@@ -75,19 +82,22 @@ public class MensagemService {
         if (!mensagem.getRemetenteId().equals(usuarioId)) {
             throw new ExclusaoMensagemNaoAutorizadaException();
         }
+        conversaService.exigirPodeEscrever(
+                mensagem.getSolicitacaoId(), mensagem.getProfissionalUsuarioId(), usuarioId);
 
         mensagem.excluir();
 
-        notificarParticipantes(mensagem.getSolicitacaoId(), usuarioId, MensagemExcluidaEvento.de(mensagem.getId()));
+        notificarParticipantes(mensagem.getSolicitacaoId(), mensagem.getProfissionalUsuarioId(), usuarioId,
+                MensagemExcluidaEvento.de(mensagem.getId()));
     }
 
     /**
-     * Entrega o payload na fila privada de cada participante, exceto {@code autorId} (que já
-     * recebe a resposta HTTP). A falha de um destinatário não pode desfazer a mensagem já
-     * persistida nem impedir a entrega aos demais.
+     * Entrega o payload na fila privada de cada participante ativo do canal, exceto
+     * {@code autorId} (que já recebe a resposta HTTP). A falha de um destinatário não pode
+     * desfazer a mensagem já persistida nem impedir a entrega aos demais.
      */
-    private void notificarParticipantes(Long solicitacaoId, Long autorId, Object payload) {
-        for (Long participanteId : conversaService.participantes(solicitacaoId)) {
+    private void notificarParticipantes(Long solicitacaoId, Long profissionalId, Long autorId, Object payload) {
+        for (Long participanteId : conversaService.destinatarios(solicitacaoId, profissionalId)) {
             if (participanteId.equals(autorId)) {
                 continue;
             }

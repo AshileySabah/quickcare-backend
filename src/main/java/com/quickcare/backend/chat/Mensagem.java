@@ -14,8 +14,9 @@ import lombok.NoArgsConstructor;
 import java.time.Instant;
 
 /**
- * Mensagem da conversa de uma solicitação. A exclusão é lógica ({@code ativo = false})
- * para preservar o histórico.
+ * Mensagem de um canal da conversa de uma solicitação: o grupo ({@code profissionalUsuarioId}
+ * nulo) ou a conversa individual entre o paciente e um profissional. A exclusão é lógica
+ * ({@code ativo = false}) para preservar o histórico.
  */
 @Entity
 @Table(name = "mensagem")
@@ -33,6 +34,9 @@ public class Mensagem {
 
     @Column(name = "solicitacao_id", nullable = false)
     private Long solicitacaoId;
+
+    @Column(name = "profissional_usuario_id")
+    private Long profissionalUsuarioId;
 
     @Column(nullable = false, columnDefinition = "TEXT")
     private String conteudo;
@@ -52,9 +56,15 @@ public class Mensagem {
     @Column(name = "anexo_tipo", length = 100)
     private String anexoTipo;
 
+    /** Mensagem do grupo. */
     public Mensagem(Long remetenteId, Long solicitacaoId, String conteudo) {
+        this(remetenteId, solicitacaoId, null, conteudo);
+    }
+
+    public Mensagem(Long remetenteId, Long solicitacaoId, Long profissionalUsuarioId, String conteudo) {
         this.remetenteId = remetenteId;
         this.solicitacaoId = solicitacaoId;
+        this.profissionalUsuarioId = profissionalUsuarioId;
         this.conteudo = conteudo;
         this.ativo = true;
     }

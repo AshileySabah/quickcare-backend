@@ -33,6 +33,7 @@ import com.quickcare.backend.atuacao.AtuacaoNaoEncontradaException;
 import com.quickcare.backend.validacao.exception.TransicaoEtapaInvalidaException;
 import com.quickcare.backend.validacao.exception.ValidacaoInvalidaException;
 import com.quickcare.backend.chat.exception.ConversaAcessoNegadoException;
+import com.quickcare.backend.chat.exception.ConversaSomenteLeituraException;
 import com.quickcare.backend.chat.exception.ExclusaoMensagemNaoAutorizadaException;
 import com.quickcare.backend.chat.exception.MensagemNaoEncontradaException;
 import com.quickcare.backend.chat.exception.MensagemVaziaException;
@@ -292,7 +293,8 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 
-    @ExceptionHandler({ConversaAcessoNegadoException.class, ExclusaoMensagemNaoAutorizadaException.class})
+    @ExceptionHandler({ConversaAcessoNegadoException.class, ConversaSomenteLeituraException.class,
+            ExclusaoMensagemNaoAutorizadaException.class})
     public ResponseEntity<ApiError> handleChatProibido(RuntimeException ex) {
         return build(HttpStatus.FORBIDDEN, ex.getMessage());
     }
