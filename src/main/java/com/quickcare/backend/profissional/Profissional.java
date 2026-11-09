@@ -124,11 +124,38 @@ public class Profissional {
     @Column(name = "criado_em", nullable = false, updatable = false)
     private Instant criadoEm;
 
+    @Column(name = "encerrado_em")
+    private Instant encerradoEm;
+
+    @Column(name = "excluido_em")
+    private Instant excluidoEm;
+
     @PrePersist
     private void aoPersistir() {
         if (criadoEm == null) {
             criadoEm = Instant.now();
         }
+    }
+
+    public boolean encerrado() {
+        return encerradoEm != null;
+    }
+
+    public boolean congelado() {
+        return encerradoEm != null && excluidoEm == null;
+    }
+
+    public void anonimizar(Instant agora) {
+        contatosEmergencia.clear();
+        cnpj = null;
+        cep = "00000000";
+        logradouro = "-";
+        numero = "-";
+        complemento = null;
+        bairro = "-";
+        latitude = null;
+        longitude = null;
+        excluidoEm = agora;
     }
 
     public List<Atuacao> atuacoesAtivas() {

@@ -1,0 +1,37 @@
+<!doctype html>
+<html xmlns:th="http://www.thymeleaf.org" lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title th:text="${titulo} + ' - QuickCare'">Segurança - QuickCare</title>
+  </head>
+  <body style="margin: 0; padding: 24px; background: #f5f7f7; font-family: Arial, sans-serif; color: #1f2933">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width: 520px; margin: 0 auto; background: #ffffff; border-radius: 8px">
+      <tr>
+        <td style="padding: 32px">
+          <h1 style="margin: 0 0 16px; font-size: 20px; color: #2c7a7b" th:text="${titulo}">Segurança</h1>
+          <p style="margin: 0 0 16px">Olá, <strong th:text="${nome}">Nome</strong>!</p>
+          <p style="margin: 0 0 24px" th:text="${mensagem}">Mensagem</p>
+          <p
+            th:if="${codigo != null}"
+            style="margin: 0 0 24px; font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #2c7a7b"
+            th:text="${codigo}"
+          >000000</p>
+          <p th:if="${link != null}" style="margin: 0 0 24px">
+            <a
+              th:href="${link}"
+              href="#"
+              th:text="${linkTexto}"
+              style="background: #2c7a7b; color: #ffffff; padding: 12px 20px; border-radius: 6px; text-decoration: none; display: inline-block"
+              >Abrir</a
+            >
+          </p>
+          <p th:if="${link != null}" style="margin: 0 0 8px; font-size: 13px; color: #52606d">Se o botão não funcionar, copie e cole este endereço no navegador:</p>
+          <p th:if="${link != null}" style="margin: 0; font-size: 13px; word-break: break-all">
+            <a th:href="${link}" th:text="${link}" href="#" style="color: #2c7a7b">link</a>
+          </p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

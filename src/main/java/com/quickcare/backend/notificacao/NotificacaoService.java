@@ -34,6 +34,9 @@ public class NotificacaoService {
             String link,
             boolean comEmail
     ) {
+        if (!usuario.recebeNotificacoes()) {
+            return;
+        }
         Notificacao notificacao = notificacaoRepository.save(Notificacao.builder()
                 .usuario(usuario)
                 .perfil(perfil)

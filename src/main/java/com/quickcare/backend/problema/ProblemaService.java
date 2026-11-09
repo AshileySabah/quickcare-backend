@@ -19,6 +19,7 @@ import com.quickcare.backend.ocorrencia.OcorrenciaService;
 import com.quickcare.backend.problema.dto.ContestacaoRequest;
 import com.quickcare.backend.problema.dto.DecisaoDisputaRequest;
 import com.quickcare.backend.problema.dto.RelatoRequest;
+import com.quickcare.backend.seguranca.Congelamento;
 import com.quickcare.backend.solicitacao.exception.PerfilNaoAutorizadoException;
 import com.quickcare.backend.solicitacao.exception.TransicaoStatusInvalidaException;
 import com.quickcare.backend.usuario.TipoPerfil;
@@ -163,6 +164,7 @@ public class ProblemaService {
         ProblemaAtendimento problema = buscar(problemaId);
         Atendimento atendimento = problema.getAtendimento();
         Instant agora = Instant.now(clock);
+        Congelamento.exigirNaoCongelados(atendimento.getSolicitacao().getPaciente(), atendimento.getProposta().getProfissional());
 
         problema.decidir(request.decisao(), request.justificativa(), admin, agora);
         ocorrenciaService.anularDoProblema(admin, problema, "Substituída pela decisão da disputa.");

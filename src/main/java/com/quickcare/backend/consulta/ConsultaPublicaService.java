@@ -76,7 +76,7 @@ public class ConsultaPublicaService {
                 .orElse(Set.of());
 
         return profissionalRepository.findByStatusValidacaoOrderByCriadoEmAsc(StatusValidacao.APROVADO).stream()
-                .filter(profissional -> !profissional.isBanido())
+                .filter(profissional -> !profissional.isBanido() && !profissional.encerrado())
                 .filter(profissional -> usuarioId == null || !profissional.getUsuario().getId().equals(usuarioId))
                 .filter(profissional -> !bloqueados.contains(profissional.getId()))
                 .filter(profissional -> atendeModalidade(profissional.getModalidadeAtendimento(), filtro.modalidade()))
@@ -100,7 +100,7 @@ public class ConsultaPublicaService {
                 .orElse(Set.of());
 
         return solicitacaoRepository.findDistinctByStatusInOrderByCriadoEmDesc(StatusSolicitacao.RECEBENDO_PROPOSTAS_STATUS).stream()
-                .filter(solicitacao -> !solicitacao.getPaciente().isBanido())
+                .filter(solicitacao -> !solicitacao.getPaciente().isBanido() && !solicitacao.getPaciente().encerrado())
                 .filter(solicitacao -> usuarioId == null || !solicitacao.ehDoUsuario(usuarioId))
                 .filter(solicitacao -> !bloqueados.contains(solicitacao.getPaciente().getId()))
                 .filter(solicitacao -> filtro.modalidade() == null || solicitacao.getModalidade() == filtro.modalidade())

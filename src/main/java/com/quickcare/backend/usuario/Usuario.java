@@ -6,7 +6,10 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
@@ -39,8 +42,24 @@ public class Usuario {
     @Column(name = "senha_hash", nullable = false)
     private String senhaHash;
 
-    @Column(nullable = false, unique = true)
+    @Column(unique = true)
     private String cpf;
+
+    @Column(name = "cpf_encerrado", length = 11)
+    private String cpfEncerrado;
+
+    @Column(nullable = false)
+    private boolean lapide;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "titular_id")
+    private Usuario titular;
+
+    @Column(name = "encerrado_em")
+    private Instant encerradoEm;
+
+    @Column(name = "excluido_em")
+    private Instant excluidoEm;
 
     private String telefone;
 
@@ -72,6 +91,14 @@ public class Usuario {
         if (criadoEm == null) {
             criadoEm = Instant.now();
         }
+    }
+
+    public boolean contaEncerrada() {
+        return encerradoEm != null && excluidoEm == null;
+    }
+
+    public boolean recebeNotificacoes() {
+        return !lapide && excluidoEm == null;
     }
 
 }

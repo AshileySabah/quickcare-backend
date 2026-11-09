@@ -178,6 +178,12 @@ public class ProblemaAtendimento {
         return status == StatusProblema.AGUARDANDO_RESPOSTA && !agora.isBefore(prazoResposta);
     }
 
+    public void prorrogarPorCongelamento(Duration duracao) {
+        if (status == StatusProblema.AGUARDANDO_RESPOSTA) {
+            prazoResposta = prazoResposta.plus(duracao);
+        }
+    }
+
     public void expirar() {
         status = StatusProblema.SEM_RESPOSTA;
     }

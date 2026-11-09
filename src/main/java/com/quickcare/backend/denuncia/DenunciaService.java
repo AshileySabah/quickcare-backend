@@ -26,6 +26,7 @@ import com.quickcare.backend.paciente.PacienteRepository;
 import com.quickcare.backend.perfil.exception.PerfilNaoEncontradoException;
 import com.quickcare.backend.profissional.Profissional;
 import com.quickcare.backend.profissional.ProfissionalRepository;
+import com.quickcare.backend.seguranca.Congelamento;
 import com.quickcare.backend.solicitacao.exception.PerfilNaoAutorizadoException;
 import com.quickcare.backend.solicitacao.exception.TransicaoStatusInvalidaException;
 import com.quickcare.backend.usuario.TipoPerfil;
@@ -137,6 +138,7 @@ public class DenunciaService {
     public DenunciaDetalheResponse julgar(Long adminUsuarioId, Long id, DecisaoDenunciaRequest request) {
         Usuario admin = acessoAdmin.exigir(adminUsuarioId);
         Denuncia denuncia = buscar(id);
+        Congelamento.exigirNaoCongelados(denuncia.getPaciente(), denuncia.getProfissional());
         boolean banir = request.resultado() == StatusDenuncia.PROCEDENTE && request.consequencia() == ConsequenciaDenuncia.BANIMENTO;
         if (banir && request.tipoBanimento() == null) {
             throw new TransicaoStatusInvalidaException("Escolha se o banimento é permanente ou uma suspensão.");

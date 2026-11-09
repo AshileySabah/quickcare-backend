@@ -16,6 +16,9 @@ import com.quickcare.backend.documento.DocumentoObrigatorioException;
 import com.quickcare.backend.jwt.TokenInvalidoException;
 import com.quickcare.backend.perfil.exception.PerfilNaoEncontradoException;
 import com.quickcare.backend.proposta.exception.PropostaJaEnviadaException;
+import com.quickcare.backend.seguranca.exception.CodigoInvalidoException;
+import com.quickcare.backend.seguranca.exception.ContaEncerradaException;
+import com.quickcare.backend.seguranca.exception.SenhaIncorretaException;
 import com.quickcare.backend.atendimento.exception.AtendimentoNaoEncontradoException;
 import com.quickcare.backend.notificacao.exception.NotificacaoNaoEncontradaException;
 import com.quickcare.backend.proposta.exception.PropostaNaoEncontradaException;
@@ -114,6 +117,21 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(TokenInvalidoException.class)
     public ResponseEntity<ApiError> handleTokenInvalido(TokenInvalidoException ex) {
         return build(HttpStatus.UNAUTHORIZED, ex.getMessage());
+    }
+
+    @ExceptionHandler(CodigoInvalidoException.class)
+    public ResponseEntity<ApiError> handleCodigoInvalido(CodigoInvalidoException ex) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(SenhaIncorretaException.class)
+    public ResponseEntity<ApiError> handleSenhaIncorreta(SenhaIncorretaException ex) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(ContaEncerradaException.class)
+    public ResponseEntity<ApiError> handleContaEncerrada(ContaEncerradaException ex) {
+        return build(HttpStatus.LOCKED, ex.getMessage());
     }
 
     @ExceptionHandler(TokenRedefinicaoInvalidoException.class)

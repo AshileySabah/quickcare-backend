@@ -21,6 +21,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.time.Duration;
 import java.time.Instant;
 
 @Entity
@@ -121,6 +122,12 @@ public class Banimento {
 
     public boolean ativo(Instant agora) {
         return encerradoEm == null && (fim == null || agora.isBefore(fim));
+    }
+
+    public void prorrogarPorCongelamento(Instant congeladoEm, Duration duracao) {
+        if (encerradoEm == null && fim != null && fim.isAfter(congeladoEm)) {
+            fim = fim.plus(duracao);
+        }
     }
 
     public boolean podeRecorrer(Instant agora) {

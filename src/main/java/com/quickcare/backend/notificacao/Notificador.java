@@ -488,6 +488,25 @@ public class Notificador {
                 inicioDo(banimento.getPerfil()), true);
     }
 
+    public void perfilRecuperado(Usuario usuario, TipoPerfil perfil, List<String> pendencias) {
+        String nomeDoPerfil = perfil == TipoPerfil.PACIENTE ? "paciente" : "profissional";
+        String detalhe = pendencias.isEmpty()
+                ? " Tudo o que estava parado voltou a andar."
+                : " Continuam valendo: " + String.join("; ", pendencias) + ".";
+        notificacaoService.notificar(usuario, perfil, TipoNotificacao.PERFIL_RECUPERADO, "Perfil recuperado",
+                limitar("Seu perfil de " + nomeDoPerfil + " foi recuperado. O que foi cancelado no encerramento não volta."
+                        + detalhe),
+                inicioDo(perfil), true);
+    }
+
+    public void pendenciasDoDocumento(Usuario usuario, TipoPerfil perfil, List<String> pendencias) {
+        notificacaoService.notificar(usuario, perfil, TipoNotificacao.PENDENCIAS_DO_DOCUMENTO,
+                "Pendências de uma conta anterior",
+                limitar("Encontramos uma conta encerrada com o seu documento. Por isso, continuam valendo neste perfil: "
+                        + String.join("; ", pendencias) + "."),
+                inicioDo(perfil), true);
+    }
+
     public void banimentoEncerrado(Banimento banimento) {
         String perfil = banimento.getPerfil() == TipoPerfil.PACIENTE ? "paciente" : "profissional";
         String mensagem = switch (banimento.getEncerramento()) {
