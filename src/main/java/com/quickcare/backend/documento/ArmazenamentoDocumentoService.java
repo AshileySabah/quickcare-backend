@@ -21,8 +21,13 @@ public class ArmazenamentoDocumentoService {
 
     private static final Set<String> TIPOS_ACEITOS = Set.of("application/pdf", "image/jpeg", "image/png");
     private static final Set<String> TIPOS_IMAGEM_ACEITOS = Set.of("image/jpeg", "image/png");
-    private static final long TAMANHO_MAXIMO_BYTES = 5L * 1024 * 1024;
+    private static final Set<String> TIPOS_ANEXO_CHAT_ACEITOS = Set.of(
+            "image/jpeg", "image/png", "application/pdf", "video/mp4",
+            "audio/mpeg", "audio/mp4", "audio/x-m4a", "audio/ogg", "audio/webm", "audio/wav", "audio/x-wav");
+    private static final long TAMANHO_MAXIMO_MB = 5;
+    private static final long TAMANHO_MAXIMO_ANEXO_CHAT_MB = 15;
     private static final Duration EXPIRACAO_URL_ASSINADA = Duration.ofHours(1);
+    private static final Duration EXPIRACAO_URL_ASSINADA_CHAT = Duration.ofHours(24);
 
     private final SupabaseStorageProperties properties;
     private final RestClient.Builder restClientBuilder;
@@ -45,6 +50,14 @@ public class ArmazenamentoDocumentoService {
     public String enviarAnexoProblema(MultipartFile arquivo) {
         validar(arquivo, TIPOS_ACEITOS, "Envie um arquivo PDF, JPG ou PNG.");
         return enviarParaPasta("anexos-problema", arquivo);
+    }
+
+    /** Anexos do chat (imagem, PDF, vídeo ou áudio) ficam em pasta própria, com limite maior. */
+    public String enviarAnexoChat(MultipartFile arquivo) {
+        validar(arquivo, TIPOS_ANEXO_CHAT_ACEITOS,
+                "Envie uma imagem JPG/PNG, um PDF, um vídeo MP4 ou um áudio (MP3, M4A, OGG, WAV).",
+                TAMANHO_MAXIMO_ANEXO_CHAT_MB);
+        return enviarParaPasta("chat-anexos", arquivo);
     }
 
     public String enviarAnexoDenuncia(MultipartFile arquivo) {
@@ -105,14 +118,25 @@ public class ArmazenamentoDocumentoService {
     }
 
     public String gerarUrlAssinada(String storageKey) {
+        return gerarUrlAssinada(storageKey, EXPIRACAO_URL_ASSINADA);
+    }
+
+    /** Os anexos do chat valem por 24h para a conversa não quebrar enquanto a tela fica aberta. */
+    public String urlDoAnexoChat(String storageKey) {
+        return gerarUrlAssinada(storageKey, EXPIRACAO_URL_ASSINADA_CHAT);
+    }
+
+    private String gerarUrlAssinada(String storageKey, Duration expiracao) {
         try {
+            // A chave tem barras ("pasta/arquivo"): concatenar, e não usar variavel de template,
+            // senao o Spring codifica a barra como %2F e o Storage responde InvalidSignature.
             SignedUrlResponse resposta = restClientBuilder.build()
                     .post()
-                    .uri(properties.url() + "/storage/v1/object/sign/{bucket}/{chave}", properties.bucket(), storageKey)
+                    .uri(properties.url() + "/storage/v1/object/sign/" + properties.bucket() + "/" + storageKey)
                     .header("Authorization", "Bearer " + properties.apiKey())
                     .header("apikey", properties.apiKey())
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(new SignedUrlRequest(EXPIRACAO_URL_ASSINADA.toSeconds()))
+                    .body(new SignedUrlRequest(expiracao.toSeconds()))
                     .retrieve()
                     .body(SignedUrlResponse.class);
 
@@ -129,6 +153,10 @@ public class ArmazenamentoDocumentoService {
     }
 
     private void validar(MultipartFile arquivo, Set<String> tiposAceitos, String mensagemFormatoInvalido) {
+        validar(arquivo, tiposAceitos, mensagemFormatoInvalido, TAMANHO_MAXIMO_MB);
+    }
+
+    private void validar(MultipartFile arquivo, Set<String> tiposAceitos, String mensagemFormatoInvalido, long tamanhoMaximoMb) {
         if (arquivo == null || arquivo.isEmpty()) {
             throw new ArquivoInvalidoException("Arquivo não informado.");
         }
@@ -137,8 +165,8 @@ public class ArmazenamentoDocumentoService {
             throw new ArquivoInvalidoException("Formato inválido para \"%s\". %s".formatted(arquivo.getOriginalFilename(), mensagemFormatoInvalido));
         }
 
-        if (arquivo.getSize() > TAMANHO_MAXIMO_BYTES) {
-            throw new ArquivoInvalidoException("O arquivo \"%s\" deve ter no máximo 5MB.".formatted(arquivo.getOriginalFilename()));
+        if (arquivo.getSize() > tamanhoMaximoMb * 1024 * 1024) {
+            throw new ArquivoInvalidoException("O arquivo \"%s\" deve ter no máximo %dMB.".formatted(arquivo.getOriginalFilename(), tamanhoMaximoMb));
         }
     }
 
