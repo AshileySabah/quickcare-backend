@@ -71,7 +71,7 @@ public class MensagemService {
     public List<MensagemChatResponse> listarPorConversa(Long usuarioId, Long solicitacaoId, Long profissionalId) {
         AcessoAoCanal acesso = conversaService.acessoDe(solicitacaoId, profissionalId, usuarioId);
 
-        return mensagemRepository.listarDoCanal(solicitacaoId, profissionalId).stream()
+        return mensagemRepository.listarComApagadasDoCanal(solicitacaoId, profissionalId).stream()
                 .filter(m -> acesso.enxerga(m.getDataEnvio()))
                 .map(this::paraResponse)
                 .toList();
@@ -118,6 +118,9 @@ public class MensagemService {
 
     /** A URL do anexo é assinada e expira, por isso é gerada a cada leitura. */
     private MensagemChatResponse paraResponse(Mensagem mensagem) {
+        if (!mensagem.isAtivo()) {
+            return MensagemChatResponse.apagada(mensagem);
+        }
         String anexoUrl = mensagem.possuiAnexo()
                 ? armazenamentoDocumentoService.urlDoAnexoChat(mensagem.getAnexoStorageKey())
                 : null;

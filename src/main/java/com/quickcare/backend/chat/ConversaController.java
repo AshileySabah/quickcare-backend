@@ -22,8 +22,10 @@ public class ConversaController {
     private final MensagemNaoLidaService mensagemNaoLidaService;
 
     @GetMapping
-    public List<ConversaResponse> listar(@AuthenticationPrincipal Long usuarioId) {
-        return conversaService.listar(usuarioId);
+    public List<ConversaResponse> listar(
+            @AuthenticationPrincipal Long usuarioId,
+            @RequestParam(required = false) String busca) {
+        return conversaService.listar(usuarioId, busca);
     }
 
     @GetMapping("/nao-lidas")

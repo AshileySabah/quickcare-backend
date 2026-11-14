@@ -209,6 +209,49 @@ class ConversaServiceTest {
         verify(conversaProfissionalRepository, never()).save(any());
     }
 
+    @Test
+    void bloqueioTiraOProfissionalDaConversaMesmoComPropostaAceitaNoInstanteDoBloqueio() {
+        Instant bloqueouEm = Instant.now().minusSeconds(600);
+        ConversaProfissional participacao = participacao(PROF_A, ENTROU, null);
+        cenario(List.of(PROF_A), participacao);
+        when(chatPropostaRepository.bloqueiosDoPaciente(PACIENTE))
+                .thenReturn(List.of(new BloqueioNoChat(PROF_A, bloqueouEm)));
+
+        AcessoAoCanal doProfissional = service.acessoDe(SOLICITACAO, PROF_A, PROF_A);
+        AcessoAoCanal doPaciente = service.acessoDe(SOLICITACAO, PROF_A, PACIENTE);
+
+        assertThat(participacao.getSaiuEm()).isEqualTo(bloqueouEm);
+        assertThat(doProfissional.podeEscrever()).isFalse();
+        assertThat(doProfissional.lerAte()).isEqualTo(bloqueouEm);
+        assertThat(doPaciente.podeEscrever()).isFalse();
+        verify(chatPropostaRepository, never()).ultimaAtualizacaoDaProposta(any(), any());
+    }
+
+    @Test
+    void profissionalBloqueadoNaoEntraNaConversaNemRecebeMensagens() {
+        cenario(List.of(PROF_A, PROF_B), participacao(PROF_B, ENTROU, null));
+        when(chatPropostaRepository.bloqueiosDoPaciente(PACIENTE))
+                .thenReturn(List.of(new BloqueioNoChat(PROF_A, Instant.now())));
+
+        assertThatThrownBy(() -> service.acessoDe(SOLICITACAO, PROF_A, PROF_A))
+                .isInstanceOf(ConversaAcessoNegadoException.class);
+        verify(conversaProfissionalRepository, never()).save(any());
+    }
+
+    @Test
+    void profissionalBloqueadoNaoEscreveNoGrupo() {
+        ConversaProfissional bloqueada = participacao(PROF_A, ENTROU, null);
+        ConversaProfissional outro = participacao(PROF_B, ENTROU, null);
+        cenario(List.of(PROF_A, PROF_B), bloqueada, outro);
+        when(chatPropostaRepository.bloqueiosDoPaciente(PACIENTE))
+                .thenReturn(List.of(new BloqueioNoChat(PROF_A, Instant.now().minusSeconds(60))));
+
+        assertThatThrownBy(() -> service.exigirPodeEscrever(SOLICITACAO, null, PROF_A))
+                .isInstanceOf(ConversaSomenteLeituraException.class);
+        assertThat(outro.ativo()).isTrue();
+        assertThat(service.acessoDe(SOLICITACAO, null, PACIENTE).podeEscrever()).isTrue();
+    }
+
     // ---- destinatários em tempo real ------------------------------------------------------
 
     @Test
@@ -322,6 +365,52 @@ class ConversaServiceTest {
     }
 
     @Test
+    void buscaPeloNomeDeQuemEstaNaConversaSemContarOProprioUsuario() {
+        cenarioDeBusca();
+
+        List<ConversaResponse> porNome = service.listar(PACIENTE, "  OTAVIO ");
+        List<ConversaResponse> peloProprioNome = service.listar(PACIENTE, "helena");
+
+        assertThat(porNome).extracting(ConversaResponse::profissionalUsuarioId)
+                .containsExactlyInAnyOrder(PROF_B, null);
+        assertThat(porNome).allMatch(c -> c.mensagemEncontrada() == null);
+        assertThat(peloProprioNome).isEmpty();
+    }
+
+    @Test
+    void buscaPeloTextoDaMensagemSemAcentoEDevolveAMaisRecenteQueCombina() {
+        Mensagem antiga = new Mensagem(PROF_A, SOLICITACAO, PROF_A, "Curativo trocado");
+        ReflectionTestUtils.setField(antiga, "dataEnvio", Instant.parse("2026-11-01T10:00:00Z"));
+        Mensagem recente = new Mensagem(PACIENTE, SOLICITACAO, PROF_A, "Obrigada pelo curativo!");
+        ReflectionTestUtils.setField(recente, "dataEnvio", Instant.parse("2026-11-02T10:00:00Z"));
+        Mensagem noGrupo = new Mensagem(PROF_B, SOLICITACAO, "Bom dia a todos");
+        ReflectionTestUtils.setField(noGrupo, "dataEnvio", Instant.parse("2026-11-03T10:00:00Z"));
+        cenarioDeBusca();
+        when(mensagemRepository.findBySolicitacaoIdInAndAtivoTrueOrderByDataEnvioDesc(List.of(SOLICITACAO)))
+                .thenReturn(List.of(noGrupo, recente, antiga));
+
+        List<ConversaResponse> conversas = service.listar(PACIENTE, "CURATÍVO");
+
+        assertThat(conversas).extracting(ConversaResponse::profissionalUsuarioId).containsExactly(PROF_A);
+        assertThat(conversas.get(0).mensagemEncontrada().conteudo()).isEqualTo("Obrigada pelo curativo!");
+    }
+
+    @Test
+    void buscaNaoMostraMensagemQueOProfissionalNaoEnxerga() {
+        Mensagem depoisDaSaida = new Mensagem(PACIENTE, SOLICITACAO, PROF_B, "curativo novo");
+        ReflectionTestUtils.setField(depoisDaSaida, "dataEnvio", SAIU.plusSeconds(60));
+        cenario(List.of(PROF_A), participacao(PROF_A, ENTROU, null), participacao(PROF_B, ENTROU, SAIU));
+        when(chatPropostaRepository.solicitacaoIdsComChat(PROF_B, StatusProposta.ACEITA)).thenReturn(List.of());
+        when(conversaProfissionalRepository.solicitacaoIdsComoProfissional(PROF_B)).thenReturn(List.of(SOLICITACAO));
+        when(conversaProfissionalRepository.solicitacaoIdsComoPaciente(PROF_B)).thenReturn(List.of());
+        when(usuarioRepository.findAllById(org.mockito.ArgumentMatchers.<Iterable<Long>>any())).thenReturn(List.of());
+        when(mensagemRepository.findBySolicitacaoIdInAndAtivoTrueOrderByDataEnvioDesc(List.of(SOLICITACAO)))
+                .thenReturn(List.of(depoisDaSaida));
+
+        assertThat(service.listar(PROF_B, "curativo")).isEmpty();
+    }
+
+    @Test
     void listarSemConversasRetornaVazio() {
         when(chatPropostaRepository.solicitacaoIdsComChat(5L, StatusProposta.ACEITA)).thenReturn(List.of());
         when(conversaProfissionalRepository.solicitacaoIdsComoProfissional(5L)).thenReturn(List.of());
@@ -339,6 +428,18 @@ class ConversaServiceTest {
                 .thenReturn(profissionaisComPropostaAceita);
         lenient().when(conversaProfissionalRepository.findBySolicitacaoId(SOLICITACAO))
                 .thenReturn(List.of(participacoes));
+    }
+
+    private void cenarioDeBusca() {
+        Usuario paciente = usuario(PACIENTE, "Helena Prado");
+        Usuario a = usuario(PROF_A, "Rafaela Nunes");
+        Usuario b = usuario(PROF_B, "Otávio Reis");
+        cenario(List.of(PROF_A, PROF_B), participacao(PROF_A, ENTROU, null), participacao(PROF_B, ENTROU, null));
+        when(chatPropostaRepository.solicitacaoIdsComChat(PACIENTE, StatusProposta.ACEITA)).thenReturn(List.of(SOLICITACAO));
+        when(conversaProfissionalRepository.solicitacaoIdsComoProfissional(PACIENTE)).thenReturn(List.of());
+        when(conversaProfissionalRepository.solicitacaoIdsComoPaciente(PACIENTE)).thenReturn(List.of(SOLICITACAO));
+        when(usuarioRepository.findAllById(org.mockito.ArgumentMatchers.<Iterable<Long>>any()))
+                .thenReturn(List.of(paciente, a, b));
     }
 
     private ConversaProfissional participacao(Long usuarioId, Instant entrou, Instant saiu) {
