@@ -26,6 +26,7 @@ import com.quickcare.backend.profissional.ModalidadeAtendimento;
 import com.quickcare.backend.profissional.Profissional;
 import com.quickcare.backend.profissional.ProfissionalRepository;
 import com.quickcare.backend.seguranca.HerancaPorDocumentoService;
+import org.springframework.transaction.PlatformTransactionManager;
 import com.quickcare.backend.solicitacao.exception.PerfilNaoAutorizadoException;
 import com.quickcare.backend.usuario.Genero;
 import com.quickcare.backend.usuario.TipoPerfil;
@@ -55,6 +56,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -76,6 +78,7 @@ class CadastroServiceTest {
     @Mock private AtuacaoRepository atuacaoRepository;
     @Mock private AtuacaoEventoRepository atuacaoEventoRepository;
     @Mock private HerancaPorDocumentoService herancaPorDocumentoService;
+    @Mock private PlatformTransactionManager transactionManager;
 
     private CadastroService service;
 
@@ -86,7 +89,7 @@ class CadastroServiceTest {
         service = new CadastroService(usuarioRepository, pacienteRepository, profissionalRepository, documentoRepository,
                 armazenamentoDocumentoService, passwordEncoder, geocodificacaoService, validacaoService,
                 administradorRepository, new MontagemAtuacoes(especialidadeRepository), atuacaoRepository,
-                atuacaoEventoRepository, herancaPorDocumentoService);
+                atuacaoEventoRepository, herancaPorDocumentoService, transactionManager);
         usuario = Usuario.builder().id(1L).nome("Maria Silva").email("maria@email.com").ultimoPerfil(TipoPerfil.PACIENTE).build();
     }
 
@@ -198,6 +201,23 @@ class CadastroServiceTest {
         assertThat(registros.getValue()).hasSize(3);
         assertThat(registros.getValue().get(atuacoes.get(1)).getNomeArquivo()).isEqualTo("crp.pdf");
         verify(atuacaoEventoRepository, times(3)).save(any());
+    }
+
+    @Test
+    void enviaOsDocumentosAntesDeGravarEApagaOsArquivosSeOCadastroFalhar() {
+        when(usuarioRepository.findById(1L)).thenReturn(Optional.of(usuario));
+        when(pacienteRepository.existsByUsuarioId(1L)).thenReturn(true);
+        when(armazenamentoDocumentoService.enviar(eq(TipoDocumento.COMPROVANTE_CPF), any(MultipartFile.class)))
+                .thenReturn("comprovante-cpf/1.pdf");
+        when(armazenamentoDocumentoService.enviar(eq(TipoDocumento.VALIDACAO_CPF), any(MultipartFile.class)))
+                .thenReturn("validacao-cpf/2.pdf");
+
+        assertThatThrownBy(() -> service.criarPerfilPaciente(1L, pacienteRequest(), DOCUMENTOS_PESSOAIS, TIPOS_PESSOAIS))
+                .isInstanceOf(PerfilJaExistenteException.class);
+
+        verify(armazenamentoDocumentoService).excluir("comprovante-cpf/1.pdf");
+        verify(armazenamentoDocumentoService).excluir("validacao-cpf/2.pdf");
+        verify(pacienteRepository, never()).save(any());
     }
 
     @Test

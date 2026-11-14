@@ -92,6 +92,23 @@ public class ArmazenamentoDocumentoService {
         return pasta + "/" + nomeArquivo;
     }
 
+    public void excluir(String storageKey) {
+        if (storageKey == null) {
+            return;
+        }
+        try {
+            restClientBuilder.build()
+                    .delete()
+                    .uri(properties.url() + "/storage/v1/object/" + properties.bucket() + "/" + storageKey)
+                    .header("Authorization", "Bearer " + properties.apiKey())
+                    .header("apikey", properties.apiKey())
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (Exception ex) {
+            log.warn("Falha ao excluir \"{}\" do storage: {}", storageKey, ex.getMessage());
+        }
+    }
+
     public byte[] baixar(String storageKey) {
         try {
             byte[] conteudo = restClientBuilder.build()

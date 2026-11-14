@@ -25,6 +25,8 @@ import com.quickcare.backend.documento.Documento;
 import com.quickcare.backend.documento.DocumentoObrigatorioException;
 import com.quickcare.backend.documento.DocumentoRepository;
 import com.quickcare.backend.documento.TipoDocumento;
+import com.quickcare.backend.geolocalizacao.Coordenadas;
+import com.quickcare.backend.geolocalizacao.EnderecoGeocodificavel;
 import com.quickcare.backend.geolocalizacao.GeocodificacaoService;
 import com.quickcare.backend.jwt.TokenInvalidoException;
 import com.quickcare.backend.paciente.Paciente;
@@ -45,7 +47,8 @@ import com.quickcare.backend.validacao.ValidacaoService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.ZoneId;
@@ -54,10 +57,16 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.function.Supplier;
 
 @Service
 @RequiredArgsConstructor
@@ -76,11 +85,16 @@ public class CadastroService {
     private final AtuacaoRepository atuacaoRepository;
     private final AtuacaoEventoRepository atuacaoEventoRepository;
     private final HerancaPorDocumentoService herancaPorDocumentoService;
+    private final PlatformTransactionManager transactionManager;
 
+    private static final ExecutorService ENVIOS = Executors.newFixedThreadPool(6, tarefa -> {
+        Thread thread = new Thread(tarefa, "cadastro-envios");
+        thread.setDaemon(true);
+        return thread;
+    });
     private static final ZoneId FUSO = ZoneId.of("America/Sao_Paulo");
     private static final DateTimeFormatter DIA = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
-    @Transactional
     public CadastroResponse cadastrarPaciente(
             CadastroPacienteRequest request,
             List<MultipartFile> documentos,
@@ -93,12 +107,14 @@ public class CadastroService {
         DocumentoIdentidade identidade = DocumentoIdentidade.validar(
                 request.documentoIdentidadeTipo(), request.documentoIdentidadeNumero(), request.documentoIdentidadeUf());
 
-        Usuario usuario = resolverUsuario(request.nome(), request.email(), request.senha(), request.cpf(), request.telefone(), identidade, avatar);
-
-        return criarPaciente(usuario, request.perfil(), documentosValidados);
+        ArquivosEnviados enviados = enviarArquivos(documentosValidados, avatar);
+        return emTransacao(enviados, () -> {
+            Usuario usuario = resolverUsuario(request.nome(), request.email(), request.senha(), request.cpf(),
+                    request.telefone(), identidade, enviados.avatar());
+            return criarPaciente(usuario, request.perfil(), documentosValidados, enviados);
+        });
     }
 
-    @Transactional
     public CadastroResponse cadastrarProfissional(
             CadastroProfissionalRequest request,
             List<MultipartFile> documentos,
@@ -111,37 +127,90 @@ public class CadastroService {
         DocumentoIdentidade identidade = DocumentoIdentidade.validar(
                 request.documentoIdentidadeTipo(), request.documentoIdentidadeNumero(), request.documentoIdentidadeUf());
 
-        Usuario usuario = resolverUsuario(request.nome(), request.email(), request.senha(), request.cpf(), request.telefone(), identidade, avatar);
-
-        return criarProfissional(usuario, request.perfil(), documentosValidados);
+        CompletableFuture<Optional<Coordenadas>> coordenadas = geocodificarEmParalelo(request.perfil());
+        ArquivosEnviados enviados = enviarArquivos(documentosValidados, avatar);
+        Optional<Coordenadas> coordenadasProntas = coordenadas.join();
+        return emTransacao(enviados, () -> {
+            Usuario usuario = resolverUsuario(request.nome(), request.email(), request.senha(), request.cpf(),
+                    request.telefone(), identidade, enviados.avatar());
+            return criarProfissional(usuario, request.perfil(), documentosValidados, enviados, coordenadasProntas);
+        });
     }
 
-    @Transactional
     public CadastroResponse criarPerfilPaciente(
             Long usuarioId,
             NovoPerfilPacienteRequest request,
             List<MultipartFile> documentos,
             List<TipoDocumento> tiposDocumento
     ) {
-        Usuario usuario = buscarUsuarioQuePodeTerOutroPerfil(usuarioId);
+        buscarUsuarioQuePodeTerOutroPerfil(usuarioId);
         List<DocumentoParaSalvar> documentosValidados = validarDocumentos(documentos, tiposDocumento);
         exigirDocumentoCpf(documentosValidados);
 
-        return criarPaciente(usuario, request, documentosValidados);
+        ArquivosEnviados enviados = enviarArquivos(documentosValidados, null);
+        return emTransacao(enviados, () ->
+                criarPaciente(buscarUsuarioQuePodeTerOutroPerfil(usuarioId), request, documentosValidados, enviados));
     }
 
-    @Transactional
     public CadastroResponse criarPerfilProfissional(
             Long usuarioId,
             NovoPerfilProfissionalRequest request,
             List<MultipartFile> documentos,
             List<TipoDocumento> tiposDocumento
     ) {
-        Usuario usuario = buscarUsuarioQuePodeTerOutroPerfil(usuarioId);
+        buscarUsuarioQuePodeTerOutroPerfil(usuarioId);
         List<DocumentoParaSalvar> documentosValidados = validarDocumentos(documentos, tiposDocumento);
         exigirDocumentosDoProfissional(request, documentosValidados);
 
-        return criarProfissional(usuario, request, documentosValidados);
+        CompletableFuture<Optional<Coordenadas>> coordenadas = geocodificarEmParalelo(request);
+        ArquivosEnviados enviados = enviarArquivos(documentosValidados, null);
+        Optional<Coordenadas> coordenadasProntas = coordenadas.join();
+        return emTransacao(enviados, () -> criarProfissional(buscarUsuarioQuePodeTerOutroPerfil(usuarioId), request,
+                documentosValidados, enviados, coordenadasProntas));
+    }
+
+    private record ArquivosEnviados(Map<DocumentoParaSalvar, String> documentos, String avatar) {
+    }
+
+    private ArquivosEnviados enviarArquivos(List<DocumentoParaSalvar> documentos, MultipartFile avatar) {
+        Map<DocumentoParaSalvar, CompletableFuture<String>> envios = new LinkedHashMap<>();
+        documentos.forEach(documento -> envios.put(documento, CompletableFuture.supplyAsync(
+                () -> armazenamentoDocumentoService.enviar(documento.tipo(), documento.arquivo()), ENVIOS)));
+        CompletableFuture<String> envioDoAvatar = avatar != null && !avatar.isEmpty()
+                ? CompletableFuture.supplyAsync(() -> armazenamentoDocumentoService.enviarAvatar(avatar), ENVIOS)
+                : CompletableFuture.completedFuture(null);
+
+        List<CompletableFuture<String>> todos = new ArrayList<>(envios.values());
+        todos.add(envioDoAvatar);
+        try {
+            CompletableFuture.allOf(todos.toArray(CompletableFuture[]::new)).join();
+        } catch (CompletionException ex) {
+            todos.stream()
+                    .filter(envio -> !envio.isCompletedExceptionally())
+                    .map(CompletableFuture::join)
+                    .forEach(armazenamentoDocumentoService::excluir);
+            throw ex.getCause() instanceof RuntimeException causa ? causa : ex;
+        }
+
+        Map<DocumentoParaSalvar, String> chaves = new HashMap<>();
+        envios.forEach((documento, envio) -> chaves.put(documento, envio.join()));
+        return new ArquivosEnviados(chaves, envioDoAvatar.join());
+    }
+
+    private CadastroResponse emTransacao(ArquivosEnviados enviados, Supplier<CadastroResponse> passos) {
+        try {
+            return new TransactionTemplate(transactionManager).execute(status -> passos.get());
+        } catch (RuntimeException ex) {
+            enviados.documentos().values().forEach(armazenamentoDocumentoService::excluir);
+            armazenamentoDocumentoService.excluir(enviados.avatar());
+            throw ex;
+        }
+    }
+
+    private CompletableFuture<Optional<Coordenadas>> geocodificarEmParalelo(NovoPerfilProfissionalRequest request) {
+        EnderecoGeocodificavel endereco = new EnderecoGeocodificavel(request.cep(), request.logradouro(), request.numero(),
+                request.cidade(), request.uf() == null ? null : request.uf().toUpperCase());
+        return CompletableFuture.supplyAsync(() -> geocodificacaoService.geocodificar(endereco), ENVIOS);
     }
 
     private Usuario buscarUsuarioQuePodeTerOutroPerfil(Long usuarioId) {
@@ -154,7 +223,7 @@ public class CadastroService {
     }
 
     private CadastroResponse criarPaciente(Usuario usuario, NovoPerfilPacienteRequest request,
-                                           List<DocumentoParaSalvar> documentosValidados) {
+                                           List<DocumentoParaSalvar> documentosValidados, ArquivosEnviados enviados) {
         if (pacienteRepository.existsByUsuarioId(usuario.getId())) {
             throw new PerfilJaExistenteException("paciente");
         }
@@ -185,7 +254,7 @@ public class CadastroService {
                         .build()
         );
 
-        validacaoService.iniciar(paciente, salvarDocumentos(documentosValidados, paciente, null));
+        validacaoService.iniciar(paciente, salvarDocumentos(documentosValidados, enviados, paciente, null));
         usuario.setUltimoPerfil(TipoPerfil.PACIENTE);
         herancaPorDocumentoService.herdar(usuario, paciente);
 
@@ -193,7 +262,8 @@ public class CadastroService {
     }
 
     private CadastroResponse criarProfissional(Usuario usuario, NovoPerfilProfissionalRequest request,
-                                               List<DocumentoParaSalvar> documentosValidados) {
+                                               List<DocumentoParaSalvar> documentosValidados, ArquivosEnviados enviados,
+                                               Optional<Coordenadas> coordenadas) {
         if (profissionalRepository.existsByUsuarioId(usuario.getId())) {
             throw new PerfilJaExistenteException("profissional");
         }
@@ -231,7 +301,7 @@ public class CadastroService {
                 .uf(request.uf().toUpperCase())
                 .build();
         List<Atuacao> atuacoes = montagemAtuacoes.montar(novo, request.atuacoes(), List.of());
-        novo.definirCoordenadas(geocodificacaoService.geocodificar(novo.endereco()).orElse(null));
+        novo.definirCoordenadas(coordenadas.orElse(null));
         Profissional profissional = profissionalRepository.save(novo);
 
         atuacoes.forEach(atuacao -> atuacao.setProfissional(profissional));
@@ -244,7 +314,7 @@ public class CadastroService {
 
         Map<TipoDocumento, Documento> documentosDaConta = salvarDocumentos(
                 documentosValidados.stream().filter(doc -> doc.tipo() != TipoDocumento.REGISTRO_PROFISSIONAL).toList(),
-                null, profissional);
+                enviados, null, profissional);
         List<Atuacao> comRegistro = atuacoes.stream().filter(Atuacao::exigeRegistro).toList();
         List<DocumentoParaSalvar> registros = documentosValidados.stream()
                 .filter(doc -> doc.tipo() == TipoDocumento.REGISTRO_PROFISSIONAL)
@@ -252,8 +322,7 @@ public class CadastroService {
         Map<Atuacao, Documento> documentosDeRegistro = new HashMap<>();
         for (int i = 0; i < comRegistro.size(); i++) {
             DocumentoParaSalvar registro = registros.get(i);
-            documentosDeRegistro.put(comRegistro.get(i),
-                    salvarDocumento(registro.tipo(), registro.arquivo(), null, profissional));
+            documentosDeRegistro.put(comRegistro.get(i), salvarDocumento(registro, enviados, null, profissional));
         }
 
         validacaoService.iniciar(profissional, documentosDaConta, documentosDeRegistro);
@@ -328,16 +397,20 @@ public class CadastroService {
                 .toList();
     }
 
-    private Map<TipoDocumento, Documento> salvarDocumentos(List<DocumentoParaSalvar> documentos, Paciente paciente, Profissional profissional) {
+    private Map<TipoDocumento, Documento> salvarDocumentos(List<DocumentoParaSalvar> documentos, ArquivosEnviados enviados,
+                                                           Paciente paciente, Profissional profissional) {
         Map<TipoDocumento, Documento> salvos = new EnumMap<>(TipoDocumento.class);
         for (DocumentoParaSalvar documento : documentos) {
-            salvos.put(documento.tipo(), salvarDocumento(documento.tipo(), documento.arquivo(), paciente, profissional));
+            salvos.put(documento.tipo(), salvarDocumento(documento, enviados, paciente, profissional));
         }
         return salvos;
     }
 
-    private Documento salvarDocumento(TipoDocumento tipo, MultipartFile arquivo, Paciente paciente, Profissional profissional) {
-        String storageKey = armazenamentoDocumentoService.enviar(tipo, arquivo);
+    private Documento salvarDocumento(DocumentoParaSalvar documento, ArquivosEnviados enviados, Paciente paciente,
+                                      Profissional profissional) {
+        TipoDocumento tipo = documento.tipo();
+        MultipartFile arquivo = documento.arquivo();
+        String storageKey = enviados.documentos().get(documento);
 
         return documentoRepository.save(
                 Documento.builder()
@@ -353,7 +426,7 @@ public class CadastroService {
     }
 
     private Usuario resolverUsuario(String nome, String email, String senha, String cpf, String telefone,
-                                    DocumentoIdentidade identidade, MultipartFile avatar) {
+                                    DocumentoIdentidade identidade, String avatarStorageKey) {
         Optional<Usuario> porEmail = usuarioRepository.findByEmail(email);
         Optional<Usuario> porCpf = usuarioRepository.findByCpf(cpf);
 
@@ -376,6 +449,7 @@ public class CadastroService {
             if (usuario.getDocumentoIdentidadeNumero() == null) {
                 aplicarIdentidade(usuario, identidade);
             }
+            armazenamentoDocumentoService.excluir(avatarStorageKey);
             return usuario;
         }
 
@@ -386,10 +460,6 @@ public class CadastroService {
         if (porCpf.isPresent()) {
             throw new CpfJaCadastradoException();
         }
-
-        String avatarStorageKey = avatar != null && !avatar.isEmpty()
-                ? armazenamentoDocumentoService.enviarAvatar(avatar)
-                : null;
 
         Usuario novo = Usuario.builder()
                 .nome(nome)
