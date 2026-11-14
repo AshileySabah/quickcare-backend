@@ -20,6 +20,12 @@ public interface ChatPropostaRepository extends Repository<Proposta, Long> {
     @Query("select s.paciente.usuario.id from Solicitacao s where s.id = :solicitacaoId")
     Optional<Long> usuarioIdDoPaciente(@Param("solicitacaoId") Long solicitacaoId);
 
+    @Query("select pa.id from Paciente pa where pa.usuario.id = :usuarioId")
+    Optional<Long> pacienteIdDoUsuario(@Param("usuarioId") Long usuarioId);
+
+    @Query("select pr.id from Profissional pr where pr.usuario.id = :usuarioId")
+    Optional<Long> profissionalIdDoUsuario(@Param("usuarioId") Long usuarioId);
+
     @Query("""
             select distinct p.profissional.usuario.id from Proposta p
             where p.solicitacao.id = :solicitacaoId and p.status = :status

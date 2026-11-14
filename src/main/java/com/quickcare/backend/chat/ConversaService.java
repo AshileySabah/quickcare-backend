@@ -244,7 +244,15 @@ public class ConversaService {
             Long usuarioId, String papel, boolean ativo, Map<Long, Usuario> usuarios, Map<Long, String> avatares) {
         Usuario usuario = usuarios.get(usuarioId);
         String nome = usuario != null ? usuario.getNome() : "Usuário #" + usuarioId;
-        return new ParticipanteResponse(usuarioId, nome, papel, avatarDe(usuarioId, usuario, avatares), ativo);
+        return new ParticipanteResponse(usuarioId, perfilDe(usuarioId, papel), nome, papel,
+                avatarDe(usuarioId, usuario, avatares), ativo);
+    }
+
+    private Long perfilDe(Long usuarioId, String papel) {
+        Optional<Long> perfil = PAPEL_PACIENTE.equals(papel)
+                ? chatPropostaRepository.pacienteIdDoUsuario(usuarioId)
+                : chatPropostaRepository.profissionalIdDoUsuario(usuarioId);
+        return perfil.orElse(null);
     }
 
     /** A URL é assinada no storage; é gerada uma vez por usuário em cada listagem. */

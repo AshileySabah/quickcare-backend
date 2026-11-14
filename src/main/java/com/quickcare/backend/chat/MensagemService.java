@@ -33,6 +33,7 @@ public class MensagemService {
     private final ConversaService conversaService;
     private final SimpMessagingTemplate messagingTemplate;
     private final ArmazenamentoDocumentoService armazenamentoDocumentoService;
+    private final MensagemNaoLidaService mensagemNaoLidaService;
 
     @Transactional
     public MensagemChatResponse enviar(Long remetenteId, EnviarMensagemRequest request, MultipartFile arquivo) {
@@ -52,9 +53,12 @@ public class MensagemService {
             mensagem.anexar(storageKey, arquivo.getOriginalFilename(), arquivo.getContentType());
         }
 
-        MensagemChatResponse response = paraResponse(mensagemRepository.save(mensagem));
+        Mensagem salva = mensagemRepository.save(mensagem);
+        MensagemChatResponse response = paraResponse(salva);
 
-        notificarParticipantes(solicitacaoId, profissionalId, remetenteId, response);
+        List<Long> destinatarios = conversaService.destinatarios(solicitacaoId, profissionalId);
+        mensagemNaoLidaService.registrar(salva, destinatarios);
+        notificarParticipantes(destinatarios, solicitacaoId, remetenteId, response);
 
         return response;
     }
@@ -86,9 +90,11 @@ public class MensagemService {
                 mensagem.getSolicitacaoId(), mensagem.getProfissionalUsuarioId(), usuarioId);
 
         mensagem.excluir();
+        mensagemNaoLidaService.excluirDaMensagem(mensagem.getId());
 
-        notificarParticipantes(mensagem.getSolicitacaoId(), mensagem.getProfissionalUsuarioId(), usuarioId,
-                MensagemExcluidaEvento.de(mensagem.getId()));
+        notificarParticipantes(
+                conversaService.destinatarios(mensagem.getSolicitacaoId(), mensagem.getProfissionalUsuarioId()),
+                mensagem.getSolicitacaoId(), usuarioId, MensagemExcluidaEvento.de(mensagem.getId()));
     }
 
     /**
@@ -96,8 +102,8 @@ public class MensagemService {
      * {@code autorId} (que já recebe a resposta HTTP). A falha de um destinatário não pode
      * desfazer a mensagem já persistida nem impedir a entrega aos demais.
      */
-    private void notificarParticipantes(Long solicitacaoId, Long profissionalId, Long autorId, Object payload) {
-        for (Long participanteId : conversaService.destinatarios(solicitacaoId, profissionalId)) {
+    private void notificarParticipantes(List<Long> destinatarios, Long solicitacaoId, Long autorId, Object payload) {
+        for (Long participanteId : destinatarios) {
             if (participanteId.equals(autorId)) {
                 continue;
             }

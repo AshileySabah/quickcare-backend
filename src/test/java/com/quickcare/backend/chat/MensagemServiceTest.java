@@ -43,6 +43,8 @@ class MensagemServiceTest {
     private SimpMessagingTemplate messagingTemplate;
     @Mock
     private ArmazenamentoDocumentoService armazenamento;
+    @Mock
+    private MensagemNaoLidaService mensagemNaoLidaService;
     @InjectMocks
     private MensagemService service;
 
@@ -194,7 +196,18 @@ class MensagemServiceTest {
         service.excluir(1L, 5L);
 
         assertThat(mensagem.isAtivo()).isFalse();
+        verify(mensagemRepository, never()).delete(any());
+        verify(mensagemNaoLidaService).excluirDaMensagem(mensagem.getId());
         verify(messagingTemplate).convertAndSendToUser(eq("2"), eq("/queue/mensagens"), any(Object.class));
+    }
+
+    @Test
+    void mensagemEnviadaFicaNaoLidaParaOsOutrosDoCanal() {
+        when(conversaService.destinatarios(10L, null)).thenReturn(List.of(1L, 2L, 3L));
+
+        service.enviar(2L, new EnviarMensagemRequest(10L, null, "oi"), null);
+
+        verify(mensagemNaoLidaService).registrar(any(Mensagem.class), eq(List.of(1L, 2L, 3L)));
     }
 
     @Test
