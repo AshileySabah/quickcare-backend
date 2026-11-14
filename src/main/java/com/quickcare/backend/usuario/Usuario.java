@@ -51,6 +51,9 @@ public class Usuario {
     @Column(nullable = false)
     private boolean lapide;
 
+    @Column(name = "confirmacao_email_pendente", nullable = false)
+    private boolean confirmacaoEmailPendente;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "titular_id")
     private Usuario titular;

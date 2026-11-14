@@ -86,6 +86,7 @@ public class CadastroService {
     private final AtuacaoEventoRepository atuacaoEventoRepository;
     private final HerancaPorDocumentoService herancaPorDocumentoService;
     private final PlatformTransactionManager transactionManager;
+    private final ConfirmacaoEmailService confirmacaoEmailService;
 
     private static final ExecutorService ENVIOS = Executors.newFixedThreadPool(6, tarefa -> {
         Thread thread = new Thread(tarefa, "cadastro-envios");
@@ -108,11 +109,11 @@ public class CadastroService {
                 request.documentoIdentidadeTipo(), request.documentoIdentidadeNumero(), request.documentoIdentidadeUf());
 
         ArquivosEnviados enviados = enviarArquivos(documentosValidados, avatar);
-        return emTransacao(enviados, () -> {
+        return pedirConfirmacaoSePendente(emTransacao(enviados, () -> {
             Usuario usuario = resolverUsuario(request.nome(), request.email(), request.senha(), request.cpf(),
                     request.telefone(), identidade, enviados.avatar());
             return criarPaciente(usuario, request.perfil(), documentosValidados, enviados);
-        });
+        }));
     }
 
     public CadastroResponse cadastrarProfissional(
@@ -130,11 +131,11 @@ public class CadastroService {
         CompletableFuture<Optional<Coordenadas>> coordenadas = geocodificarEmParalelo(request.perfil());
         ArquivosEnviados enviados = enviarArquivos(documentosValidados, avatar);
         Optional<Coordenadas> coordenadasProntas = coordenadas.join();
-        return emTransacao(enviados, () -> {
+        return pedirConfirmacaoSePendente(emTransacao(enviados, () -> {
             Usuario usuario = resolverUsuario(request.nome(), request.email(), request.senha(), request.cpf(),
                     request.telefone(), identidade, enviados.avatar());
             return criarProfissional(usuario, request.perfil(), documentosValidados, enviados, coordenadasProntas);
-        });
+        }));
     }
 
     public CadastroResponse criarPerfilPaciente(
@@ -167,6 +168,13 @@ public class CadastroService {
         Optional<Coordenadas> coordenadasProntas = coordenadas.join();
         return emTransacao(enviados, () -> criarProfissional(buscarUsuarioQuePodeTerOutroPerfil(usuarioId), request,
                 documentosValidados, enviados, coordenadasProntas));
+    }
+
+    private CadastroResponse pedirConfirmacaoSePendente(CadastroResponse response) {
+        if (response.confirmacaoEmailPendente()) {
+            confirmacaoEmailService.enviarLink(response.usuarioId());
+        }
+        return response;
     }
 
     private record ArquivosEnviados(Map<DocumentoParaSalvar, String> documentos, String avatar) {
@@ -256,9 +264,12 @@ public class CadastroService {
 
         validacaoService.iniciar(paciente, salvarDocumentos(documentosValidados, enviados, paciente, null));
         usuario.setUltimoPerfil(TipoPerfil.PACIENTE);
-        herancaPorDocumentoService.herdar(usuario, paciente);
+        if (!usuario.isConfirmacaoEmailPendente()) {
+            herancaPorDocumentoService.herdar(usuario, paciente);
+        }
 
-        return new CadastroResponse(usuario.getId(), paciente.getId(), usuario.getNome(), usuario.getEmail(), "PACIENTE");
+        return new CadastroResponse(usuario.getId(), paciente.getId(), usuario.getNome(), usuario.getEmail(), "PACIENTE",
+                usuario.isConfirmacaoEmailPendente());
     }
 
     private CadastroResponse criarProfissional(Usuario usuario, NovoPerfilProfissionalRequest request,
@@ -327,9 +338,12 @@ public class CadastroService {
 
         validacaoService.iniciar(profissional, documentosDaConta, documentosDeRegistro);
         usuario.setUltimoPerfil(TipoPerfil.PROFISSIONAL);
-        herancaPorDocumentoService.herdar(usuario, profissional);
+        if (!usuario.isConfirmacaoEmailPendente()) {
+            herancaPorDocumentoService.herdar(usuario, profissional);
+        }
 
-        return new CadastroResponse(usuario.getId(), profissional.getId(), usuario.getNome(), usuario.getEmail(), "PROFISSIONAL");
+        return new CadastroResponse(usuario.getId(), profissional.getId(), usuario.getNome(), usuario.getEmail(), "PROFISSIONAL",
+                usuario.isConfirmacaoEmailPendente());
     }
 
     private void exigirDocumentoCpf(List<DocumentoParaSalvar> documentos) {
@@ -465,6 +479,7 @@ public class CadastroService {
                 .nome(nome)
                 .email(email)
                 .senhaHash(passwordEncoder.encode(senha))
+                .confirmacaoEmailPendente(true)
                 .cpf(cpf)
                 .telefone(telefone)
                 .avatarStorageKey(avatarStorageKey)

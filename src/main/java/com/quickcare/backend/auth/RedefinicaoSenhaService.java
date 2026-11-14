@@ -1,6 +1,7 @@
 package com.quickcare.backend.auth;
 
 import com.quickcare.backend.auth.exception.TokenRedefinicaoInvalidoException;
+import com.quickcare.backend.cadastro.ConfirmacaoEmailService;
 import com.quickcare.backend.common.EmailService;
 import com.quickcare.backend.usuario.Usuario;
 import com.quickcare.backend.usuario.UsuarioRepository;
@@ -38,6 +39,7 @@ public class RedefinicaoSenhaService {
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
     private final AuthService authService;
+    private final ConfirmacaoEmailService confirmacaoEmailService;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Value("${quickcare.frontend-url}")
@@ -63,6 +65,7 @@ public class RedefinicaoSenhaService {
         usuario.setSenhaAlteradaEm(Instant.now());
 
         tokenRepository.delete(tokenRedefinicao);
+        confirmacaoEmailService.concluirConfirmacao(usuario);
 
         return authService.iniciarSessao(usuario);
     }

@@ -160,6 +160,7 @@ public class ValidacaoService {
                         .stream().map(CadastroAvaliado::de).toList();
 
         return cadastros.stream()
+                .filter(cadastro -> cadastro.usuario() == null || !cadastro.usuario().isConfirmacaoEmailPendente())
                 .map(cadastro -> responses.resumo(cadastro, etapas(cadastro)))
                 .toList();
     }

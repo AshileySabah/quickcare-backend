@@ -2,6 +2,7 @@ package com.quickcare.backend.profissional;
 
 import com.quickcare.backend.validacao.StatusValidacao;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -33,5 +34,9 @@ public interface ProfissionalRepository extends JpaRepository<Profissional, Long
             order by p.encerradoEm desc
             """)
     List<Profissional> findExcluidosDoCpf(@Param("cpf") String cpf);
+
+    @Modifying(flushAutomatically = true)
+    @Query(value = "DELETE FROM profissional WHERE usuario_id = :usuarioId", nativeQuery = true)
+    int excluirDoUsuario(@Param("usuarioId") Long usuarioId);
 
 }

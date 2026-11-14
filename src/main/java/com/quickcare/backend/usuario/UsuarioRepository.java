@@ -1,6 +1,7 @@
 package com.quickcare.backend.usuario;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -23,5 +24,12 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
 
     @Query("select u from Usuario u where u.lapide = false and u.cpfEncerrado = :cpf and u.excluidoEm is not null")
     List<Usuario> findExcluidosDoCpf(@Param("cpf") String cpf);
+
+    @Query("select u.id from Usuario u where u.confirmacaoEmailPendente = true and u.criadoEm <= :limite")
+    List<Long> findIdsComConfirmacaoVencida(@Param("limite") Instant limite);
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = "DELETE FROM usuario WHERE id = :usuarioId AND confirmacao_email_pendente", nativeQuery = true)
+    int excluirNaoConfirmado(@Param("usuarioId") Long usuarioId);
 
 }

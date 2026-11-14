@@ -5,6 +5,7 @@ import com.quickcare.backend.auth.dto.LoginRequest;
 import com.quickcare.backend.auth.dto.LoginResponse;
 import com.quickcare.backend.auth.dto.PerfilStatusResponse;
 import com.quickcare.backend.auth.exception.LoginInvalidoException;
+import com.quickcare.backend.cadastro.exception.EmailNaoConfirmadoException;
 import com.quickcare.backend.documento.ArmazenamentoDocumentoService;
 import com.quickcare.backend.jwt.JwtService;
 import com.quickcare.backend.jwt.TokenInvalidoException;
@@ -51,6 +52,10 @@ public class AuthService {
 
         if (!passwordEncoder.matches(request.senha(), usuario.getSenhaHash())) {
             throw new LoginInvalidoException();
+        }
+        if (usuario.isConfirmacaoEmailPendente()) {
+            throw new EmailNaoConfirmadoException("Confirme seu e-mail para entrar. Enviamos um link para "
+                    + usuario.getEmail() + ".");
         }
         if (usuario.contaEncerrada()) {
             throw new ContaEncerradaException("Sua conta foi encerrada e será excluída em "

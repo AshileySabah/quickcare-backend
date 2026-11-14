@@ -10,6 +10,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.InjectMocks;
+import com.quickcare.backend.cadastro.ConfirmacaoEmailService;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -52,6 +53,9 @@ class RedefinicaoSenhaServiceTest {
 
     @Mock
     private AuthService authService;
+
+    @Mock
+    private ConfirmacaoEmailService confirmacaoEmailService;
 
     @Captor
     private ArgumentCaptor<TokenRedefinicaoSenha> tokenCaptor;
