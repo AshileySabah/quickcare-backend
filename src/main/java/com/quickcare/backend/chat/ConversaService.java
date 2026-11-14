@@ -13,12 +13,14 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.text.Normalizer;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -67,7 +69,7 @@ public class ConversaService {
             throw new ConversaAcessoNegadoException();
         }
         Long pacienteId = chatPropostaRepository.usuarioIdDoPaciente(solicitacaoId).orElse(null);
-        List<ConversaProfissional> profissionais = sincronizar(solicitacaoId);
+        List<ConversaProfissional> profissionais = sincronizar(solicitacaoId, pacienteId);
         return calcularAcesso(pacienteId, profissionais, profissionalId, usuarioId)
                 .orElseThrow(ConversaAcessoNegadoException::new);
     }
@@ -98,6 +100,12 @@ public class ConversaService {
     /** Canais do usuário, do que recebeu mensagem mais recentemente para o mais antigo. */
     @Transactional
     public List<ConversaResponse> listar(Long usuarioId) {
+        return listar(usuarioId, null);
+    }
+
+    @Transactional
+    public List<ConversaResponse> listar(Long usuarioId, String busca) {
+        String termo = normalizar(busca);
         Set<Long> solicitacaoIds = new LinkedHashSet<>(
                 chatPropostaRepository.solicitacaoIdsComChat(usuarioId, STATUS_QUE_LIBERA_O_CHAT));
         solicitacaoIds.addAll(conversaProfissionalRepository.solicitacaoIdsComoProfissional(usuarioId));
@@ -110,7 +118,7 @@ public class ConversaService {
         Set<Long> todosOsUsuarios = new LinkedHashSet<>();
         for (Long solicitacaoId : solicitacaoIds) {
             Long pacienteId = chatPropostaRepository.usuarioIdDoPaciente(solicitacaoId).orElse(null);
-            List<ConversaProfissional> profissionais = sincronizar(solicitacaoId);
+            List<ConversaProfissional> profissionais = sincronizar(solicitacaoId, pacienteId);
 
             for (ConversaProfissional alvo : profissionais) {
                 calcularAcesso(pacienteId, profissionais, alvo.getUsuarioId(), usuarioId)
@@ -137,10 +145,58 @@ public class ConversaService {
                         m -> chave(m.getSolicitacaoId(), m.getProfissionalUsuarioId()), Function.identity(), (a, b) -> a));
         Map<Long, String> avatares = new HashMap<>();
 
-        return canais.stream()
-                .map(canal -> paraResponse(canal, usuarios, avatares, ultimaVisivel(canal, ultimas)))
-                .sorted(MAIS_RECENTE_PRIMEIRO)
-                .toList();
+        if (termo.isEmpty()) {
+            return canais.stream()
+                    .map(canal -> paraResponse(canal, usuarios, avatares, ultimaVisivel(canal, ultimas), null))
+                    .sorted(MAIS_RECENTE_PRIMEIRO)
+                    .toList();
+        }
+
+        Map<String, List<Mensagem>> encontradasPorCanal = mensagemRepository
+                .findBySolicitacaoIdInAndAtivoTrueOrderByDataEnvioDesc(List.copyOf(solicitacaoIds)).stream()
+                .filter(m -> contem(m.getConteudo(), termo) || contem(m.getAnexoNomeOriginal(), termo))
+                .collect(Collectors.groupingBy(m -> chave(m.getSolicitacaoId(), m.getProfissionalUsuarioId())));
+
+        List<ConversaResponse> resultado = new ArrayList<>();
+        for (Canal canal : canais) {
+            Mensagem encontrada = encontradasPorCanal
+                    .getOrDefault(chave(canal.solicitacaoId(), canal.profissionalId()), List.of()).stream()
+                    .filter(m -> canal.acesso().enxerga(m.getDataEnvio()))
+                    .findFirst()
+                    .orElse(null);
+            if (encontrada == null && !nomeCombina(canal, usuarioId, usuarios, termo)) {
+                continue;
+            }
+            resultado.add(paraResponse(canal, usuarios, avatares, ultimaVisivel(canal, ultimas), encontrada));
+        }
+        resultado.sort(MAIS_RECENTE_PRIMEIRO);
+        return resultado;
+    }
+
+    private static boolean nomeCombina(Canal canal, Long usuarioId, Map<Long, Usuario> usuarios, String termo) {
+        List<Long> outros = new ArrayList<>();
+        if (canal.pacienteId() != null) {
+            outros.add(canal.pacienteId());
+        }
+        canal.profissionais().forEach(c -> outros.add(c.getUsuarioId()));
+        return outros.stream()
+                .filter(id -> !id.equals(usuarioId))
+                .map(usuarios::get)
+                .anyMatch(usuario -> usuario != null && contem(usuario.getNome(), termo));
+    }
+
+    private static boolean contem(String texto, String termo) {
+        return texto != null && normalizar(texto).contains(termo);
+    }
+
+    private static String normalizar(String texto) {
+        if (texto == null) {
+            return "";
+        }
+        return Normalizer.normalize(texto, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .toLowerCase(Locale.ROOT)
+                .trim();
     }
 
     /**
@@ -148,9 +204,14 @@ public class ConversaService {
      * é marcada no instante em que a proposta mudou, para que mensagens escritas depois dela não
      * apareçam para quem saiu. Devolve a lista já atualizada.
      */
-    private List<ConversaProfissional> sincronizar(Long solicitacaoId) {
+    private List<ConversaProfissional> sincronizar(Long solicitacaoId, Long pacienteId) {
+        Map<Long, Instant> bloqueados = pacienteId == null ? Map.of() : chatPropostaRepository
+                .bloqueiosDoPaciente(pacienteId).stream()
+                .collect(Collectors.toMap(BloqueioNoChat::profissionalUsuarioId, BloqueioNoChat::desde, (a, b) -> a));
         List<Long> ativos = chatPropostaRepository
-                .usuarioIdsDosProfissionais(solicitacaoId, STATUS_QUE_LIBERA_O_CHAT);
+                .usuarioIdsDosProfissionais(solicitacaoId, STATUS_QUE_LIBERA_O_CHAT).stream()
+                .filter(id -> !bloqueados.containsKey(id))
+                .toList();
         List<ConversaProfissional> participacoes =
                 new ArrayList<>(conversaProfissionalRepository.findBySolicitacaoId(solicitacaoId));
         Instant agora = Instant.now();
@@ -170,8 +231,9 @@ public class ConversaService {
 
         for (ConversaProfissional participacao : participacoes) {
             if (participacao.ativo() && !ativos.contains(participacao.getUsuarioId())) {
-                Instant mudouEm = chatPropostaRepository
-                        .ultimaAtualizacaoDaProposta(solicitacaoId, participacao.getUsuarioId());
+                Instant mudouEm = bloqueados.containsKey(participacao.getUsuarioId())
+                        ? bloqueados.get(participacao.getUsuarioId())
+                        : chatPropostaRepository.ultimaAtualizacaoDaProposta(solicitacaoId, participacao.getUsuarioId());
                 participacao.sair(mudouEm == null || mudouEm.isAfter(agora) ? agora : mudouEm);
             }
         }
@@ -224,7 +286,7 @@ public class ConversaService {
     }
 
     private ConversaResponse paraResponse(
-            Canal canal, Map<Long, Usuario> usuarios, Map<Long, String> avatares, Mensagem ultima) {
+            Canal canal, Map<Long, Usuario> usuarios, Map<Long, String> avatares, Mensagem ultima, Mensagem encontrada) {
         List<ParticipanteResponse> lista = new ArrayList<>();
         if (canal.pacienteId() != null) {
             lista.add(participante(canal.pacienteId(), PAPEL_PACIENTE, true, usuarios, avatares));
@@ -237,14 +299,23 @@ public class ConversaService {
                 canal.profissionalId(),
                 lista,
                 !canal.acesso().podeEscrever(),
-                ultima == null ? null : UltimaMensagemResponse.de(ultima));
+                ultima == null ? null : UltimaMensagemResponse.de(ultima),
+                encontrada == null ? null : UltimaMensagemResponse.de(encontrada));
     }
 
     private ParticipanteResponse participante(
             Long usuarioId, String papel, boolean ativo, Map<Long, Usuario> usuarios, Map<Long, String> avatares) {
         Usuario usuario = usuarios.get(usuarioId);
         String nome = usuario != null ? usuario.getNome() : "Usuário #" + usuarioId;
-        return new ParticipanteResponse(usuarioId, nome, papel, avatarDe(usuarioId, usuario, avatares), ativo);
+        return new ParticipanteResponse(usuarioId, perfilDe(usuarioId, papel), nome, papel,
+                avatarDe(usuarioId, usuario, avatares), ativo);
+    }
+
+    private Long perfilDe(Long usuarioId, String papel) {
+        Optional<Long> perfil = PAPEL_PACIENTE.equals(papel)
+                ? chatPropostaRepository.pacienteIdDoUsuario(usuarioId)
+                : chatPropostaRepository.profissionalIdDoUsuario(usuarioId);
+        return perfil.orElse(null);
     }
 
     /** A URL é assinada no storage; é gerada uma vez por usuário em cada listagem. */

@@ -2,6 +2,7 @@ package com.quickcare.backend.paciente;
 
 import com.quickcare.backend.validacao.StatusValidacao;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -31,5 +32,9 @@ public interface PacienteRepository extends JpaRepository<Paciente, Long> {
             order by p.encerradoEm desc
             """)
     List<Paciente> findExcluidosDoCpf(@Param("cpf") String cpf);
+
+    @Modifying(flushAutomatically = true)
+    @Query(value = "DELETE FROM paciente WHERE usuario_id = :usuarioId", nativeQuery = true)
+    int excluirDoUsuario(@Param("usuarioId") Long usuarioId);
 
 }

@@ -6,7 +6,10 @@ import com.quickcare.backend.atuacao.AtuacaoEventoRepository;
 import com.quickcare.backend.atuacao.AtuacaoRepository;
 import com.quickcare.backend.atuacao.MontagemAtuacoes;
 import com.quickcare.backend.atuacao.dto.AtuacaoRequest;
+import com.quickcare.backend.cadastro.dto.CadastroPacienteRequest;
+import com.quickcare.backend.cadastro.dto.CadastroResponse;
 import com.quickcare.backend.cadastro.dto.NovoPerfilPacienteRequest;
+import com.quickcare.backend.usuario.TipoDocumentoIdentidade;
 import com.quickcare.backend.cadastro.dto.NovoPerfilProfissionalRequest;
 import com.quickcare.backend.cadastro.exception.EspecialidadeInvalidaException;
 import com.quickcare.backend.cadastro.exception.PerfilJaExistenteException;
@@ -26,6 +29,7 @@ import com.quickcare.backend.profissional.ModalidadeAtendimento;
 import com.quickcare.backend.profissional.Profissional;
 import com.quickcare.backend.profissional.ProfissionalRepository;
 import com.quickcare.backend.seguranca.HerancaPorDocumentoService;
+import org.springframework.transaction.PlatformTransactionManager;
 import com.quickcare.backend.solicitacao.exception.PerfilNaoAutorizadoException;
 import com.quickcare.backend.usuario.Genero;
 import com.quickcare.backend.usuario.TipoPerfil;
@@ -55,6 +59,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -76,6 +81,8 @@ class CadastroServiceTest {
     @Mock private AtuacaoRepository atuacaoRepository;
     @Mock private AtuacaoEventoRepository atuacaoEventoRepository;
     @Mock private HerancaPorDocumentoService herancaPorDocumentoService;
+    @Mock private PlatformTransactionManager transactionManager;
+    @Mock private ConfirmacaoEmailService confirmacaoEmailService;
 
     private CadastroService service;
 
@@ -86,7 +93,7 @@ class CadastroServiceTest {
         service = new CadastroService(usuarioRepository, pacienteRepository, profissionalRepository, documentoRepository,
                 armazenamentoDocumentoService, passwordEncoder, geocodificacaoService, validacaoService,
                 administradorRepository, new MontagemAtuacoes(especialidadeRepository), atuacaoRepository,
-                atuacaoEventoRepository, herancaPorDocumentoService);
+                atuacaoEventoRepository, herancaPorDocumentoService, transactionManager, confirmacaoEmailService);
         usuario = Usuario.builder().id(1L).nome("Maria Silva").email("maria@email.com").ultimoPerfil(TipoPerfil.PACIENTE).build();
     }
 
@@ -198,6 +205,51 @@ class CadastroServiceTest {
         assertThat(registros.getValue()).hasSize(3);
         assertThat(registros.getValue().get(atuacoes.get(1)).getNomeArquivo()).isEqualTo("crp.pdf");
         verify(atuacaoEventoRepository, times(3)).save(any());
+    }
+
+    @Test
+    void contaNovaFicaAguardandoAConfirmacaoDoEmailEOLinkSaiDepoisDeGravar() {
+        CadastroPacienteRequest request = new CadastroPacienteRequest("Ana Souza", "ana@email.com", "Senha@123",
+                "52998224725", null, TipoDocumentoIdentidade.RG, "123456789", "RJ", LocalDate.of(1990, 1, 1),
+                Genero.FEMININO, List.of(), true, true, null, null, null,
+                "01310100", "Avenida Paulista", "1000", null, "Bela Vista", "São Paulo", "SP");
+        when(usuarioRepository.findByEmail("ana@email.com")).thenReturn(Optional.empty());
+        when(usuarioRepository.findByCpf("52998224725")).thenReturn(Optional.empty());
+        when(passwordEncoder.encode("Senha@123")).thenReturn("hash");
+        when(usuarioRepository.save(any(Usuario.class))).thenAnswer(invocacao -> {
+            Usuario salvo = invocacao.getArgument(0);
+            salvo.setId(5L);
+            return salvo;
+        });
+        when(pacienteRepository.existsByUsuarioId(5L)).thenReturn(false);
+        when(pacienteRepository.save(any(Paciente.class))).thenAnswer(invocacao -> invocacao.getArgument(0));
+        documentosSalvos();
+
+        CadastroResponse response = service.cadastrarPaciente(request, DOCUMENTOS_PESSOAIS, TIPOS_PESSOAIS, null);
+
+        ArgumentCaptor<Usuario> usuarioSalvo = ArgumentCaptor.forClass(Usuario.class);
+        verify(usuarioRepository).save(usuarioSalvo.capture());
+        assertThat(usuarioSalvo.getValue().isConfirmacaoEmailPendente()).isTrue();
+        assertThat(response.confirmacaoEmailPendente()).isTrue();
+        verify(confirmacaoEmailService).enviarLink(5L);
+        verify(herancaPorDocumentoService, never()).herdar(any(Usuario.class), any(Paciente.class));
+    }
+
+    @Test
+    void enviaOsDocumentosAntesDeGravarEApagaOsArquivosSeOCadastroFalhar() {
+        when(usuarioRepository.findById(1L)).thenReturn(Optional.of(usuario));
+        when(pacienteRepository.existsByUsuarioId(1L)).thenReturn(true);
+        when(armazenamentoDocumentoService.enviar(eq(TipoDocumento.COMPROVANTE_CPF), any(MultipartFile.class)))
+                .thenReturn("comprovante-cpf/1.pdf");
+        when(armazenamentoDocumentoService.enviar(eq(TipoDocumento.VALIDACAO_CPF), any(MultipartFile.class)))
+                .thenReturn("validacao-cpf/2.pdf");
+
+        assertThatThrownBy(() -> service.criarPerfilPaciente(1L, pacienteRequest(), DOCUMENTOS_PESSOAIS, TIPOS_PESSOAIS))
+                .isInstanceOf(PerfilJaExistenteException.class);
+
+        verify(armazenamentoDocumentoService).excluir("comprovante-cpf/1.pdf");
+        verify(armazenamentoDocumentoService).excluir("validacao-cpf/2.pdf");
+        verify(pacienteRepository, never()).save(any());
     }
 
     @Test

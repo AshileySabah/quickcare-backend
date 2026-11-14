@@ -5,6 +5,7 @@ public record CadastroResponse(
         Long perfilId,
         String nome,
         String email,
-        String tipoPerfil
+        String tipoPerfil,
+        boolean confirmacaoEmailPendente
 ) {
 }

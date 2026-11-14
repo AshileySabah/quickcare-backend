@@ -14,12 +14,25 @@ public interface MensagemRepository extends JpaRepository<Mensagem, Long> {
     List<Mensagem> findBySolicitacaoIdAndProfissionalUsuarioIdAndAtivoTrueOrderByDataEnvioAsc(
             Long solicitacaoId, Long profissionalUsuarioId);
 
+    List<Mensagem> findBySolicitacaoIdAndProfissionalUsuarioIdIsNullOrderByDataEnvioAsc(Long solicitacaoId);
+
+    List<Mensagem> findBySolicitacaoIdAndProfissionalUsuarioIdOrderByDataEnvioAsc(
+            Long solicitacaoId, Long profissionalUsuarioId);
+
+    List<Mensagem> findBySolicitacaoIdInAndAtivoTrueOrderByDataEnvioDesc(Collection<Long> solicitacaoIds);
+
     /** Mensagens ativas de um canal, da mais antiga para a mais nova: grupo se o profissional for nulo. */
     default List<Mensagem> listarDoCanal(Long solicitacaoId, Long profissionalUsuarioId) {
         return profissionalUsuarioId == null
                 ? findBySolicitacaoIdAndProfissionalUsuarioIdIsNullAndAtivoTrueOrderByDataEnvioAsc(solicitacaoId)
                 : findBySolicitacaoIdAndProfissionalUsuarioIdAndAtivoTrueOrderByDataEnvioAsc(
                         solicitacaoId, profissionalUsuarioId);
+    }
+
+    default List<Mensagem> listarComApagadasDoCanal(Long solicitacaoId, Long profissionalUsuarioId) {
+        return profissionalUsuarioId == null
+                ? findBySolicitacaoIdAndProfissionalUsuarioIdIsNullOrderByDataEnvioAsc(solicitacaoId)
+                : findBySolicitacaoIdAndProfissionalUsuarioIdOrderByDataEnvioAsc(solicitacaoId, profissionalUsuarioId);
     }
 
     /** A mensagem ativa mais recente de cada canal das solicitações informadas (canais sem mensagem não aparecem). */

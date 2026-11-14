@@ -37,9 +37,9 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -112,7 +112,7 @@ class AtuacaoServiceTest {
 
         when(profissionalRepository.findByUsuarioId(USUARIO_ID)).thenReturn(Optional.of(profissional));
         lenient().when(atuacaoRepository.findByIdAndProfissionalId(200L, 20L)).thenReturn(Optional.of(enfermeiro));
-        lenient().when(validacaoService.statusDosRegistros(profissional)).thenReturn(Map.of());
+        lenient().when(validacaoService.statusDosRegistros(profissional)).thenReturn(new HashMap<>());
     }
 
     @Test

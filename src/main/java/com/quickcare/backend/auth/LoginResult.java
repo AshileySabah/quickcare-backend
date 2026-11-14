@@ -4,7 +4,6 @@ import com.quickcare.backend.auth.dto.LoginResponse;
 
 public record LoginResult(
         LoginResponse response,
-        String accessToken,
-        String refreshToken
+        String token
 ) {
 }

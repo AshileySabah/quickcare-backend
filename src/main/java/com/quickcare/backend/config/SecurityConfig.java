@@ -2,8 +2,8 @@ package com.quickcare.backend.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.quickcare.backend.common.ApiError;
+import com.quickcare.backend.jwt.AutenticacaoPorToken;
 import com.quickcare.backend.jwt.JwtAuthenticationFilter;
-import com.quickcare.backend.jwt.JwtService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
@@ -24,13 +24,13 @@ import java.util.List;
 public class SecurityConfig {
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtService jwtService, ObjectMapper objectMapper)
-            throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, AutenticacaoPorToken autenticacaoPorToken,
+                                                   ObjectMapper objectMapper) throws Exception {
         http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .addFilterBefore(new JwtAuthenticationFilter(jwtService), UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(new JwtAuthenticationFilter(autenticacaoPorToken), UsernamePasswordAuthenticationFilter.class)
                 .exceptionHandling(exceptions -> exceptions.authenticationEntryPoint((request, response, ex) -> {
                     response.setStatus(HttpStatus.UNAUTHORIZED.value());
                     response.setContentType(MediaType.APPLICATION_JSON_VALUE);
@@ -41,7 +41,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/solicitacoes/**", "/propostas/**", "/perfil/**", "/perfis/**",
                                 "/profissionais/**", "/pacientes/**", "/auth/me", "/auth/perfil-ativo",
-                                "/admin/**", "/validacao/**", "/notificacoes/**", "/atendimentos/**", "/ocorrencias/**", "/bloqueios/**", "/avaliacoes/**", "/denuncias/**", "/banimentos/**", "/seguranca/**", "/ws/**",
+                                "/admin/**", "/validacao/**", "/notificacoes/**", "/atendimentos/**", "/ocorrencias/**", "/bloqueios/**", "/avaliacoes/**", "/denuncias/**", "/banimentos/**", "/seguranca/**",
                                 "/conversas/**", "/mensagens/**").authenticated()
                         .anyRequest().permitAll());
 
@@ -54,7 +54,7 @@ public class SecurityConfig {
         configuration.setAllowedOriginPatterns(List.of("*"));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
-        configuration.setAllowCredentials(true);
+        configuration.setExposedHeaders(List.of(AutenticacaoPorToken.HEADER_TOKEN));
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);

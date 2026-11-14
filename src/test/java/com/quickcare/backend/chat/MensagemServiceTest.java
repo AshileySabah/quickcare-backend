@@ -43,6 +43,8 @@ class MensagemServiceTest {
     private SimpMessagingTemplate messagingTemplate;
     @Mock
     private ArmazenamentoDocumentoService armazenamento;
+    @Mock
+    private MensagemNaoLidaService mensagemNaoLidaService;
     @InjectMocks
     private MensagemService service;
 
@@ -143,7 +145,7 @@ class MensagemServiceTest {
     @Test
     void listarMostraTudoParaQuemAindaEstaNaConversa() {
         when(conversaService.acessoDe(10L, 2L, 1L)).thenReturn(new AcessoAoCanal(true, null, null));
-        when(mensagemRepository.listarDoCanal(10L, 2L)).thenReturn(List.of(
+        when(mensagemRepository.listarComApagadasDoCanal(10L, 2L)).thenReturn(List.of(
                 mensagemEm(2L, "a", "2026-11-01T10:00:00Z"), mensagemEm(1L, "b", "2026-11-03T10:00:00Z")));
 
         assertThat(service.listarPorConversa(1L, 10L, 2L)).extracting(MensagemChatResponse::conteudo)
@@ -154,7 +156,7 @@ class MensagemServiceTest {
     void profissionalQueSaiuSoVeOQueFoiEscritoAteASaida() {
         Instant saiu = Instant.parse("2026-11-02T10:00:00Z");
         when(conversaService.acessoDe(10L, 2L, 2L)).thenReturn(new AcessoAoCanal(false, null, saiu));
-        when(mensagemRepository.listarDoCanal(10L, 2L)).thenReturn(List.of(
+        when(mensagemRepository.listarComApagadasDoCanal(10L, 2L)).thenReturn(List.of(
                 mensagemEm(1L, "antes", "2026-11-01T10:00:00Z"),
                 mensagemEm(2L, "no limite", "2026-11-02T10:00:00Z"),
                 mensagemEm(1L, "depois", "2026-11-03T10:00:00Z")));
@@ -167,12 +169,33 @@ class MensagemServiceTest {
     void profissionalNoGrupoSoVeDesdeQueEntrou() {
         Instant entrou = Instant.parse("2026-11-02T00:00:00Z");
         when(conversaService.acessoDe(10L, null, 3L)).thenReturn(new AcessoAoCanal(true, entrou, null));
-        when(mensagemRepository.listarDoCanal(10L, null)).thenReturn(List.of(
+        when(mensagemRepository.listarComApagadasDoCanal(10L, null)).thenReturn(List.of(
                 mensagemEm(1L, "antes de entrar", "2026-11-01T10:00:00Z"),
                 mensagemEm(1L, "depois", "2026-11-03T10:00:00Z")));
 
         assertThat(service.listarPorConversa(3L, 10L, null)).extracting(MensagemChatResponse::conteudo)
                 .containsExactly("depois");
+    }
+
+    @Test
+    void mensagemApagadaVoltaNoHistoricoSemConteudoNemAnexo() {
+        Mensagem apagada = mensagemEm(2L, "segredo", "2026-11-01T10:00:00Z");
+        apagada.anexar("chat-anexos/x.png", "foto.png", "image/png");
+        apagada.excluir();
+        when(conversaService.acessoDe(10L, 2L, 1L)).thenReturn(new AcessoAoCanal(true, null, null));
+        when(mensagemRepository.listarComApagadasDoCanal(10L, 2L)).thenReturn(List.of(
+                apagada, mensagemEm(1L, "oi", "2026-11-02T10:00:00Z")));
+
+        List<MensagemChatResponse> mensagens = service.listarPorConversa(1L, 10L, 2L);
+
+        assertThat(mensagens).extracting(MensagemChatResponse::apagada).containsExactly(true, false);
+        MensagemChatResponse primeira = mensagens.get(0);
+        assertThat(primeira.conteudo()).isNull();
+        assertThat(primeira.anexoUrl()).isNull();
+        assertThat(primeira.anexoNomeOriginal()).isNull();
+        assertThat(primeira.anexoTipo()).isNull();
+        assertThat(primeira.remetenteId()).isEqualTo(2L);
+        verify(armazenamento, never()).urlDoAnexoChat(any());
     }
 
     @Test
@@ -194,7 +217,18 @@ class MensagemServiceTest {
         service.excluir(1L, 5L);
 
         assertThat(mensagem.isAtivo()).isFalse();
+        verify(mensagemRepository, never()).delete(any());
+        verify(mensagemNaoLidaService).excluirDaMensagem(mensagem.getId());
         verify(messagingTemplate).convertAndSendToUser(eq("2"), eq("/queue/mensagens"), any(Object.class));
+    }
+
+    @Test
+    void mensagemEnviadaFicaNaoLidaParaOsOutrosDoCanal() {
+        when(conversaService.destinatarios(10L, null)).thenReturn(List.of(1L, 2L, 3L));
+
+        service.enviar(2L, new EnviarMensagemRequest(10L, null, "oi"), null);
+
+        verify(mensagemNaoLidaService).registrar(any(Mensagem.class), eq(List.of(1L, 2L, 3L)));
     }
 
     @Test

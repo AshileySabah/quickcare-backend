@@ -6,6 +6,7 @@ import com.quickcare.backend.cadastro.exception.CpfJaCadastradoException;
 import com.quickcare.backend.cadastro.exception.CredenciaisInvalidasException;
 import com.quickcare.backend.cadastro.exception.DocumentoIdentidadeInvalidoException;
 import com.quickcare.backend.cadastro.exception.DadosCadastraisConflitantesException;
+import com.quickcare.backend.cadastro.exception.EmailNaoConfirmadoException;
 import com.quickcare.backend.cadastro.exception.EmailJaCadastradoException;
 import com.quickcare.backend.cadastro.exception.EspecialidadeInvalidaException;
 import com.quickcare.backend.cadastro.exception.PerfilJaExistenteException;
@@ -137,6 +138,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ContaEncerradaException.class)
     public ResponseEntity<ApiError> handleContaEncerrada(ContaEncerradaException ex) {
         return build(HttpStatus.LOCKED, ex.getMessage());
+    }
+
+    @ExceptionHandler(EmailNaoConfirmadoException.class)
+    public ResponseEntity<ApiError> handleEmailNaoConfirmado(EmailNaoConfirmadoException ex) {
+        return build(HttpStatus.PRECONDITION_FAILED, ex.getMessage());
     }
 
     @ExceptionHandler(TokenRedefinicaoInvalidoException.class)

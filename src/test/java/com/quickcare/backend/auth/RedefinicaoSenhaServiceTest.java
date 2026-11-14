@@ -10,6 +10,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.InjectMocks;
+import com.quickcare.backend.cadastro.ConfirmacaoEmailService;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -52,6 +53,9 @@ class RedefinicaoSenhaServiceTest {
 
     @Mock
     private AuthService authService;
+
+    @Mock
+    private ConfirmacaoEmailService confirmacaoEmailService;
 
     @Captor
     private ArgumentCaptor<TokenRedefinicaoSenha> tokenCaptor;
@@ -150,7 +154,7 @@ class RedefinicaoSenhaServiceTest {
         TokenRedefinicaoSenha token = tokenSalvo(Instant.now(), Instant.now().plusSeconds(600));
         when(tokenRepository.findByTokenHash(RedefinicaoSenhaService.hash(TOKEN))).thenReturn(Optional.of(token));
         when(passwordEncoder.encode("NovaSenha@123")).thenReturn("hash-novo");
-        LoginResult sessao = new LoginResult(null, "access", "refresh");
+        LoginResult sessao = new LoginResult(null, "token");
         when(authService.iniciarSessao(usuario)).thenReturn(sessao);
 
         LoginResult resultado = service.redefinirSenha(TOKEN, "NovaSenha@123");

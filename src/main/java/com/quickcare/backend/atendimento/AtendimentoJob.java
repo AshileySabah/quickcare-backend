@@ -2,6 +2,7 @@ package com.quickcare.backend.atendimento;
 
 import com.quickcare.backend.avaliacao.AvaliacaoService;
 import com.quickcare.backend.banimento.BanimentoService;
+import com.quickcare.backend.cadastro.ConfirmacaoEmailService;
 import com.quickcare.backend.problema.ProblemaService;
 import com.quickcare.backend.seguranca.EncerramentoService;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,7 @@ class AtendimentoJob {
     private final AvaliacaoService avaliacaoService;
     private final BanimentoService banimentoService;
     private final EncerramentoService encerramentoService;
+    private final ConfirmacaoEmailService confirmacaoEmailService;
 
     @Scheduled(fixedDelayString = "PT1M", initialDelayString = "PT1M")
     void processar() {
@@ -36,6 +38,7 @@ class AtendimentoJob {
         avaliacaoService.processarLembretes();
         banimentoService.processarVencidos();
         encerramentoService.processarVencidos();
+        confirmacaoEmailService.excluirNaoConfirmados();
     }
 
 }

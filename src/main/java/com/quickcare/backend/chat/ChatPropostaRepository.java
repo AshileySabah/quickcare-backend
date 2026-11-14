@@ -20,6 +20,12 @@ public interface ChatPropostaRepository extends Repository<Proposta, Long> {
     @Query("select s.paciente.usuario.id from Solicitacao s where s.id = :solicitacaoId")
     Optional<Long> usuarioIdDoPaciente(@Param("solicitacaoId") Long solicitacaoId);
 
+    @Query("select pa.id from Paciente pa where pa.usuario.id = :usuarioId")
+    Optional<Long> pacienteIdDoUsuario(@Param("usuarioId") Long usuarioId);
+
+    @Query("select pr.id from Profissional pr where pr.usuario.id = :usuarioId")
+    Optional<Long> profissionalIdDoUsuario(@Param("usuarioId") Long usuarioId);
+
     @Query("""
             select distinct p.profissional.usuario.id from Proposta p
             where p.solicitacao.id = :solicitacaoId and p.status = :status
@@ -39,6 +45,14 @@ public interface ChatPropostaRepository extends Repository<Proposta, Long> {
     Instant ultimaAtualizacaoDaProposta(
             @Param("solicitacaoId") Long solicitacaoId,
             @Param("usuarioId") Long usuarioId);
+
+    @Query("""
+            select new com.quickcare.backend.chat.BloqueioNoChat(b.profissional.usuario.id, min(b.criadoEm))
+            from BloqueioUsuario b
+            where b.paciente.usuario.id = :pacienteUsuarioId
+            group by b.profissional.usuario.id
+            """)
+    List<BloqueioNoChat> bloqueiosDoPaciente(@Param("pacienteUsuarioId") Long pacienteUsuarioId);
 
     /** Solicitações com proposta no status informado em que o usuário é paciente ou profissional. */
     @Query("""

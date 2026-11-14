@@ -13,7 +13,8 @@ public record MensagemChatResponse(
         Instant dataEnvio,
         String anexoUrl,
         String anexoNomeOriginal,
-        String anexoTipo) {
+        String anexoTipo,
+        boolean apagada) {
 
     /**
      * A URL do anexo é assinada e temporária, então é gerada pelo service a cada leitura e apenas
@@ -29,7 +30,22 @@ public record MensagemChatResponse(
                 mensagem.getDataEnvio(),
                 anexoUrl,
                 mensagem.getAnexoNomeOriginal(),
-                mensagem.getAnexoTipo());
+                mensagem.getAnexoTipo(),
+                false);
+    }
+
+    public static MensagemChatResponse apagada(Mensagem mensagem) {
+        return new MensagemChatResponse(
+                mensagem.getId(),
+                mensagem.getRemetenteId(),
+                mensagem.getSolicitacaoId(),
+                mensagem.getProfissionalUsuarioId(),
+                null,
+                mensagem.getDataEnvio(),
+                null,
+                null,
+                null,
+                true);
     }
 
 }

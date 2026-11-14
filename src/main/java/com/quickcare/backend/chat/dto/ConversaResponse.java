@@ -14,5 +14,6 @@ public record ConversaResponse(
         Long profissionalUsuarioId,
         List<ParticipanteResponse> participantes,
         boolean somenteLeitura,
-        UltimaMensagemResponse ultimaMensagem) {
+        UltimaMensagemResponse ultimaMensagem,
+        UltimaMensagemResponse mensagemEncontrada) {
 }
