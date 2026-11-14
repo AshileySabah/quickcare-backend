@@ -17,59 +17,36 @@ import java.util.Date;
 public class JwtService {
 
     private static final String CLAIM_TIPO_TOKEN = "typ";
-    private static final String TIPO_ACCESS = "access";
-    private static final String TIPO_REFRESH = "refresh";
+    private static final String TIPO_SESSAO = "sessao";
 
     private final SecretKey secretKey;
-    private final JwtProperties properties;
+    private final Duration validade;
 
     public JwtService(JwtProperties properties) {
-        this.properties = properties;
         this.secretKey = Keys.hmacShaKeyFor(properties.secret().getBytes(StandardCharsets.UTF_8));
+        this.validade = Duration.ofDays(properties.tokenExpirationDays());
     }
 
-    public String gerarAccessToken(Usuario usuario) {
+    public Duration validade() {
+        return validade;
+    }
+
+    public String gerarToken(Usuario usuario) {
         Instant agora = Instant.now();
         return Jwts.builder()
                 .subject(usuario.getId().toString())
                 .claim("email", usuario.getEmail())
-                .claim(CLAIM_TIPO_TOKEN, TIPO_ACCESS)
+                .claim(CLAIM_TIPO_TOKEN, TIPO_SESSAO)
                 .issuedAt(Date.from(agora))
-                .expiration(Date.from(agora.plus(Duration.ofMinutes(properties.accessTokenExpirationMinutes()))))
+                .expiration(Date.from(agora.plus(validade)))
                 .signWith(secretKey)
                 .compact();
     }
 
-    public String gerarRefreshToken(Usuario usuario) {
-        Instant agora = Instant.now();
-        return Jwts.builder()
-                .subject(usuario.getId().toString())
-                .claim(CLAIM_TIPO_TOKEN, TIPO_REFRESH)
-                .issuedAt(Date.from(agora))
-                .expiration(Date.from(agora.plus(Duration.ofDays(properties.refreshTokenExpirationDays()))))
-                .signWith(secretKey)
-                .compact();
-    }
-
-    public Claims validarAccessToken(String token) {
-        Claims claims = parseClaims(token);
-        if (!TIPO_ACCESS.equals(claims.get(CLAIM_TIPO_TOKEN, String.class))) {
-            throw new TokenInvalidoException();
-        }
-        return claims;
-    }
-
-    public Claims validarRefreshToken(String token) {
-        Claims claims = parseClaims(token);
-        if (!TIPO_REFRESH.equals(claims.get(CLAIM_TIPO_TOKEN, String.class))) {
-            throw new TokenInvalidoException();
-        }
-        return claims;
-    }
-
-    private Claims parseClaims(String token) {
+    public Claims validarToken(String token) {
+        Claims claims;
         try {
-            return Jwts.parser()
+            claims = Jwts.parser()
                     .verifyWith(secretKey)
                     .build()
                     .parseSignedClaims(token)
@@ -77,6 +54,10 @@ public class JwtService {
         } catch (JwtException | IllegalArgumentException ex) {
             throw new TokenInvalidoException();
         }
+        if (!TIPO_SESSAO.equals(claims.get(CLAIM_TIPO_TOKEN, String.class))) {
+            throw new TokenInvalidoException();
+        }
+        return claims;
     }
 
 }

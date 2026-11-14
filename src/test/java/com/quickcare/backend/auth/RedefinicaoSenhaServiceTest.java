@@ -154,7 +154,7 @@ class RedefinicaoSenhaServiceTest {
         TokenRedefinicaoSenha token = tokenSalvo(Instant.now(), Instant.now().plusSeconds(600));
         when(tokenRepository.findByTokenHash(RedefinicaoSenhaService.hash(TOKEN))).thenReturn(Optional.of(token));
         when(passwordEncoder.encode("NovaSenha@123")).thenReturn("hash-novo");
-        LoginResult sessao = new LoginResult(null, "access", "refresh");
+        LoginResult sessao = new LoginResult(null, "token");
         when(authService.iniciarSessao(usuario)).thenReturn(sessao);
 
         LoginResult resultado = service.redefinirSenha(TOKEN, "NovaSenha@123");

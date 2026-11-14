@@ -5,9 +5,9 @@ import com.quickcare.backend.auth.dto.RedefinirSenhaRequest;
 import com.quickcare.backend.auth.dto.RedefinirSenhaResponse;
 import com.quickcare.backend.auth.dto.ValidarTokenRedefinicaoRequest;
 import com.quickcare.backend.common.MensagemResponse;
+import com.quickcare.backend.jwt.AutenticacaoPorToken;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -20,7 +20,6 @@ import org.springframework.web.bind.annotation.RestController;
 public class RedefinicaoSenhaController {
 
     private final RedefinicaoSenhaService redefinicaoSenhaService;
-    private final AuthCookies authCookies;
 
     @PostMapping("/esqueci")
     public ResponseEntity<MensagemResponse> esqueci(@Valid @RequestBody EsqueciSenhaRequest request) {
@@ -40,8 +39,7 @@ public class RedefinicaoSenhaController {
         LoginResult sessao = redefinicaoSenhaService.redefinirSenha(request.token(), request.novaSenha());
 
         return ResponseEntity.ok()
-                .header(HttpHeaders.SET_COOKIE, authCookies.accessToken(sessao.accessToken()).toString())
-                .header(HttpHeaders.SET_COOKIE, authCookies.refreshToken(sessao.refreshToken()).toString())
+                .header(AutenticacaoPorToken.HEADER_TOKEN, sessao.token())
                 .body(new RedefinirSenhaResponse("Senha redefinida com sucesso.", sessao.response()));
     }
 

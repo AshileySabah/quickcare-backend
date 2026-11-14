@@ -105,7 +105,7 @@ class SegurancaServiceTest {
         when(passwordEncoder.matches("Atual@123", "hash-atual")).thenReturn(true);
         when(passwordEncoder.matches("Nova@1234", "hash-atual")).thenReturn(false);
         when(passwordEncoder.encode("Nova@1234")).thenReturn("hash-novo");
-        LoginResult sessao = new LoginResult(null, "access", "refresh");
+        LoginResult sessao = new LoginResult(null, "token");
         when(authService.iniciarSessao(usuario)).thenReturn(sessao);
 
         LoginResult resultado = service.trocarSenha(1L, new TrocarSenhaRequest("Atual@123", "Nova@1234"));

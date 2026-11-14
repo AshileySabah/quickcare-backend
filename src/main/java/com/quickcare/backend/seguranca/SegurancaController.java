@@ -1,9 +1,9 @@
 package com.quickcare.backend.seguranca;
 
-import com.quickcare.backend.auth.AuthCookies;
 import com.quickcare.backend.auth.LoginResult;
 import com.quickcare.backend.auth.dto.LoginResponse;
 import com.quickcare.backend.common.MensagemResponse;
+import com.quickcare.backend.jwt.AutenticacaoPorToken;
 import com.quickcare.backend.seguranca.dto.CodigoEmailRequest;
 import com.quickcare.backend.seguranca.dto.CodigoEncerramentoRequest;
 import com.quickcare.backend.seguranca.dto.ConfirmacaoCodigoRequest;
@@ -13,7 +13,6 @@ import com.quickcare.backend.seguranca.dto.TrocarSenhaRequest;
 import com.quickcare.backend.usuario.TipoPerfil;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -32,7 +31,6 @@ import java.util.Optional;
 public class SegurancaController {
 
     private final SegurancaService segurancaService;
-    private final AuthCookies authCookies;
 
     @GetMapping
     public SegurancaResponse situacao(@AuthenticationPrincipal Long usuarioId) {
@@ -55,8 +53,7 @@ public class SegurancaController {
     ) {
         LoginResult sessao = segurancaService.confirmarEmail(usuarioId, request.codigo());
         return ResponseEntity.ok()
-                .header(HttpHeaders.SET_COOKIE, authCookies.accessToken(sessao.accessToken()).toString())
-                .header(HttpHeaders.SET_COOKIE, authCookies.refreshToken(sessao.refreshToken()).toString())
+                .header(AutenticacaoPorToken.HEADER_TOKEN, sessao.token())
                 .body(sessao.response());
     }
 
@@ -67,8 +64,7 @@ public class SegurancaController {
     ) {
         LoginResult sessao = segurancaService.trocarSenha(usuarioId, request);
         return ResponseEntity.ok()
-                .header(HttpHeaders.SET_COOKIE, authCookies.accessToken(sessao.accessToken()).toString())
-                .header(HttpHeaders.SET_COOKIE, authCookies.refreshToken(sessao.refreshToken()).toString())
+                .header(AutenticacaoPorToken.HEADER_TOKEN, sessao.token())
                 .body(new MensagemResponse("Senha alterada. Os outros dispositivos foram desconectados."));
     }
 
@@ -91,8 +87,6 @@ public class SegurancaController {
             return ResponseEntity.ok(sessao.get());
         }
         return ResponseEntity.noContent()
-                .header(HttpHeaders.SET_COOKIE, authCookies.expiredAccessToken().toString())
-                .header(HttpHeaders.SET_COOKIE, authCookies.expiredRefreshToken().toString())
                 .build();
     }
 

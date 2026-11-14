@@ -17,16 +17,13 @@ import com.quickcare.backend.solicitacao.exception.PerfilNaoAutorizadoException;
 import com.quickcare.backend.usuario.TipoPerfil;
 import com.quickcare.backend.usuario.Usuario;
 import com.quickcare.backend.usuario.UsuarioRepository;
-import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -67,7 +64,7 @@ public class AuthService {
     }
 
     public LoginResult iniciarSessao(Usuario usuario) {
-        return new LoginResult(montarResposta(usuario), jwtService.gerarAccessToken(usuario), jwtService.gerarRefreshToken(usuario));
+        return new LoginResult(montarResposta(usuario), jwtService.gerarToken(usuario));
     }
 
     @Transactional(readOnly = true)
@@ -111,27 +108,6 @@ public class AuthService {
 
         usuario.setUltimoPerfil(perfil);
         return montarResposta(usuario);
-    }
-
-    @Transactional(readOnly = true)
-    public String renovarAccessToken(String refreshToken) {
-        Claims claims = jwtService.validarRefreshToken(refreshToken);
-        Long usuarioId = Long.valueOf(claims.getSubject());
-
-        Usuario usuario = usuarioRepository.findById(usuarioId)
-                .orElseThrow(TokenInvalidoException::new);
-
-        if (usuario.contaEncerrada() || emitidoAntesDaTrocaDeSenha(claims, usuario)) {
-            throw new TokenInvalidoException();
-        }
-
-        return jwtService.gerarAccessToken(usuario);
-    }
-
-    private boolean emitidoAntesDaTrocaDeSenha(Claims claims, Usuario usuario) {
-        Instant senhaAlteradaEm = usuario.getSenhaAlteradaEm();
-        return senhaAlteradaEm != null
-                && claims.getIssuedAt().toInstant().isBefore(senhaAlteradaEm.truncatedTo(ChronoUnit.SECONDS));
     }
 
 }
