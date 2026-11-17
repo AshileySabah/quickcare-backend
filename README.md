@@ -8,8 +8,9 @@ O front-end fica no repositório `quickcare-frontend`. Para rodar o sistema comp
 
 | Nome completo | RA | Turno |
 | --- | --- | --- |
-| _a preencher_ | _a preencher_ | _a preencher_ |
-| _a preencher_ | _a preencher_ | _a preencher_ |
+| Ashiley Sabrina Santiago Rodrigues | 2040482513015 | Noite |
+| Yasmin Feliciano Pereira Serafim de Lima | 2040482423012 | Noite |
+| Vinicius Santana Barcellos | 2040482223005 | Noite |
 
 - Vídeo de apresentação: _a preencher_
 - Protótipo no Figma: _a preencher_
