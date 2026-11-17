@@ -1,12 +1,10 @@
 package com.quickcare.backend.documento;
 
-import com.quickcare.backend.storage.SupabaseStorageProperties;
+import com.quickcare.backend.storage.ArmazenamentoArquivos;
 import com.quickcare.backend.usuario.Usuario;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestClient;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -29,8 +27,7 @@ public class ArmazenamentoDocumentoService {
     private static final Duration EXPIRACAO_URL_ASSINADA = Duration.ofHours(1);
     private static final Duration EXPIRACAO_URL_ASSINADA_CHAT = Duration.ofHours(24);
 
-    private final SupabaseStorageProperties properties;
-    private final RestClient.Builder restClientBuilder;
+    private final ArmazenamentoArquivos armazenamento;
 
     public String enviar(TipoDocumento tipo, MultipartFile arquivo) {
         validar(arquivo, TIPOS_ACEITOS, "Envie um arquivo PDF, JPG ou PNG.");
@@ -70,26 +67,18 @@ public class ArmazenamentoDocumentoService {
     }
 
     private String enviarParaPasta(String pasta, MultipartFile arquivo) {
-        String nomeArquivo = UUID.randomUUID() + extrairExtensao(arquivo.getOriginalFilename());
+        String chave = pasta + "/" + UUID.randomUUID() + extrairExtensao(arquivo.getOriginalFilename());
 
         try {
-            restClientBuilder.build()
-                    .post()
-                    .uri(properties.url() + "/storage/v1/object/{bucket}/{pasta}/{arquivo}", properties.bucket(), pasta, nomeArquivo)
-                    .header("Authorization", "Bearer " + properties.apiKey())
-                    .header("apikey", properties.apiKey())
-                    .contentType(MediaType.parseMediaType(arquivo.getContentType()))
-                    .body(arquivo.getBytes())
-                    .retrieve()
-                    .toBodilessEntity();
+            armazenamento.enviar(chave, arquivo.getBytes(), arquivo.getContentType());
         } catch (IOException ex) {
             throw new ArquivoInvalidoException("Não foi possível ler o arquivo \"%s\".".formatted(arquivo.getOriginalFilename()));
         } catch (Exception ex) {
-            log.warn("Falha ao enviar \"{}\" para o storage em {}: {}", arquivo.getOriginalFilename(), properties.url(), ex.getMessage());
+            log.warn("Falha ao enviar \"{}\" para o storage: {}", arquivo.getOriginalFilename(), ex.getMessage());
             throw new ArquivoInvalidoException("Não foi possível enviar o arquivo \"%s\". Tente novamente.".formatted(arquivo.getOriginalFilename()));
         }
 
-        return pasta + "/" + nomeArquivo;
+        return chave;
     }
 
     public void excluir(String storageKey) {
@@ -97,13 +86,7 @@ public class ArmazenamentoDocumentoService {
             return;
         }
         try {
-            restClientBuilder.build()
-                    .delete()
-                    .uri(properties.url() + "/storage/v1/object/" + properties.bucket() + "/" + storageKey)
-                    .header("Authorization", "Bearer " + properties.apiKey())
-                    .header("apikey", properties.apiKey())
-                    .retrieve()
-                    .toBodilessEntity();
+            armazenamento.excluir(storageKey);
         } catch (Exception ex) {
             log.warn("Falha ao excluir \"{}\" do storage: {}", storageKey, ex.getMessage());
         }
@@ -111,13 +94,7 @@ public class ArmazenamentoDocumentoService {
 
     public byte[] baixar(String storageKey) {
         try {
-            byte[] conteudo = restClientBuilder.build()
-                    .get()
-                    .uri(properties.url() + "/storage/v1/object/authenticated/{bucket}/{chave}", properties.bucket(), storageKey)
-                    .header("Authorization", "Bearer " + properties.apiKey())
-                    .header("apikey", properties.apiKey())
-                    .retrieve()
-                    .body(byte[].class);
+            byte[] conteudo = armazenamento.baixar(storageKey);
             if (conteudo == null) {
                 throw new ArquivoInvalidoException("Arquivo indisponível.");
             }
@@ -145,28 +122,10 @@ public class ArmazenamentoDocumentoService {
 
     private String gerarUrlAssinada(String storageKey, Duration expiracao) {
         try {
-            // A chave tem barras ("pasta/arquivo"): concatenar, e não usar variavel de template,
-            // senao o Spring codifica a barra como %2F e o Storage responde InvalidSignature.
-            SignedUrlResponse resposta = restClientBuilder.build()
-                    .post()
-                    .uri(properties.url() + "/storage/v1/object/sign/" + properties.bucket() + "/" + storageKey)
-                    .header("Authorization", "Bearer " + properties.apiKey())
-                    .header("apikey", properties.apiKey())
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(new SignedUrlRequest(expiracao.toSeconds()))
-                    .retrieve()
-                    .body(SignedUrlResponse.class);
-
-            return resposta == null ? null : properties.url() + "/storage/v1" + resposta.signedURL();
+            return armazenamento.urlAssinada(storageKey, expiracao);
         } catch (Exception ex) {
             return null;
         }
-    }
-
-    private record SignedUrlRequest(long expiresIn) {
-    }
-
-    private record SignedUrlResponse(String signedURL) {
     }
 
     private void validar(MultipartFile arquivo, Set<String> tiposAceitos, String mensagemFormatoInvalido) {

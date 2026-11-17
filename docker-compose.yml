@@ -38,6 +38,9 @@ services:
       SUPABASE_BUCKET: ${SUPABASE_BUCKET:-quickcare-bucket-prod}
       EMAIL_APP: ${EMAIL_APP:-}
       EMAIL_APP_PASSWORD: ${EMAIL_APP_PASSWORD:-}
+      QUICKCARE_STORAGE_TIPO: ${STORAGE_TIPO:-local}
+      QUICKCARE_STORAGE_LOCAL_DIRETORIO: /app/arquivos
+      QUICKCARE_STORAGE_LOCAL_URL_BASE: http://localhost:8080
       SPRING_MAIL_HOST: mailpit
       SPRING_MAIL_PORT: 1025
       SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH: "false"
@@ -49,6 +52,8 @@ services:
       ADMIN_SENHA: ${ADMIN_SENHA:-}
       ADMIN_NOME: ${ADMIN_NOME:-}
       ADMIN_CPF: ${ADMIN_CPF:-}
+    volumes:
+      - quickcare-arquivos:/app/arquivos
     ports:
       - "8080:8080"
     healthcheck:
@@ -78,3 +83,4 @@ services:
 
 volumes:
   quickcare-postgres-data:
+  quickcare-arquivos:
