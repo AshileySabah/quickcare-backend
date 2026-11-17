@@ -109,8 +109,8 @@ Pré-requisitos: **Git** e **Docker** com Docker Compose (Docker Desktop no Wind
 1. Clone os dois repositórios **lado a lado**, na mesma pasta:
 
    ```bash
-   git clone <url-do-quickcare-backend> quickcare-backend
-   git clone <url-do-quickcare-frontend> quickcare-frontend
+   git clone --branch les-mvp https://github.com/AshileySabah/quickcare-backend.git quickcare-backend
+   git clone --branch les-mvp https://github.com/AshileySabah/quickcare-frontend.git quickcare-frontend
    ```
 
    ```
