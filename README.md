@@ -121,7 +121,7 @@ Pré-requisitos: Docker. Para rodar fora do Docker, também é preciso ter Java 
 
 ### Massa de teste
 
-No perfil `dev`, o Flyway também roda `db/seed-dev/R__massa_local.sql`, que cria contas `*@quickcare.dev` com a senha `quickcare123`. Por exemplo:
+No perfil `dev`, o Flyway também roda `db/seed-dev/R__massa_local.sql`, que cria contas `*@quickcare.dev` com a senha `Senha@123`. Por exemplo:
 
 | Conta | Situação |
 | --- | --- |
