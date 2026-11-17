@@ -128,6 +128,7 @@ No perfil `dev`, o Flyway também roda `db/seed-dev/R__massa_local.sql`, que cri
 | `admin@quickcare.dev` | admin |
 | `paciente@quickcare.dev` | paciente aprovado |
 | `profissional@quickcare.dev` | profissional aprovado |
+| `fernanda@quickcare.dev` | enfermeira de Curativos aprovada (segunda profissional da demonstração) |
 | `ambos@quickcare.dev` | conta com os dois perfis |
 | `paciente.pendente@quickcare.dev`, `profissional.pendente@quickcare.dev` | aguardando validação |
 
