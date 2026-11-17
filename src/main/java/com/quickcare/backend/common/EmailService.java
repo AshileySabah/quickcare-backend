@@ -35,6 +35,9 @@ public class EmailService {
     @Value("${spring.mail.username:}")
     private String remetente;
 
+    @Value("${quickcare.email.remetente:}")
+    private String remetenteSmtp;
+
     public void enviarEmailHtml(String destinatario, String assunto, String corpoHtml) {
         executor.submit(() -> {
             try {
@@ -60,6 +63,9 @@ public class EmailService {
     private void enviarPorSmtp(String destinatario, String assunto, String corpoHtml) throws Exception {
         MimeMessage mensagem = mailSender.createMimeMessage();
         MimeMessageHelper helper = new MimeMessageHelper(mensagem, true, "UTF-8");
+        if (!remetenteSmtp.isBlank()) {
+            helper.setFrom(remetenteSmtp, NOME_REMETENTE);
+        }
         helper.setTo(destinatario);
         helper.setSubject(assunto);
         helper.setText(corpoHtml, true);
