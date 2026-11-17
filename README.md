@@ -131,7 +131,7 @@ No perfil `dev`, o Flyway também roda `db/seed-dev/R__massa_local.sql`, que cri
 | `ambos@quickcare.dev` | conta com os dois perfis |
 | `paciente.pendente@quickcare.dev`, `profissional.pendente@quickcare.dev` | aguardando validação |
 
-Para testar o chat com dois profissionais, existe o script `massa-chat-local.sql`, que fica fora deste repositório, na pasta que contém o back e o front. Ele cria uma paciente, uma enfermeira e um cuidador (`chat.paciente@`, `chat.enfermeira@` e `chat.cuidador@quickcare.dev`), com atendimentos agendados e conversas já iniciadas. Pode ser rodado de novo para recriar o cenário.
+Para testar o chat com dois profissionais, o perfil `dev` também roda `db/seed-dev/R__massa_local_chat.sql`. Ele cria uma paciente, uma enfermeira e um cuidador (`chat.paciente@`, `chat.enfermeira@` e `chat.cuidador@quickcare.dev`, mesma senha), com atendimentos agendados, um grupo e conversas individuais já iniciadas. Como é uma migration repetível, o Flyway recria esse cenário sempre que o arquivo muda.
 
 ## Testes
 
