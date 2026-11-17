@@ -27,20 +27,28 @@ public class ConsultaCpfService {
     private static final DateTimeFormatter DATA_BR = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     private final RestClient client;
+    private final boolean configurado;
 
     public ConsultaCpfService(ValidacaoExternaProperties properties, RestClient.Builder builder) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(Duration.ofSeconds(properties.timeoutSegundos()));
         requestFactory.setReadTimeout(Duration.ofSeconds(properties.timeoutSegundos()));
 
+        String token = properties.cpf().token();
+        this.configurado = token != null && !token.isBlank();
         this.client = builder
                 .baseUrl(properties.cpf().url())
-                .defaultHeader("Authorization", "Bearer " + properties.cpf().token())
+                .defaultHeader("Authorization", "Bearer " + (configurado ? token : ""))
                 .requestFactory(requestFactory)
                 .build();
     }
 
     public VerificacaoExterna verificar(String cpf, String nomeCadastrado, LocalDate nascimentoCadastrado) {
+        if (!configurado) {
+            return VerificacaoExterna.semApi(CAMPO,
+                    "Consulta à Serpro desativada: o token SERPRO_CPF_TOKEN não foi configurado.",
+                    List.of("Valide o CPF manualmente."));
+        }
         RespostaSerpro resposta;
         try {
             resposta = client.get()
