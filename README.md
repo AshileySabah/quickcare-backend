@@ -2,7 +2,18 @@
 
 API do QuickCare, um marketplace de profissionais de saúde orientado a demanda: o paciente descreve o que precisa uma única vez e os profissionais aprovados para aquela área enviam propostas. Projeto de TCC do curso de Análise e Desenvolvimento de Sistemas (FATEC).
 
-O front-end fica no repositório `quickcare-frontend`.
+O front-end fica no repositório `quickcare-frontend`. Para rodar o sistema completo, veja [Rodando localmente](#rodando-localmente-sistema-completo).
+
+## Equipe e links
+
+| Nome completo | RA | Turno |
+| --- | --- | --- |
+| _a preencher_ | _a preencher_ | _a preencher_ |
+| _a preencher_ | _a preencher_ | _a preencher_ |
+
+- Vídeo de apresentação: _a preencher_
+- Protótipo no Figma: _a preencher_
+- Sistema publicado: https://quickcare-frontend.vercel.app
 
 ## Stack
 
@@ -91,33 +102,66 @@ validacao       etapas de validação e pré-validação
 
 As regras de negócio ficam nos services, e o front só reflete o que a API devolve. As migrations ficam em `src/main/resources/db/migration` (V1 a V40). Migrations já aplicadas não são alteradas: toda mudança de esquema entra numa migration nova.
 
-## Rodando localmente
+## Rodando localmente (sistema completo)
 
-Pré-requisitos: Docker. Para rodar fora do Docker, também é preciso ter Java 21.
+Pré-requisitos: **Git** e **Docker** com Docker Compose (Docker Desktop no Windows/macOS). Não precisa de Java, Node, banco nem chave de nenhum serviço externo.
 
-1. Crie um `.env` na raiz do projeto com as variáveis abaixo. **Nunca suba esse arquivo para o repositório.**
-
-   | Variável | Uso |
-   | --- | --- |
-   | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | banco local (padrão `quickcare`) |
-   | `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `SUPABASE_BUCKET` | storage. Sem elas a API sobe, mas os uploads falham |
-   | `EMAIL_APP`, `EMAIL_APP_PASSWORD` ou `BREVO_API_KEY` | envio de e-mail |
-   | `FRONTEND_URL` | links dos e-mails (padrão `http://localhost:4200`) |
-   | `ADMIN_EMAIL`, `ADMIN_SENHA`, `ADMIN_NOME`, `ADMIN_CPF` | admin criado ao subir, opcional |
-
-2. Suba o Postgres e a API:
+1. Clone os dois repositórios **lado a lado**, na mesma pasta:
 
    ```bash
-   ./dev.sh          # Linux/macOS (./dev.sh stop para derrubar)
-   .\dev.ps1         # Windows   (.\dev.ps1 -Stop para derrubar)
+   git clone <url-do-quickcare-backend> quickcare-backend
+   git clone <url-do-quickcare-frontend> quickcare-frontend
    ```
 
-   Ou rode só o banco com `docker compose up -d postgres` e a API com `./mvnw spring-boot:run`.
+   ```
+   pasta/
+   ├── quickcare-backend/
+   └── quickcare-frontend/
+   ```
+
+2. Dentro do `quickcare-backend`, suba tudo:
+
+   ```bash
+   cd quickcare-backend
+   docker compose up --build
+   ```
+
+   O compose sobe o Postgres (com PostGIS), a API, o front e o Mailpit. O Flyway cria o esquema e carrega a massa de teste. A primeira subida leva alguns minutos, por causa do build das imagens.
 
 3. Endereços:
-   - API: `http://localhost:8080`
-   - Swagger: `http://localhost:8080/swagger-ui/index.html`
-   - Health: `http://localhost:8080/actuator/health`
+
+   | Serviço | Endereço |
+   | --- | --- |
+   | Front-end | http://localhost:4200 |
+   | API | http://localhost:8080 |
+   | Swagger | http://localhost:8080/swagger-ui/index.html |
+   | Health da API | http://localhost:8080/actuator/health |
+   | Mailpit (e-mails enviados) | http://localhost:8025 |
+
+4. Para derrubar: `docker compose down`. Para apagar também o banco e os arquivos enviados e começar do zero: `docker compose down -v`.
+
+O que muda ao rodar com o compose:
+
+- **E-mail**: todos os e-mails (confirmação de cadastro, redefinição de senha, notificações) vão para o Mailpit, sem sair da máquina. Para confirmar um cadastro novo, abra http://localhost:8025 e clique no link do e-mail.
+- **Arquivos**: documentos, avatares e anexos do chat ficam em disco, num volume Docker (`quickcare.storage.tipo=local`). Os documentos continuam sendo baixados por rotas autenticadas da API. Avatares e anexos do chat abrem por uma URL da própria API assinada e com prazo, como acontece com o Supabase em produção.
+- **Pré-validação de CPF**: sem `SERPRO_CPF_TOKEN`, o admin vê o aviso "Consulta à Serpro desativada" e valida manualmente. A consulta de CNPJ (BrasilAPI) não precisa de token.
+
+### Variáveis opcionais
+
+Nada é obrigatório para rodar com o compose. Para mudar algo, copie `.env.example` para `.env` e preencha. **Nunca suba o `.env` para o repositório.**
+
+| Variável | Uso |
+| --- | --- |
+| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | banco local (padrão `quickcare`) |
+| `STORAGE_TIPO` | `local` (padrão no compose) ou `supabase` |
+| `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `SUPABASE_BUCKET` | storage do Supabase, quando `STORAGE_TIPO=supabase` |
+| `EMAIL_REMETENTE` | remetente dos e-mails no Mailpit (padrão `nao-responda@quickcare.local`) |
+| `SERPRO_CPF_TOKEN` | token da Serpro para a pré-validação de CPF |
+| `ADMIN_EMAIL`, `ADMIN_SENHA`, `ADMIN_NOME`, `ADMIN_CPF` | admin extra criado ao subir |
+
+### Rodando só a API (desenvolvimento)
+
+Com Java 21, suba só o banco com `docker compose up -d postgres` e a API com `./mvnw spring-boot:run`. Também dá para usar `./dev.sh` (Linux/macOS) ou `.\dev.ps1` (Windows). Fora do compose, o storage padrão é o Supabase e o e-mail sai por SMTP (`EMAIL_APP`) ou Brevo (`BREVO_API_KEY`).
 
 ### Massa de teste
 
