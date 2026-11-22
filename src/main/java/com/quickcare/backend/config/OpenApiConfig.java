@@ -15,7 +15,7 @@ public class OpenApiConfig {
         return new OpenAPI()
                 .info(new Info()
                         .title("QuickCare API")
-                        .description("Backend do QuickCare, marketplace de profissionais de saúde. "
+                        .description("API do QuickCare, plataforma que conecta pacientes a profissionais de saúde por meio de solicitações. "
                                 + "Para chamar os endpoints com cadeado, faça POST /auth/login, copie o valor do "
                                 + "cabeçalho X-Auth-Token da resposta e cole em Authorize.")
                         .version("v0.1"))
