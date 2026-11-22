@@ -4,6 +4,9 @@ import com.quickcare.backend.atendimento.dto.AtendimentoResponse;
 import com.quickcare.backend.problema.dto.ContestacaoRequest;
 import com.quickcare.backend.problema.dto.RelatoRequest;
 import com.quickcare.backend.problema.dto.UrlResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -19,6 +22,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
+@Tag(name = "Problemas de atendimento", description = "Relato de que o atendimento não aconteceu, confirmação e contestação.")
+@SecurityRequirement(name = "bearerAuth")
 @RestController
 @RequestMapping("/atendimentos/{id}/problema")
 @RequiredArgsConstructor
@@ -26,6 +31,7 @@ public class ProblemaController {
 
     private final ProblemaService problemaService;
 
+    @Operation(summary = "Relata um problema no atendimento com anexos")
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public AtendimentoResponse relatar(
             @AuthenticationPrincipal Long usuarioId,
@@ -36,11 +42,13 @@ public class ProblemaController {
         return problemaService.relatar(usuarioId, id, request, anexos);
     }
 
+    @Operation(summary = "Confirma o problema relatado pela outra parte")
     @PatchMapping("/confirmar")
     public AtendimentoResponse confirmar(@AuthenticationPrincipal Long usuarioId, @PathVariable Long id) {
         return problemaService.confirmar(usuarioId, id);
     }
 
+    @Operation(summary = "Contesta o problema relatado, abrindo disputa")
     @PostMapping(value = "/contestacao", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public AtendimentoResponse contestar(
             @AuthenticationPrincipal Long usuarioId,
@@ -51,6 +59,7 @@ public class ProblemaController {
         return problemaService.contestar(usuarioId, id, request, anexos);
     }
 
+    @Operation(summary = "Gera o link de um anexo do problema")
     @GetMapping("/anexos/{anexoId}")
     public UrlResponse anexo(@AuthenticationPrincipal Long usuarioId, @PathVariable Long id, @PathVariable Long anexoId) {
         return new UrlResponse(problemaService.urlDoAnexo(usuarioId, id, anexoId));

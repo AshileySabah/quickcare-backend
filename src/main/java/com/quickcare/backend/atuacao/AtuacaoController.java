@@ -4,6 +4,9 @@ import com.quickcare.backend.atuacao.dto.AlterarEspecialidadesRequest;
 import com.quickcare.backend.atuacao.dto.AtuacaoRequest;
 import com.quickcare.backend.atuacao.dto.AtuacaoResponse;
 import com.quickcare.backend.atuacao.dto.ImpactoAtuacaoResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -22,6 +25,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
+@Tag(name = "Atuações do profissional", description = "Categorias em que o profissional atua, cada uma com registro validado separadamente.")
+@SecurityRequirement(name = "bearerAuth")
 @RestController
 @RequestMapping("/perfil/profissional/atuacoes")
 @RequiredArgsConstructor
@@ -29,11 +34,13 @@ public class AtuacaoController {
 
     private final AtuacaoService atuacaoService;
 
+    @Operation(summary = "Lista as atuações do profissional logado")
     @GetMapping
     public List<AtuacaoResponse> listar(@AuthenticationPrincipal Long usuarioId) {
         return atuacaoService.listar(usuarioId);
     }
 
+    @Operation(summary = "Inclui uma nova atuação com o documento do registro")
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public List<AtuacaoResponse> incluir(
             @AuthenticationPrincipal Long usuarioId,
@@ -43,6 +50,7 @@ public class AtuacaoController {
         return atuacaoService.incluir(usuarioId, request, documento);
     }
 
+    @Operation(summary = "Mostra o que é afetado ao remover a atuação")
     @GetMapping("/{id}/impacto")
     public ImpactoAtuacaoResponse impacto(
             @AuthenticationPrincipal Long usuarioId,
@@ -52,6 +60,7 @@ public class AtuacaoController {
         return atuacaoService.impacto(usuarioId, id, especialidadeIds);
     }
 
+    @Operation(summary = "Altera as especialidades de uma atuação")
     @PutMapping("/{id}/especialidades")
     public List<AtuacaoResponse> alterarEspecialidades(
             @AuthenticationPrincipal Long usuarioId,
@@ -61,6 +70,7 @@ public class AtuacaoController {
         return atuacaoService.alterarEspecialidades(usuarioId, id, request);
     }
 
+    @Operation(summary = "Remove a atuação e cancela o que depende dela")
     @DeleteMapping("/{id}")
     public List<AtuacaoResponse> remover(@AuthenticationPrincipal Long usuarioId, @PathVariable Long id) {
         return atuacaoService.remover(usuarioId, id);

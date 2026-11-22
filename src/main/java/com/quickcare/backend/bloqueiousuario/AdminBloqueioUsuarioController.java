@@ -3,6 +3,9 @@ package com.quickcare.backend.bloqueiousuario;
 import com.quickcare.backend.administrador.dto.JustificativaRequest;
 import com.quickcare.backend.bloqueiousuario.dto.BloqueioUsuarioAdminResponse;
 import com.quickcare.backend.bloqueiousuario.dto.CriarBloqueioUsuarioRequest;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -19,6 +22,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+@Tag(name = "Admin · Bloqueios entre usuários", description = "Bloqueios entre paciente e profissional vistos e aplicados pelo administrador.")
+@SecurityRequirement(name = "bearerAuth")
 @RestController
 @RequestMapping("/admin/bloqueios-usuario")
 @RequiredArgsConstructor
@@ -26,6 +31,7 @@ public class AdminBloqueioUsuarioController {
 
     private final AdminBloqueioUsuarioService adminBloqueioUsuarioService;
 
+    @Operation(summary = "Lista os bloqueios entre usuários")
     @GetMapping
     public List<BloqueioUsuarioAdminResponse> listar(
             @AuthenticationPrincipal Long usuarioId,
@@ -34,6 +40,7 @@ public class AdminBloqueioUsuarioController {
         return adminBloqueioUsuarioService.listar(usuarioId, busca);
     }
 
+    @Operation(summary = "Bloqueia um paciente e um profissional entre si")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public BloqueioUsuarioAdminResponse bloquear(
@@ -44,6 +51,7 @@ public class AdminBloqueioUsuarioController {
                 request.justificativa());
     }
 
+    @Operation(summary = "Remove um bloqueio entre usuários")
     @PatchMapping("/{id}/remover")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void remover(

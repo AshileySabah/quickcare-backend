@@ -11,6 +11,9 @@ import com.quickcare.backend.seguranca.dto.EncerramentoRequest;
 import com.quickcare.backend.seguranca.dto.SegurancaResponse;
 import com.quickcare.backend.seguranca.dto.TrocarSenhaRequest;
 import com.quickcare.backend.usuario.TipoPerfil;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -25,6 +28,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Optional;
 
+@Tag(name = "Segurança da conta", description = "E-mail, senha, encerramento da conta e recuperação de perfil.")
+@SecurityRequirement(name = "bearerAuth")
 @RestController
 @RequestMapping("/seguranca")
 @RequiredArgsConstructor
@@ -32,11 +37,13 @@ public class SegurancaController {
 
     private final SegurancaService segurancaService;
 
+    @Operation(summary = "Mostra o e-mail e a situação de cada perfil")
     @GetMapping
     public SegurancaResponse situacao(@AuthenticationPrincipal Long usuarioId) {
         return segurancaService.situacao(usuarioId);
     }
 
+    @Operation(summary = "Envia o código para trocar o e-mail")
     @PostMapping("/email/codigo")
     public MensagemResponse pedirCodigoDeEmail(
             @AuthenticationPrincipal Long usuarioId,
@@ -46,6 +53,7 @@ public class SegurancaController {
         return new MensagemResponse("Enviamos um código de 6 números para o novo e-mail.");
     }
 
+    @Operation(summary = "Confirma a troca de e-mail com o código")
     @PatchMapping("/email")
     public ResponseEntity<LoginResponse> confirmarEmail(
             @AuthenticationPrincipal Long usuarioId,
@@ -57,6 +65,7 @@ public class SegurancaController {
                 .body(sessao.response());
     }
 
+    @Operation(summary = "Troca a senha")
     @PatchMapping("/senha")
     public ResponseEntity<MensagemResponse> trocarSenha(
             @AuthenticationPrincipal Long usuarioId,
@@ -68,6 +77,7 @@ public class SegurancaController {
                 .body(new MensagemResponse("Senha alterada. Os outros dispositivos foram desconectados."));
     }
 
+    @Operation(summary = "Envia o código para encerrar a conta ou um perfil")
     @PostMapping("/encerramento/codigo")
     public MensagemResponse pedirCodigoDeEncerramento(
             @AuthenticationPrincipal Long usuarioId,
@@ -77,6 +87,7 @@ public class SegurancaController {
         return new MensagemResponse("Enviamos um código de 6 números para o seu e-mail.");
     }
 
+    @Operation(summary = "Encerra a conta ou um perfil")
     @PostMapping("/encerramento")
     public ResponseEntity<LoginResponse> encerrar(
             @AuthenticationPrincipal Long usuarioId,
@@ -90,6 +101,7 @@ public class SegurancaController {
                 .build();
     }
 
+    @Operation(summary = "Recupera um perfil encerrado")
     @PostMapping("/perfis/recuperar")
     public LoginResponse recuperarPerfil(@AuthenticationPrincipal Long usuarioId, @RequestParam TipoPerfil perfil) {
         return segurancaService.recuperarPerfil(usuarioId, perfil);

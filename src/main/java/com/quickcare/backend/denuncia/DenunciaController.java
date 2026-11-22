@@ -2,6 +2,9 @@ package com.quickcare.backend.denuncia;
 
 import com.quickcare.backend.denuncia.dto.DenunciaEnviadaResponse;
 import com.quickcare.backend.denuncia.dto.DenunciaRequest;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -14,6 +17,8 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+@Tag(name = "Denúncias", description = "Denúncia de quem já teve atendimento com o usuário.")
+@SecurityRequirement(name = "bearerAuth")
 @RestController
 @RequestMapping("/denuncias")
 @RequiredArgsConstructor
@@ -21,6 +26,7 @@ public class DenunciaController {
 
     private final DenunciaService denunciaService;
 
+    @Operation(summary = "Envia uma denúncia com anexo opcional")
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
     public DenunciaEnviadaResponse denunciar(

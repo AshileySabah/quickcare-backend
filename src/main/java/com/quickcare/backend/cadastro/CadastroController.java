@@ -4,6 +4,8 @@ import com.quickcare.backend.cadastro.dto.CadastroPacienteRequest;
 import com.quickcare.backend.cadastro.dto.CadastroProfissionalRequest;
 import com.quickcare.backend.cadastro.dto.CadastroResponse;
 import com.quickcare.backend.documento.TipoDocumento;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -18,6 +20,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
+@Tag(name = "Cadastro", description = "Criação de conta de paciente ou de profissional, com os documentos.")
 @RestController
 @RequestMapping("/usuarios/cadastro")
 @RequiredArgsConstructor
@@ -25,6 +28,7 @@ public class CadastroController {
 
     private final CadastroService cadastroService;
 
+    @Operation(summary = "Cadastra um paciente")
     @PostMapping(value = "/paciente", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<CadastroResponse> cadastrarPaciente(
             @Valid @RequestPart("dados") CadastroPacienteRequest request,
@@ -36,6 +40,7 @@ public class CadastroController {
                 .body(cadastroService.cadastrarPaciente(request, documentos, tiposDocumento, avatar));
     }
 
+    @Operation(summary = "Cadastra um profissional com as atuações")
     @PostMapping(value = "/profissional", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<CadastroResponse> cadastrarProfissional(
             @Valid @RequestPart("dados") CadastroProfissionalRequest request,
