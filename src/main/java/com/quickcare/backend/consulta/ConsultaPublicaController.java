@@ -6,6 +6,9 @@ import com.quickcare.backend.especialidade.CategoriaProfissional;
 import com.quickcare.backend.perfil.PerfilPublicoService;
 import com.quickcare.backend.perfil.dto.PerfilPublicoProfissionalResponse;
 import com.quickcare.backend.solicitacao.ModalidadeSolicitacao;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,6 +19,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+@Tag(name = "Consulta pública", description = "Busca de profissionais e solicitações sem login. Com token, esconde quem está bloqueado.")
+@SecurityRequirement(name = "bearerAuth")
 @RestController
 @RequestMapping("/publico")
 @RequiredArgsConstructor
@@ -24,6 +29,7 @@ public class ConsultaPublicaController {
     private final ConsultaPublicaService consultaPublicaService;
     private final PerfilPublicoService perfilPublicoService;
 
+    @Operation(summary = "Busca profissionais aprovados com filtros")
     @GetMapping("/profissionais")
     public List<ProfissionalPublicoResponse> profissionais(
             @AuthenticationPrincipal Long usuarioId,
@@ -38,11 +44,13 @@ public class ConsultaPublicaController {
                 categoria, especialidadeId, vazioComoNulo(cidade), vazioComoNulo(uf), modalidade, notaMinima));
     }
 
+    @Operation(summary = "Mostra o perfil público de um profissional")
     @GetMapping("/profissionais/{id}")
     public PerfilPublicoProfissionalResponse profissional(@AuthenticationPrincipal Long usuarioId, @PathVariable Long id) {
         return perfilPublicoService.buscarProfissional(usuarioId, id);
     }
 
+    @Operation(summary = "Lista solicitações abertas, sem dados do paciente")
     @GetMapping("/solicitacoes")
     public List<SolicitacaoPublicaResponse> solicitacoes(
             @AuthenticationPrincipal Long usuarioId,

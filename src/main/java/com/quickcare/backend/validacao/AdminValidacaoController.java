@@ -4,6 +4,9 @@ import com.quickcare.backend.validacao.dto.DecisaoEtapaRequest;
 import com.quickcare.backend.validacao.dto.PreValidacaoResponse;
 import com.quickcare.backend.validacao.dto.ValidacaoDetalheResponse;
 import com.quickcare.backend.validacao.dto.ValidacaoResumoResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -20,6 +23,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
+@Tag(name = "Admin · Validação cadastral", description = "Análise das etapas de cadastro de pacientes e profissionais.")
+@SecurityRequirement(name = "bearerAuth")
 @RestController
 @RequestMapping("/admin/validacoes")
 @RequiredArgsConstructor
@@ -28,6 +33,7 @@ public class AdminValidacaoController {
     private final ValidacaoService validacaoService;
     private final PreValidacaoService preValidacaoService;
 
+    @Operation(summary = "Lista os cadastros por situação de validação")
     @GetMapping("/{perfil}")
     public List<ValidacaoResumoResponse> listar(
             @AuthenticationPrincipal Long usuarioId,
@@ -38,6 +44,7 @@ public class AdminValidacaoController {
         return validacaoService.listar(usuarioId, PerfilNaUrl.ler(perfil), status, emRevalidacao);
     }
 
+    @Operation(summary = "Detalha o cadastro com as etapas")
     @GetMapping("/{perfil}/{id}")
     public ValidacaoDetalheResponse detalhar(
             @AuthenticationPrincipal Long usuarioId,
@@ -47,6 +54,7 @@ public class AdminValidacaoController {
         return validacaoService.detalhar(usuarioId, PerfilNaUrl.ler(perfil), id);
     }
 
+    @Operation(summary = "Baixa um arquivo enviado em uma etapa")
     @GetMapping("/{perfil}/{id}/etapas/{etapaId}/{arquivo}")
     public ResponseEntity<byte[]> arquivo(
             @AuthenticationPrincipal Long usuarioId,
@@ -59,6 +67,7 @@ public class AdminValidacaoController {
                 .resposta();
     }
 
+    @Operation(summary = "Aprova ou reprova uma etapa com justificativa")
     @PostMapping(value = "/{perfil}/{id}/etapas/{tipo}/decisao", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ValidacaoDetalheResponse decidir(
             @AuthenticationPrincipal Long usuarioId,
@@ -72,6 +81,7 @@ public class AdminValidacaoController {
         return validacaoService.decidir(usuarioId, PerfilNaUrl.ler(perfil), id, tipo, atuacao, request, anexo);
     }
 
+    @Operation(summary = "Consulta as bases externas e sugere uma decisão")
     @PostMapping("/{perfil}/{id}/etapas/{tipo}/pre-validacao")
     public PreValidacaoResponse preValidar(
             @AuthenticationPrincipal Long usuarioId,

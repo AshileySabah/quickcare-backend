@@ -15,13 +15,16 @@ public class OpenApiConfig {
         return new OpenAPI()
                 .info(new Info()
                         .title("QuickCare API")
-                        .description("Backend do QuickCare, marketplace de profissionais de saude")
+                        .description("Backend do QuickCare, marketplace de profissionais de saúde. "
+                                + "Para chamar os endpoints com cadeado, faça POST /auth/login, copie o valor do "
+                                + "cabeçalho X-Auth-Token da resposta e cole em Authorize.")
                         .version("v0.1"))
                 .components(new Components()
-                        .addSecuritySchemes("accessTokenCookie", new SecurityScheme()
-                                .type(SecurityScheme.Type.APIKEY)
-                                .in(SecurityScheme.In.COOKIE)
-                                .name("access_token")));
+                        .addSecuritySchemes("bearerAuth", new SecurityScheme()
+                                .type(SecurityScheme.Type.HTTP)
+                                .scheme("bearer")
+                                .bearerFormat("JWT")
+                                .description("Token do cabeçalho X-Auth-Token devolvido pelo login.")));
     }
 
 }

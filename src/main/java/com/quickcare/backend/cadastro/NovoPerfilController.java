@@ -5,6 +5,9 @@ import com.quickcare.backend.auth.dto.LoginResponse;
 import com.quickcare.backend.cadastro.dto.NovoPerfilPacienteRequest;
 import com.quickcare.backend.cadastro.dto.NovoPerfilProfissionalRequest;
 import com.quickcare.backend.documento.TipoDocumento;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -20,6 +23,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
+@Tag(name = "Novo perfil", description = "Quem já tem conta cria o outro perfil (paciente ou profissional).")
+@SecurityRequirement(name = "bearerAuth")
 @RestController
 @RequestMapping("/perfis")
 @RequiredArgsConstructor
@@ -28,6 +33,7 @@ public class NovoPerfilController {
     private final CadastroService cadastroService;
     private final AuthService authService;
 
+    @Operation(summary = "Cria o perfil de paciente para a conta logada")
     @PostMapping(value = "/paciente", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<LoginResponse> criarPaciente(
             @AuthenticationPrincipal Long usuarioId,
@@ -39,6 +45,7 @@ public class NovoPerfilController {
         return ResponseEntity.status(HttpStatus.CREATED).body(authService.sessaoAtual(usuarioId));
     }
 
+    @Operation(summary = "Cria o perfil de profissional para a conta logada")
     @PostMapping(value = "/profissional", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<LoginResponse> criarProfissional(
             @AuthenticationPrincipal Long usuarioId,

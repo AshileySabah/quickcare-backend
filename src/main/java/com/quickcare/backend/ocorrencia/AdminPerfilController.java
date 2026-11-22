@@ -7,6 +7,9 @@ import com.quickcare.backend.ocorrencia.dto.DecisaoRecursoRequest;
 import com.quickcare.backend.ocorrencia.dto.PerfilAdminDetalheResponse;
 import com.quickcare.backend.ocorrencia.dto.PerfilAdminResumoResponse;
 import com.quickcare.backend.usuario.TipoPerfil;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -22,6 +25,8 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.Map;
 
+@Tag(name = "Admin · Perfis e ocorrências", description = "Ocorrências, bloqueios de ação, recursos e banimentos de cada perfil.")
+@SecurityRequirement(name = "bearerAuth")
 @RestController
 @RequestMapping("/admin")
 @RequiredArgsConstructor
@@ -29,6 +34,7 @@ public class AdminPerfilController {
 
     private final AdminPerfilService adminPerfilService;
 
+    @Operation(summary = "Lista os perfis por situação (ocorrências, recursos, bloqueados)")
     @GetMapping("/perfis")
     public List<PerfilAdminResumoResponse> listar(
             @AuthenticationPrincipal Long usuarioId,
@@ -39,6 +45,7 @@ public class AdminPerfilController {
         return adminPerfilService.listar(usuarioId, perfil, busca, situacao);
     }
 
+    @Operation(summary = "Detalha um perfil com ocorrências, bloqueios e banimentos")
     @GetMapping("/perfis/{perfil}/{id}")
     public PerfilAdminDetalheResponse detalhar(
             @AuthenticationPrincipal Long usuarioId,
@@ -48,6 +55,7 @@ public class AdminPerfilController {
         return adminPerfilService.detalhar(usuarioId, perfil, id);
     }
 
+    @Operation(summary = "Lança uma ocorrência manual")
     @PostMapping("/perfis/{perfil}/{id}/ocorrencias")
     public PerfilAdminDetalheResponse lancarOcorrencia(
             @AuthenticationPrincipal Long usuarioId,
@@ -58,6 +66,7 @@ public class AdminPerfilController {
         return adminPerfilService.lancarOcorrencia(usuarioId, perfil, id, request.justificativa());
     }
 
+    @Operation(summary = "Aplica um bloqueio de ação ao perfil")
     @PostMapping("/perfis/{perfil}/{id}/bloqueios")
     public PerfilAdminDetalheResponse aplicarBloqueio(
             @AuthenticationPrincipal Long usuarioId,
@@ -68,6 +77,7 @@ public class AdminPerfilController {
         return adminPerfilService.aplicarBloqueio(usuarioId, perfil, id, request.justificativa());
     }
 
+    @Operation(summary = "Anula uma ocorrência")
     @PatchMapping("/ocorrencias/{id}/anular")
     public PerfilAdminDetalheResponse anularOcorrencia(
             @AuthenticationPrincipal Long usuarioId,
@@ -77,6 +87,7 @@ public class AdminPerfilController {
         return adminPerfilService.anularOcorrencia(usuarioId, id, request.justificativa());
     }
 
+    @Operation(summary = "Remove o bloqueio de ação atual")
     @PatchMapping("/bloqueios/{id}/remover")
     public PerfilAdminDetalheResponse removerBloqueio(
             @AuthenticationPrincipal Long usuarioId,
@@ -86,6 +97,7 @@ public class AdminPerfilController {
         return adminPerfilService.removerBloqueio(usuarioId, id, request.justificativa());
     }
 
+    @Operation(summary = "Decide o recurso de uma ocorrência")
     @PatchMapping("/recursos/{id}/decisao")
     public PerfilAdminDetalheResponse decidirRecurso(
             @AuthenticationPrincipal Long usuarioId,
@@ -96,6 +108,7 @@ public class AdminPerfilController {
                 request.consequenciaSeNegado(), request.tipoBanimento(), request.diasSuspensao());
     }
 
+    @Operation(summary = "Decide o motivo de um bloqueio feito a menos de 48h")
     @PatchMapping("/motivos-de-bloqueio/{id}/decisao")
     public PerfilAdminDetalheResponse decidirMotivoDeBloqueio(
             @AuthenticationPrincipal Long usuarioId,
@@ -105,6 +118,7 @@ public class AdminPerfilController {
         return adminPerfilService.decidirMotivoDeBloqueio(usuarioId, id, request.aceitar(), request.justificativa());
     }
 
+    @Operation(summary = "Bane o perfil (suspensão ou permanente)")
     @PostMapping("/perfis/{perfil}/{id}/banimentos")
     public PerfilAdminDetalheResponse banir(
             @AuthenticationPrincipal Long usuarioId,
@@ -115,6 +129,7 @@ public class AdminPerfilController {
         return adminPerfilService.banir(usuarioId, perfil, id, request);
     }
 
+    @Operation(summary = "Remove um banimento")
     @PatchMapping("/banimentos/{id}/remover")
     public PerfilAdminDetalheResponse removerBanimento(
             @AuthenticationPrincipal Long usuarioId,
@@ -124,6 +139,7 @@ public class AdminPerfilController {
         return adminPerfilService.removerBanimento(usuarioId, id, request.justificativa());
     }
 
+    @Operation(summary = "Decide o recurso de um banimento")
     @PatchMapping("/banimentos/{id}/recurso/decisao")
     public PerfilAdminDetalheResponse decidirRecursoDeBanimento(
             @AuthenticationPrincipal Long usuarioId,
@@ -133,6 +149,7 @@ public class AdminPerfilController {
         return adminPerfilService.decidirRecursoDeBanimento(usuarioId, id, request.aceitar(), request.justificativa());
     }
 
+    @Operation(summary = "Conta os recursos em análise")
     @GetMapping("/recursos/em-aberto")
     public Map<String, Long> recursosEmAberto(@AuthenticationPrincipal Long usuarioId) {
         return Map.of("total", adminPerfilService.contarRecursosEmAnalise(usuarioId));

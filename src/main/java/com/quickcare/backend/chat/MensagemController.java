@@ -2,6 +2,9 @@ package com.quickcare.backend.chat;
 
 import com.quickcare.backend.chat.dto.EnviarMensagemRequest;
 import com.quickcare.backend.chat.dto.MensagemChatResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -25,12 +28,15 @@ import java.util.List;
  * profissional. Envio e histórico respondem 403 se o usuário não participa do canal, e o envio
  * também responde 403 para quem já saiu da conversa (só leitura).
  */
+@Tag(name = "Chat · Mensagens", description = "Envio, leitura e exclusão de mensagens, com anexo opcional.")
+@SecurityRequirement(name = "bearerAuth")
 @RestController
 @RequiredArgsConstructor
 public class MensagemController {
 
     private final MensagemService mensagemService;
 
+    @Operation(summary = "Envia uma mensagem com anexo opcional")
     @PostMapping(path = "/mensagens", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public MensagemChatResponse enviar(
             @AuthenticationPrincipal Long usuarioId,
@@ -39,6 +45,7 @@ public class MensagemController {
         return mensagemService.enviar(usuarioId, request, arquivo);
     }
 
+    @Operation(summary = "Lista as mensagens do grupo ou da conversa individual")
     @GetMapping("/conversas/{solicitacaoId}/mensagens")
     public List<MensagemChatResponse> listar(
             @AuthenticationPrincipal Long usuarioId,
@@ -47,6 +54,7 @@ public class MensagemController {
         return mensagemService.listarPorConversa(usuarioId, solicitacaoId, profissionalUsuarioId);
     }
 
+    @Operation(summary = "Apaga uma mensagem própria")
     @DeleteMapping("/mensagens/{id}")
     public ResponseEntity<Void> excluir(@AuthenticationPrincipal Long usuarioId, @PathVariable Long id) {
         mensagemService.excluir(usuarioId, id);
