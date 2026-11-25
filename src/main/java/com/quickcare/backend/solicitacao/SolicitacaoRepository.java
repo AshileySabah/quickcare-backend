@@ -1,8 +1,10 @@
 package com.quickcare.backend.solicitacao;
 
 import com.quickcare.backend.especialidade.CategoriaProfissional;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -46,5 +48,12 @@ public interface SolicitacaoRepository extends JpaRepository<Solicitacao, Long> 
 
     @EntityGraph(attributePaths = {"paciente", "profissionais", "profissionais.especialidades"})
     List<Solicitacao> findDistinctByStatusInOrderByCriadoEmDesc(Collection<StatusSolicitacao> status);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+        select s from Solicitacao s
+        where s.id = (select p.solicitacao.id from Proposta p where p.id = :propostaId)
+        """)
+    Optional<Solicitacao> travarPelaProposta(@Param("propostaId") Long propostaId);
 
 }

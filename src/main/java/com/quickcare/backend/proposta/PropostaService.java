@@ -238,6 +238,7 @@ public class PropostaService {
 
     @Transactional
     public PropostaResponse aceitar(Long usuarioId, Long id) {
+        solicitacaoRepository.travarPelaProposta(id);
         Proposta proposta = buscarDoPaciente(usuarioId, id);
 
         if (!proposta.getStatus().pendente() || !proposta.getSolicitacao().getStatus().recebePropostas()

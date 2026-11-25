@@ -2,6 +2,7 @@ package com.quickcare.backend.config;
 
 import com.quickcare.backend.jwt.AutenticacaoPorToken;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
 import org.springframework.messaging.Message;
@@ -30,9 +31,12 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private final AutenticacaoPorToken autenticacaoPorToken;
 
+    @Value("${quickcare.frontend-url}")
+    private List<String> frontendUrls;
+
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
-        registry.addEndpoint("/ws").setAllowedOriginPatterns("*");
+        registry.addEndpoint("/ws").setAllowedOrigins(frontendUrls.toArray(String[]::new));
     }
 
     @Override
